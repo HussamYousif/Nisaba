@@ -12,8 +12,9 @@ The answers come from **DeepSeek** (vision model: `deepseek-v4-flash-vision-exp`
 
 | Phase | State |
 |---|---|
-| Design docs (`docs/`) | ✅ In progress — being written now |
-| M1 – Drawing skeleton APK on the Boox | ⏳ Next |
+| Design docs (`docs/`) | ✅ Complete |
+| M1 – Drawing skeleton (APK + ink engine + persistence) | ✅ Code complete, 15/15 tests green on emulator; on-device probe on the Boox pending |
+| M2 – PDF import ("Open a Tome") | ⏳ Next |
 | Core loop (write → summon → answer) | ⏳ Planned |
 | Magic polish (fonts, ink reveal, tone) | ⏳ Planned |
 | Signed release APK | ⏳ Planned |

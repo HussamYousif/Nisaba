@@ -31,6 +31,11 @@ class StrokeBuilder {
         pts.add(StrokePoint(x, y, pressure.coerceIn(0f, 1f), (timeMs - firstTime).coerceAtLeast(0L)))
     }
 
+    /** Switches an in-progress pen stroke to eraser (pen button pressed mid-stroke). */
+    fun setErasing() {
+        if (started && tool == "pen") tool = "eraser"
+    }
+
     /** Consumes the stroke: returns it and resets. Null when too short. */
     fun build(): Stroke? {
         val s = buildPreview() ?: return null

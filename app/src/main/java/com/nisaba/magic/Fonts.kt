@@ -23,10 +23,10 @@ object Fonts {
 
     fun load(assets: AssetManager) {
         dancingScript = Typeface.Builder(assets, "fonts/DancingScript[wght].ttf")
-            .setFontVariationSettings("wght 500")
+            .setFontVariationSettings("'wght' 500")
             .build()
         dancingScriptBold = Typeface.Builder(assets, "fonts/DancingScript[wght].ttf")
-            .setFontVariationSettings("wght 700")
+            .setFontVariationSettings("'wght' 700")
             .build()
         greatVibes = Typeface.createFromAsset(assets, "fonts/GreatVibes-Regular.ttf")
         kalam = Typeface.createFromAsset(assets, "fonts/Kalam-Regular.ttf")

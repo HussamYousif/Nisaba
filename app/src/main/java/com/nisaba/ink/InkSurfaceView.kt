@@ -19,11 +19,10 @@ import com.nisaba.notebook.model.Stroke
  * - Ink renders in page space through [PageTransform]; dirty-rect invalidation
  *   keeps per-move redraws minimal while writing.
  */
-class InkSurfaceView @JvmOverloads constructor(
+open class InkSurfaceView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
 ) : View(context, attrs) {
-
     var page: NotebookPage? = null
         set(value) {
             field = value
@@ -93,8 +92,17 @@ class InkSurfaceView @JvmOverloads constructor(
     // ------------------------------------------------------------------
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        val isStylus = event.getToolType(0) == MotionEvent.TOOL_TYPE_STYLUS ||
-            event.getToolType(0) == MotionEvent.TOOL_TYPE_ERASER
+        val isStylus = isStylusEvent(event)
+
+        // Pen side-button state must be tracked on EVERY event — the button is
+        // pressed while drawing, so move events matter as much as hovers.
+        val btn = event.isButtonPressed(MotionEvent.BUTTON_STYLUS_PRIMARY) ||
+            event.isButtonPressed(MotionEvent.BUTTON_STYLUS_SECONDARY)
+        if (btn != eraserButtonHeld) {
+            eraserButtonHeld = btn
+            if (btn && drawing) current.setErasing()
+            onEraserButton?.invoke(btn)
+        }
 
         when (event.actionMasked) {
             MotionEvent.ACTION_HOVER_ENTER,
@@ -149,15 +157,13 @@ class InkSurfaceView @JvmOverloads constructor(
                 }
             }
         }
-
-        val btn = event.isButtonPressed(MotionEvent.BUTTON_STYLUS_PRIMARY) ||
-            event.isButtonPressed(MotionEvent.BUTTON_STYLUS_SECONDARY)
-        if (btn != eraserButtonHeld) {
-            eraserButtonHeld = btn
-            onEraserButton?.invoke(btn)
-        }
         return true
     }
+
+    /** Open seam for tests; on-device this resolves the EMR tool type. */
+    protected open fun isStylusEvent(event: MotionEvent): Boolean =
+        event.getToolType(0) == MotionEvent.TOOL_TYPE_STYLUS ||
+            event.getToolType(0) == MotionEvent.TOOL_TYPE_ERASER
 
     private fun finishStroke() {
         drawing = false
