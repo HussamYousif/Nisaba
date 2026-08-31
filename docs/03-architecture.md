@@ -2,6 +2,11 @@
 
 Status: **Draft v0.1** · Applies to v1 · Package root: `com.nisaba`
 
+> **Structure rules**: this document describes the *shape of the system*. The
+> *rules of structure* — low coupling, additive-only changes, layer roles,
+> leaf files, monorepo layout — live in `docs/architecture.md` (summary:
+> `AGENTS.md` at the repo root). Every change must follow those rules.
+
 ## 1. Stack
 
 | Concern | Choice | Why |

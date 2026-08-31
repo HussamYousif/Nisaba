@@ -3,10 +3,8 @@ package com.nisaba.notebook
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.Canvas
-import android.graphics.Paint
+import com.nisaba.ink.InkPageRenderer
 import com.nisaba.magic.MagicTheme
-import com.nisaba.ink.StrokeRenderer
 import com.nisaba.notebook.model.Notebook
 import com.nisaba.notebook.model.NotebookPage
 import kotlinx.serialization.json.Json
@@ -17,34 +15,22 @@ import java.util.UUID
 
 /**
  * Renders a page (background + strokes) into a small shelf thumbnail
- * (docs/05 §2, F1.3). Strokes scale down cleanly since they are vector.
+ * (docs/05 §2, F1.3). Delegates to the ink domain's public rendering surface
+ * — notebook/data never touches ink internals (docs/architecture.md §3, D2).
  */
 object ThumbnailRenderer {
 
     const val W = 480
     const val H = 360
 
-    fun render(page: NotebookPage, background: android.graphics.Bitmap? = null): Bitmap {
-        val bmp = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bmp)
-        canvas.drawColor(MagicTheme.PARCHMENT)
-        val s = minOf(W.toFloat() / page.width, H.toFloat() / page.height)
-        canvas.save()
-        canvas.translate((W - page.width * s) / 2f, (H - page.height * s) / 2f)
-        canvas.scale(s, s)
-        if (background != null) {
-            canvas.drawBitmap(background, null, android.graphics.RectF(0f, 0f, page.width.toFloat(), page.height.toFloat()), Paint())
-        }
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeCap = Paint.Cap.ROUND
-            strokeJoin = Paint.Join.ROUND
-            color = MagicTheme.INK
-        }
-        for (stroke in page.strokes) StrokeRenderer.draw(canvas, stroke, paint)
-        canvas.restore()
-        return bmp
-    }
+    fun render(page: NotebookPage, background: Bitmap? = null): Bitmap =
+        InkPageRenderer.render(
+            page = page,
+            width = W,
+            height = H,
+            background = background,
+            backgroundColor = MagicTheme.PARCHMENT,
+        )
 }
 
 /**

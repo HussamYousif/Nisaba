@@ -36,8 +36,13 @@ The answers come from **DeepSeek** (vision model: `deepseek-v4-flash-vision-exp`
 
 ## Design docs index
 
+> **Architecture conventions** (`docs/architecture.md` + `AGENTS.md`): the rules
+> that bind every change — low coupling, additive-not-disruptive, leaf files,
+> layer boundaries, monorepo layout. Read these before writing code.
+
 | Doc | Contents |
 |---|---|
+| [Architecture Conventions](docs/architecture.md) | **The rules**: philosophy, monorepo layout, layer tables, error handling, additive checklist, audit |
 | [01 — Vision](docs/01-vision.md) | The product idea, the "living notebook" metaphor, design principles |
 | [02 — Requirements](docs/02-requirements.md) | Scenarios, functional & non-functional requirements, constraints |
 | [03 — Architecture](docs/03-architecture.md) | Stack, modules, layers, threading, decisions (ADRs) |
