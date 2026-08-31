@@ -70,9 +70,7 @@ class ShelfScreen @JvmOverloads constructor(
         }
         findViewById<TextView>(R.id.pdfTome).apply {
             typeface = Fonts.kalam
-            setOnClickListener {
-                Toast.makeText(context, R.string.tome_coming, Toast.LENGTH_SHORT).show()
-            }
+            setOnClickListener { listener(ShelfAction.OpenTome) }
         }
 
         listView = findViewById(R.id.shelfList)

@@ -18,6 +18,8 @@ import com.nisaba.magic.MagicTheme
 import com.nisaba.notebook.model.Notebook
 import com.nisaba.notebook.model.NotebookPage
 import com.nisaba.notebook.model.Stroke
+import com.nisaba.pdf.PageBackgroundCache
+import java.io.File
 import java.util.ArrayDeque
 
 /**
@@ -46,6 +48,7 @@ class NotebookScreen @JvmOverloads constructor(
     private lateinit var eraserBtn: TextView
     private lateinit var undoBtn: TextView
     private lateinit var redoBtn: TextView
+    private var bgCache: PageBackgroundCache? = null
 
     private val saveHandler = Handler(Looper.getMainLooper())
     private val autosave = Runnable {
@@ -78,7 +81,13 @@ class NotebookScreen @JvmOverloads constructor(
         undoBtn.typeface = Fonts.kalam
         redoBtn.typeface = Fonts.kalam
 
+        // PDF notebooks load page backgrounds through the LRU cache.
+        val nbDir = File(context.filesDir, "notebooks/${notebook.id}")
+        val pdf = notebook.source?.file?.let { File(nbDir, it) }
+        bgCache = PageBackgroundCache(nbDir, pdf)
+
         inkView.page = currentPage()
+        loadBackground()
         inkView.onStrokePoint = { scheduleAutosave() }
         inkView.onStrokeComplete = ::onStrokeFinished
         inkView.onEraserButton = { held ->
@@ -125,6 +134,20 @@ class NotebookScreen @JvmOverloads constructor(
 
     private fun currentPage(): NotebookPage? = notebook?.pages?.getOrNull(pageIndex)
 
+    /** Loads the current page's background (PDF notebooks) via the LRU cache. */
+    private fun loadBackground() {
+        val page = currentPage() ?: return
+        inkView.background = null
+        val rel = page.background ?: return
+        val cache = bgCache ?: return
+        cache.get(page.index) { bmp ->
+            // Only apply if the user hasn't turned the page meanwhile.
+            if (currentPage()?.index == page.index) {
+                inkView.background = bmp
+            }
+        }
+    }
+
     private fun turnPage(delta: Int) {
         val nb = notebook ?: return
         val target = (pageIndex + delta).coerceIn(0, nb.pages.lastIndex)
@@ -133,6 +156,7 @@ class NotebookScreen @JvmOverloads constructor(
         pageIndex = target
         nb.lastOpenedPage = target
         inkView.page = currentPage()
+        loadBackground()
         undoStack.clear()
         redoStack.clear()
         updatePageUi()
@@ -151,6 +175,7 @@ class NotebookScreen @JvmOverloads constructor(
                 pageIndex = oldIndex
                 nb.lastOpenedPage = oldIndex
                 inkView.page = currentPage()
+                loadBackground()
                 updatePageUi()
             },
             redo = {
@@ -158,6 +183,7 @@ class NotebookScreen @JvmOverloads constructor(
                 pageIndex = index
                 nb.lastOpenedPage = index
                 inkView.page = currentPage()
+                loadBackground()
                 updatePageUi()
             },
         )
@@ -241,6 +267,7 @@ class NotebookScreen @JvmOverloads constructor(
     /** Called when the screen is removed (activity back/pause). */
     fun onClose() {
         saveNow()
+        bgCache?.shutdown()
     }
 
     private fun updatePageUi() {

@@ -2,6 +2,7 @@ package com.nisaba.notebook
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Paint
 import com.nisaba.magic.MagicTheme
@@ -23,7 +24,7 @@ object ThumbnailRenderer {
     const val W = 480
     const val H = 360
 
-    fun render(page: NotebookPage): Bitmap {
+    fun render(page: NotebookPage, background: android.graphics.Bitmap? = null): Bitmap {
         val bmp = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bmp)
         canvas.drawColor(MagicTheme.PARCHMENT)
@@ -31,6 +32,9 @@ object ThumbnailRenderer {
         canvas.save()
         canvas.translate((W - page.width * s) / 2f, (H - page.height * s) / 2f)
         canvas.scale(s, s)
+        if (background != null) {
+            canvas.drawBitmap(background, null, android.graphics.RectF(0f, 0f, page.width.toFloat(), page.height.toFloat()), Paint())
+        }
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
             strokeCap = Paint.Cap.ROUND
@@ -130,11 +134,17 @@ class NotebookStore(private val context: Context) {
     private fun writeThumbnail(nb: Notebook) {
         try {
             val page = nb.pages.getOrNull(nb.lastOpenedPage) ?: nb.pages.firstOrNull() ?: return
-            val bmp = ThumbnailRenderer.render(page)
+            val bg = page.background?.let { rel ->
+                runCatching {
+                    BitmapFactory.decodeFile(File(dirOf(nb.id), rel).absolutePath)
+                }.getOrNull()
+            }
+            val bmp = ThumbnailRenderer.render(page, bg)
             FileOutputStream(File(dirOf(nb.id), "thumb.png")).use { out ->
                 bmp.compress(Bitmap.CompressFormat.PNG, 90, out)
             }
             bmp.recycle()
+            bg?.recycle()
         } catch (_: Exception) {
             // Thumbnails are decorative; failure is non-fatal.
         }

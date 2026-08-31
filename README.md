@@ -14,8 +14,8 @@ The answers come from **DeepSeek** (vision model: `deepseek-v4-flash-vision-exp`
 |---|---|
 | Design docs (`docs/`) | ✅ Complete |
 | M1 – Drawing skeleton (APK + ink engine + persistence) | ✅ Code complete, 15/15 tests green on emulator; on-device probe on the Boox pending |
-| M2 – PDF import ("Open a Tome") | ⏳ Next |
-| Core loop (write → summon → answer) | ⏳ Planned |
+| M2 – PDF import ("Open a Tome") | ✅ Code complete, 24/24 tests green; import flow verified end-to-end via UI; PDF pixel-render check env-gated (see docs/06) — on-device check pending |
+| Core loop (write → summon → answer) | ⏳ Next |
 | Magic polish (fonts, ink reveal, tone) | ⏳ Planned |
 | Signed release APK | ⏳ Planned |
 

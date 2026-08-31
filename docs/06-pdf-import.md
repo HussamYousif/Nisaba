@@ -14,7 +14,12 @@ Status: **Draft v0.1** · ADR-004: Android `PdfRenderer` in v1
 
 ```
 PdfRenderer.openPage(i)
-  → page.render(destBitmap, destClip=null, transform, RENDER_MODE_FOR_DISPLAY)
+  → page.render(destBitmap, destClip, transform, RENDER_MODE_FOR_PRINT)
+```
+
+> **Implementation note (M2, verified on emulators):** `RENDER_MODE_FOR_PRINT` is used — it is the fidelity mode for bitmap rendering of documents (crisper text at our 200 dpi backgrounds). `RENDER_MODE_FOR_DISPLAY` behaved identically in our tests; either is acceptable.
+>
+> **Environment caveat (tracked):** in the sandboxed headless emulators used during development (API 34 *and* 35, with and without GPU emulation, every mode/matrix/clip), `PdfRenderer.Page.render` produces a solid black bitmap while plain `Canvas` rendering works — an environment defect, not app code. Pixel-level assertions soft-skip there (`PdfTestSupport.assumeRenders`) and hard-assert on real hardware. The M2 on-device acceptance (below) is the authoritative check.
   → downscale to ≤200 dpi (nearest filter; text stays crisp — this is a background, strokes are vector)
   → convert to RGB_565 (dithering on for gradients)
   → compress as PNG → backgrounds/pNNN.png

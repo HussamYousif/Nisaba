@@ -35,6 +35,13 @@ open class InkSurfaceView @JvmOverloads constructor(
     var inkColor: Int = MagicTheme.INK
     var eraserActive: Boolean = false
 
+    /** Decoded page background (PDF page); null = blank parchment. */
+    var background: android.graphics.Bitmap? = null
+        set(value) {
+            field = value
+            invalidate()
+        }
+
     /** Fired for every new stroke point (summon idle reset / autosave, M3). */
     var onStrokePoint: (() -> Unit)? = null
 
@@ -56,6 +63,10 @@ open class InkSurfaceView @JvmOverloads constructor(
         strokeJoin = Paint.Join.ROUND
     }
 
+    private val bgPaint = Paint().apply {
+        isFilterBitmap = true // smooth 200dpi → 300dpi upscale
+    }
+
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
         transform.setViewport(w, h)
@@ -67,7 +78,10 @@ open class InkSurfaceView @JvmOverloads constructor(
         canvas.save()
         canvas.translate(transform.offsetX, transform.offsetY)
         canvas.scale(transform.scale, transform.scale)
-        drawRules(canvas, p)
+        background?.let { bmp ->
+            canvas.drawBitmap(bmp, null, android.graphics.RectF(0f, 0f, p.width.toFloat(), p.height.toFloat()), bgPaint)
+        }
+        if (background == null) drawRules(canvas, p) // rules only on blank parchment
         inkPaint.color = inkColor
         for (s in p.strokes) StrokeRenderer.draw(canvas, s, inkPaint)
         current.buildPreview()?.let { StrokeRenderer.draw(canvas, it, inkPaint) }
