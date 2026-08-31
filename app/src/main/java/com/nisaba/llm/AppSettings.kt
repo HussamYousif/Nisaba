@@ -28,6 +28,13 @@ class AppSettings(context: Context) {
         get() = secure.getString(KEY_API_KEY, "") ?: ""
         set(value) = secure.edit().putString(KEY_API_KEY, value.trim()).apply()
 
+    /** Dev key from `.env`, injected into debug builds (never release). */
+    val devApiKey: String
+        get() = com.nisaba.BuildConfig.DEEPSEEK_API_KEY
+
+    /** Stored key wins; falls back to the .env dev key so nothing needs typing. */
+    fun effectiveApiKey(): String = apiKey.ifBlank { devApiKey }
+
     var baseUrl: String
         get() = plain.getString(KEY_BASE_URL, DEFAULT_BASE_URL) ?: DEFAULT_BASE_URL
         set(value) = plain.edit().putString(KEY_BASE_URL, value.trim().trimEnd('/')).apply()

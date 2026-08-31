@@ -211,7 +211,7 @@ class NotebookScreen @JvmOverloads constructor(
     /** The summon flow: image → DeepSeek → parse → render (docs/07). */
     private fun startSummon(manual: Boolean) {
         val s = session ?: return
-        if (settings?.apiKey.isNullOrBlank()) {
+        if (settings?.effectiveApiKey().isNullOrBlank()) {
             Toast.makeText(context, R.string.summon_no_key, Toast.LENGTH_LONG).show()
             return
         }

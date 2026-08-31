@@ -38,7 +38,7 @@ class DeepSeekClient(
                 .toRequestBody("application/json".toMediaType())
             val httpRequest = Request.Builder()
                 .url(settings.chatCompletionsUrl())
-                .header("Authorization", "Bearer ${settings.apiKey}")
+                .header("Authorization", "Bearer ${settings.effectiveApiKey()}")
                 .post(body)
                 .build()
             val call = client.newCall(httpRequest)

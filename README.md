@@ -88,3 +88,17 @@ nisaba/
 ## License
 
 Private project. Fonts are SIL Open Font License (redistribution OK).
+
+## Development secrets (`.env`)
+
+Copy `.env.example` → `.env` and set your key:
+
+```
+DEEPSEEK_API_KEY=sk-your-key-here
+```
+
+- Injected into **debug builds only** (`BuildConfig.DEEPSEEK_API_KEY`); the
+  app uses it automatically when no key is entered in Settings — nothing to
+  type on the Boox. A key you enter in Settings always wins.
+- `.env` is gitignored; release builds never embed it.
+- The Settings screen shows *"Dev key from .env is active"* when it's in use.

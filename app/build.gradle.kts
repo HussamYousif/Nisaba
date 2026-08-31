@@ -4,6 +4,27 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+/** Minimal .env loader (KEY=VALUE lines, # comments, optional quotes). */
+fun loadDotEnv(file: java.io.File): Map<String, String> {
+    if (!file.exists()) return emptyMap()
+    return file.readLines().mapNotNull { line ->
+        val t = line.trim()
+        if (t.isEmpty() || t.startsWith("#")) return@mapNotNull null
+        val idx = t.indexOf('=')
+        if (idx <= 0) return@mapNotNull null
+        val k = t.substring(0, idx).trim()
+        var v = t.substring(idx + 1).trim()
+        if (v.length >= 2 && v.startsWith("\"") && v.endsWith("\"")) {
+            v = v.substring(1, v.length - 1)
+        }
+        k to v
+    }.toMap()
+}
+
+val dotEnv = loadDotEnv(rootProject.file(".env"))
+val deepseekApiKey = (dotEnv["DEEPSEEK_API_KEY"] ?: System.getenv("DEEPSEEK_API_KEY") ?: "")
+    .replace("\\", "\\\\").replace("\"", "\\\"")
+
 android {
     namespace = "com.nisaba"
     compileSdk = 35
@@ -17,8 +38,18 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    buildFeatures {
+        buildConfig = true
+    }
+
     buildTypes {
+        debug {
+            // Dev key from .env — embedded in DEBUG builds only, so the app
+            // works without typing the key on-device. Release stays clean.
+            buildConfigField("String", "DEEPSEEK_API_KEY", "\"$deepseekApiKey\"")
+        }
         release {
+            buildConfigField("String", "DEEPSEEK_API_KEY", "\"\"")
             // Proper signing + minification land in M6; debug-signed for device iteration.
             isMinifyEnabled = false
             signingConfig = signingConfigs.getByName("debug")

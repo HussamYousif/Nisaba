@@ -135,6 +135,17 @@ class SettingsScreen @JvmOverloads constructor(
         }
         root.addView(testResult)
 
+        // Dev-key hint: a key from .env makes summoning work without typing.
+        if (settings.apiKey.isBlank() && settings.devApiKey.isNotBlank()) {
+            root.addView(TextView(context).apply {
+                text = "✦ Dev key from .env is active — the quill already has ink."
+                typeface = Fonts.kalam
+                textSize = 13f
+                setTextColor(MagicTheme.ACCENT_RED)
+                setPadding(0, dp(6), 0, 0)
+            })
+        }
+
         // Persist on change (paper-feel: no save button).
         keyField.setOnFocusChangeListener { _, hasFocus -> if (!hasFocus) settings.apiKey = keyField.text.toString() }
         baseField.setOnFocusChangeListener { _, hasFocus -> if (!hasFocus) settings.baseUrl = baseField.text.toString() }
@@ -150,7 +161,7 @@ class SettingsScreen @JvmOverloads constructor(
         s.apiKey = keyField.text.toString()
         s.baseUrl = baseField.text.toString()
         s.model = modelField.text.toString()
-        if (s.apiKey.isBlank()) {
+        if (s.effectiveApiKey().isBlank()) {
             testResult.text = "The quill has no ink — enter your API key first."
             return
         }
