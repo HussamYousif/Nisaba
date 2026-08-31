@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/wood"
+    android:padding="28dp">
+
+    <TextView
+        android:id="@+id/shelfTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/shelf_title"
+        android:textColor="@color/parchment"
+        android:textSize="40sp"
+        android:letterSpacing="0.08"
+        android:paddingBottom="12dp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingBottom="20dp">
+
+        <TextView
+            android:id="@+id/blankTome"
+            android:layout_width="0dp"
+            android:layout_height="64dp"
+            android:layout_weight="1"
+            android:layout_marginEnd="12dp"
+            android:gravity="center"
+            android:background="@drawable/tome_card"
+            android:text="@string/shelf_blank"
+            android:textColor="@color/parchment"
+            android:textSize="18sp" />
+
+        <TextView
+            android:id="@+id/pdfTome"
+            android:layout_width="0dp"
+            android:layout_height="64dp"
+            android:layout_weight="1"
+            android:layout_marginStart="12dp"
+            android:gravity="center"
+            android:background="@drawable/tome_card"
+            android:text="@string/shelf_tome"
+            android:textColor="@color/parchment"
+            android:textSize="18sp" />
+    </LinearLayout>
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/shelfList"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:paddingBottom="24dp" />
+
+        <TextView
+            android:id="@+id/shelfEmpty"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:gravity="center"
+            android:text="@string/shelf_empty"
+            android:textColor="@color/ink_soft"
+            android:textSize="16sp"
+            android:lineSpacingExtra="6dp"
+            android:visibility="gone" />
+    </FrameLayout>
+</LinearLayout>

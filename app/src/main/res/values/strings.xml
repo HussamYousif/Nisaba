@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Nisaba</string>
+
+    <string name="shelf_title">Nisaba</string>
+    <string name="shelf_blank">✦ A Blank Parchment</string>
+    <string name="shelf_tome">❧ Open a Tome</string>
+    <string name="shelf_empty">The shelf awaits its first tome.\n\nWrite, pause — and the book answers.</string>
+    <string name="tome_coming">PDF tomes arrive with M2 — blank parchment for now.</string>
+
+    <string name="nb_back">Back</string>
+    <string name="nb_undo">Undo</string>
+    <string name="nb_redo">Redo</string>
+    <string name="nb_eraser">Eraser</string>
+    <string name="nb_new_page">New page</string>
+    <string name="nb_prev_page">Previous page</string>
+    <string name="nb_next_page">Next page</string>
+    <string name="nb_quill">Summon the answer</string>
+    <string name="summon_m3">The summon arrives with M3 — the ink will answer here.</string>
+
+    <string name="delete_title">Smudge away?</string>
+    <string name="delete_message">"%1$s" will be smudged from the shelf. This cannot be undone.</string>
+    <string name="delete_confirm">Smudge away</string>
+    <string name="cancel">Keep</string>
+    <string name="page_label">%1$d/%2$d</string>
+</resources>

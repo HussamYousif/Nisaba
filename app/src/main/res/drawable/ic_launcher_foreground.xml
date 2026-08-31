@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Quill scaled into the safe zone of the adaptive icon -->
+    <group
+        android:scaleX="2.4"
+        android:scaleY="2.4"
+        android:translateX="25.2"
+        android:translateY="25.2">
+        <path
+            android:fillColor="#F3EAD8"
+            android:pathData="M4,20 C5.5,13.5 9.5,8.5 20,4 C19,10 15,15 10,17.5 C8,18.5 6,19.5 4,20 Z" />
+        <path
+            android:strokeColor="#7A2E1D"
+            android:strokeWidth="1.6"
+            android:strokeLineCap="round"
+            android:pathData="M6.5,17.5 L16.5,7.5" />
+        <path
+            android:fillColor="#7A2E1D"
+            android:pathData="M4.2,18.2 a1.2,1.2 0 1,0 0,2.4 a1.2,1.2 0 1,0 0,-2.4 Z" />
+    </group>
+</vector>

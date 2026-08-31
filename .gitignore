@@ -2,6 +2,9 @@
 .gradle/
 build/
 
+# Local toolchain (gradle dist, android sdk, gradle user home)
+.tools/
+
 # Local configuration file (sdk path, etc)
 local.properties
 
