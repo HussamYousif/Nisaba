@@ -57,8 +57,10 @@ client (external services) = leaf
 
 - Monorepo: `app/` = Android frontend (the product, offline-first);
   `server/` = backend template, absent today, additive-only when it lands.
-- Known debt: D1 `ui/NotebookScreen` god-object (split in M4/M5) — do not
-  grow it further; D4 `AnswerParser` parse+mapping merge (split when it grows).
+- Known debt: D4 `AnswerParser` parse+mapping merge (split when it grows).
+  D1 (NotebookScreen god-object) was resolved by extracting `NotebookSession`
+  (notebook core: state/undo/pages/save/events) — the screen is view wiring +
+  summon orchestration only (docs/architecture-review.md).
 - Environment caveat: sandboxed emulators render PDFs black via `PdfRenderer`
   (see `PdfTestSupport`) — pixel assertions are env-gated, never "fixed" by
   weakening them; verify on real hardware.

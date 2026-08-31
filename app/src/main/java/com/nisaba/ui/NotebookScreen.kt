@@ -1,7 +1,6 @@
 package com.nisaba.ui
 
 import android.content.Context
-import android.graphics.Color
 import android.os.Handler
 import android.os.Looper
 import android.util.AttributeSet
@@ -12,7 +11,6 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import com.nisaba.R
-import com.nisaba.ink.Eraser
 import com.nisaba.ink.InkSurfaceView
 import com.nisaba.llm.AnswerParser
 import com.nisaba.llm.AppSettings
@@ -22,14 +20,16 @@ import com.nisaba.llm.PageImagePreparer
 import com.nisaba.llm.PromptBuilder
 import com.nisaba.magic.Fonts
 import com.nisaba.magic.MagicTheme
+import com.nisaba.notebook.HandlerSaveScheduler
+import com.nisaba.notebook.NotebookSession
 import com.nisaba.notebook.SummonController
 import com.nisaba.notebook.model.AnswerGroup
 import com.nisaba.notebook.model.Notebook
-import com.nisaba.notebook.model.NotebookPage
 import com.nisaba.notebook.model.Stroke
 import com.nisaba.notebook.model.TranscriptEntry
 import com.nisaba.pdf.PageBackgroundCache
 import com.nisaba.render.AnswerSectionRenderer
+import com.nisaba.render.InkReveal
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -39,30 +39,21 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.time.Instant
-import java.util.ArrayDeque
 import java.util.UUID
 
 /**
- * The notebook page (docs/03 §4, docs/09 §3): toolbar + scrollable page +
- * answer section + quill button. Owns undo/redo, page navigation, autosave
- * and the summon flow (idle detection → DeepSeek → answer rendering).
+ * The notebook page (docs/09 §3): view wiring + summon orchestration only.
+ * All state (pages, undo/redo, versions, autosave) lives in [NotebookSession]
+ * (docs/architecture-review.md D-A); the screen listens and re-renders.
  */
 class NotebookScreen @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
 ) : LinearLayout(context, attrs) {
 
-    /** A reversible notebook mutation (undo/redo, docs/05 §5). */
-    private class Mutation(val undo: () -> Unit, val redo: () -> Unit)
-
-    private var notebook: Notebook? = null
     private var settings: AppSettings? = null
-    private var pageIndex = 0
     private var onBack: (() -> Unit)? = null
-    private var onSave: ((Notebook) -> Unit)? = null
-
-    private val undoStack = ArrayDeque<Mutation>()
-    private val redoStack = ArrayDeque<Mutation>()
+    private var session: NotebookSession? = null
 
     private lateinit var inkView: InkSurfaceView
     private lateinit var pageLabel: TextView
@@ -76,31 +67,25 @@ class NotebookScreen @JvmOverloads constructor(
 
     private val handler = Handler(Looper.getMainLooper())
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val reveal = InkReveal(handler)
     private var summonJob: Job? = null
 
-    private var contentVersion = 0
-    private var summonedVersion = -1
     private var pendingSummon = false
     private var summonGeneration = 0
+    private var revealNextAnswer = false
 
     private lateinit var summonController: SummonController
     private val client: DeepSeekClient by lazy { DeepSeekClient(settings!!) }
-
-    private val saveHandler = Handler(Looper.getMainLooper())
-    private val autosave = Runnable {
-        onSave?.invoke(notebook ?: return@Runnable)
-    }
 
     init {
         orientation = VERTICAL
     }
 
     fun bind(notebook: Notebook, settings: AppSettings, onBack: () -> Unit, onSave: (Notebook) -> Unit) {
-        this.notebook = notebook
         this.settings = settings
         this.onBack = onBack
-        this.onSave = onSave
-        pageIndex = notebook.lastOpenedPage.coerceIn(0, (notebook.pages.size - 1).coerceAtLeast(0))
+        val nbSession = NotebookSession(notebook, HandlerSaveScheduler(), onSave)
+        session = nbSession
 
         LayoutInflater.from(context).inflate(R.layout.notebook_screen, this, true)
 
@@ -126,6 +111,32 @@ class NotebookScreen @JvmOverloads constructor(
         val pdf = notebook.source?.file?.let { File(nbDir, it) }
         bgCache = PageBackgroundCache(nbDir, pdf)
 
+        // State events → view updates. The session is the only mutator.
+        nbSession.listener = object : NotebookSession.Listener {
+            override fun onChanged(reason: NotebookSession.Reason) {
+                when (reason) {
+                    NotebookSession.Reason.STROKES -> {
+                        inkView.invalidate()
+                        updateToolbar()
+                    }
+                    NotebookSession.Reason.PAGE,
+                    NotebookSession.Reason.STRUCTURE -> {
+                        inkView.page = nbSession.currentPage()
+                        loadBackground()
+                        renderAnswers(reveal = false)
+                        updateToolbar()
+                        scrollToTop()
+                    }
+                    NotebookSession.Reason.ANSWERS -> {
+                        renderAnswers(reveal = revealNextAnswer)
+                        revealNextAnswer = false
+                        updateToolbar()
+                        scrollToBottom()
+                    }
+                }
+            }
+        }
+
         // Summon detection: 3 s idle → auto-send; writing cancels a pending
         // request (F3.1/F3.2, docs/09 §3).
         summonController = SummonController(
@@ -138,15 +149,18 @@ class NotebookScreen @JvmOverloads constructor(
                 override fun onManualSummon() = startSummon(manual = true)
                 override fun onRequestCancelledByWriting() = onSummonCancelled()
             }
-            hasNewContent = { contentVersion > summonedVersion }
+            hasNewContent = {
+                val s = session
+                if (s == null) false else s.contentVersion > s.summonedVersion
+            }
         }
 
-        inkView.page = currentPage()
+        inkView.page = nbSession.currentPage()
         loadBackground()
-        renderAnswers()
+        renderAnswers(reveal = false)
         inkView.onStrokePoint = {
             summonController.onStrokePoint()
-            scheduleAutosave()
+            nbSession.requestSave()
         }
         inkView.onStrokeComplete = ::onStrokeFinished
         inkView.onEraserButton = { held -> updateEraserVisual(held) }
@@ -158,11 +172,11 @@ class NotebookScreen @JvmOverloads constructor(
                 onBack()
             }
         }
-        findViewById<TextView>(R.id.nbPrev).apply { setOnClickListener { turnPage(-1) } }
-        findViewById<TextView>(R.id.nbNext).apply { setOnClickListener { turnPage(1) } }
-        findViewById<TextView>(R.id.nbNewPage).apply { setOnClickListener { addPage() } }
-        undoBtn.setOnClickListener { undo() }
-        redoBtn.setOnClickListener { redo() }
+        findViewById<TextView>(R.id.nbPrev).apply { setOnClickListener { nbSession.turnPage(-1) } }
+        findViewById<TextView>(R.id.nbNext).apply { setOnClickListener { nbSession.turnPage(1) } }
+        findViewById<TextView>(R.id.nbNewPage).apply { setOnClickListener { nbSession.addPage() } }
+        undoBtn.setOnClickListener { nbSession.undo() }
+        redoBtn.setOnClickListener { nbSession.redo() }
         eraserBtn.setOnClickListener {
             inkView.eraserActive = !inkView.eraserActive
             updateEraserVisual(inkView.eraserActive)
@@ -172,145 +186,31 @@ class NotebookScreen @JvmOverloads constructor(
             summonController.manualSummon()
         }
 
-        updatePageUi()
-    }
-
-    // ------------------------------------------------------------ pages
-
-    private fun currentPage(): NotebookPage? = notebook?.pages?.getOrNull(pageIndex)
-
-    /** Loads the current page's background (PDF notebooks) via the LRU cache. */
-    private fun loadBackground() {
-        val page = currentPage() ?: return
-        inkView.background = null
-        val rel = page.background ?: return
-        val cache = bgCache ?: return
-        cache.get(page.index) { bmp ->
-            if (currentPage()?.index == page.index) {
-                inkView.background = bmp
-            }
+        // One tap anywhere skips the ink reveal (docs/08 §5).
+        findViewById<InkScrollView>(R.id.pageScroll).setOnTouchListener { _, _ ->
+            if (reveal.isActive()) reveal.skip()
+            false
         }
-    }
 
-    private fun turnPage(delta: Int) {
-        val nb = notebook ?: return
-        val target = (pageIndex + delta).coerceIn(0, nb.pages.lastIndex)
-        if (target == pageIndex) return
-        saveNow()
-        summonController.cancelAll() // leave any pending request behind cleanly
-        pageIndex = target
-        nb.lastOpenedPage = target
-        inkView.page = currentPage()
-        loadBackground()
-        renderAnswers()
-        undoStack.clear()
-        redoStack.clear()
-        updatePageUi()
-        scrollToTop()
-    }
-
-    private fun addPage() {
-        val nb = notebook ?: return
-        saveNow()
-        val index = nb.pages.size
-        nb.pages = nb.pages + NotebookPage(index = index)
-        val oldIndex = pageIndex
-        val newPage = nb.pages.last()
-        push(
-            undo = {
-                nb.pages = nb.pages.filterNot { it.index == index }
-                pageIndex = oldIndex
-                nb.lastOpenedPage = oldIndex
-                inkView.page = currentPage()
-                loadBackground()
-                renderAnswers()
-                updatePageUi()
-            },
-            redo = {
-                nb.pages = nb.pages + newPage
-                pageIndex = index
-                nb.lastOpenedPage = index
-                inkView.page = currentPage()
-                loadBackground()
-                renderAnswers()
-                updatePageUi()
-            },
-        )
-        pageIndex = index
-        nb.lastOpenedPage = index
-        inkView.page = currentPage()
-        loadBackground()
-        renderAnswers()
-        updatePageUi()
-        scrollToTop()
-        contentVersion++
+        updateToolbar()
     }
 
     // ------------------------------------------------------------ strokes
 
     private fun onStrokeFinished(stroke: Stroke) {
-        val page = currentPage() ?: return
+        val s = session ?: return
         if (stroke.tool == "eraser") {
-            val removed = Eraser.erase(page, stroke.points)
-            if (removed.isEmpty()) return
-            push(
-                undo = {
-                    page.strokes = page.strokes + removed
-                    inkView.invalidate()
-                },
-                redo = {
-                    page.strokes = page.strokes.filterNot { s -> removed.any { it.id == s.id } }
-                    inkView.invalidate()
-                },
-            )
+            s.eraseStroke(stroke.points) // session fires STROKES + saves
         } else {
-            page.strokes = page.strokes + stroke
-            push(
-                undo = {
-                    page.strokes = page.strokes.filterNot { it.id == stroke.id }
-                    inkView.invalidate()
-                },
-                redo = {
-                    page.strokes = page.strokes + stroke
-                    inkView.invalidate()
-                },
-            )
+            s.addStroke(stroke)
         }
-        contentVersion++
-        markDirty()
-    }
-
-    // ------------------------------------------------------------ undo/redo
-
-    private fun push(undo: () -> Unit, redo: () -> Unit) {
-        undoStack.addLast(Mutation(undo, redo))
-        while (undoStack.size > MAX_UNDO) undoStack.removeFirst()
-        redoStack.clear()
-        updatePageUi()
-    }
-
-    private fun undo() {
-        val m = undoStack.pollLast() ?: return
-        redoStack.addLast(Mutation(m.redo, m.undo))
-        m.undo()
-        contentVersion++
-        markDirty()
-    }
-
-    private fun redo() {
-        val m = redoStack.pollLast() ?: return
-        undoStack.addLast(Mutation(m.undo, m.redo))
-        m.redo()
-        contentVersion++
-        markDirty()
     }
 
     // ------------------------------------------------------------ summon
 
     /** The summon flow: image → DeepSeek → parse → render (docs/07). */
     private fun startSummon(manual: Boolean) {
-        val nb = notebook ?: return
-        val page = currentPage() ?: return
+        val s = session ?: return
         if (settings?.apiKey.isNullOrBlank()) {
             Toast.makeText(context, R.string.summon_no_key, Toast.LENGTH_LONG).show()
             return
@@ -323,7 +223,7 @@ class NotebookScreen @JvmOverloads constructor(
         }
         // Manual summon re-answers even without new strokes; the gate only
         // applies to the automatic idle summon (F3.4).
-        summonedVersion = contentVersion
+        s.markSummoned()
         pendingSummon = true
         setStirring(true)
         summonController.clearPendingRequest()
@@ -332,12 +232,13 @@ class NotebookScreen @JvmOverloads constructor(
         summonJob = scope.launch {
             val groupId = "a-" + UUID.randomUUID().toString().take(8)
             try {
+                val page = s.currentPage() ?: return@launch
                 val bg = bgCache?.getSuspending(page.index)
                 val imageUri = withContext(Dispatchers.IO) {
                     PageImagePreparer.prepare(page, bg)
                 }
-                val groupsByPage = nb.pages.associate { it.index to it.answers }
-                val messages = PromptBuilder.buildMessages(imageUri, nb.transcript, groupsByPage)
+                val groupsByPage = s.notebook.pages.associate { it.index to it.answers }
+                val messages = PromptBuilder.buildMessages(imageUri, s.notebook.transcript, groupsByPage)
                 val request = ChatContract.ChatRequest(
                     model = settings!!.model,
                     temperature = settings!!.temperature,
@@ -369,54 +270,47 @@ class NotebookScreen @JvmOverloads constructor(
                     status = "complete",
                     blocks = blocks,
                 )
-                page.answers = page.answers + group
-                nb.transcript = nb.transcript + listOf(
-                    TranscriptEntry(role = "user", at = Instant.now().toString(), pageIndex = page.index),
-                    TranscriptEntry(role = "assistant", at = Instant.now().toString(), pageIndex = page.index, answerGroupId = groupId),
+                revealNextAnswer = true
+                s.appendAnswer(group)
+                s.appendTranscript(
+                    listOf(
+                        TranscriptEntry(role = "user", at = Instant.now().toString(), pageIndex = page.index),
+                        TranscriptEntry(role = "assistant", at = Instant.now().toString(), pageIndex = page.index, answerGroupId = groupId),
+                    )
                 )
                 pendingSummon = false
                 setStirring(false)
-                renderAnswers()
-                scrollToBottom()
-                markDirty()
             } catch (e: kotlinx.coroutines.CancellationException) {
                 if (generation != summonGeneration) return@launch // superseded
-                // Cancelled by writing (F3.2) or navigation; record it.
-                val pageNow = currentPage()
-                if (pageNow != null && pageNow.answers.none { it.id == groupId }) {
-                    pageNow.answers = pageNow.answers + AnswerGroup(
-                        id = groupId,
-                        questionPage = pageNow.index,
-                        status = "cancelled",
-                    )
-                }
-                pendingSummon = false
-                setStirring(false)
-                renderAnswers()
-                markDirty()
+                recordAborted(s, groupId, "cancelled", e.message)
             } catch (e: Exception) {
                 if (generation != summonGeneration) return@launch // superseded
-                val pageNow = currentPage()
-                if (pageNow != null && pageNow.answers.none { it.id == groupId }) {
-                    pageNow.answers = pageNow.answers + AnswerGroup(
-                        id = groupId,
-                        questionPage = pageNow.index,
-                        status = "error",
-                        error = e.message,
-                    )
-                }
-                pendingSummon = false
-                setStirring(false)
-                renderAnswers()
-                markDirty()
+                recordAborted(s, groupId, "error", e.message)
             }
         }
         summonController.setPendingRequest { summonJob?.cancel() }
     }
 
+    private fun recordAborted(s: NotebookSession, groupId: String, status: String, error: String?) {
+        val page = s.currentPage()
+        if (page != null && page.answers.none { it.id == groupId }) {
+            revealNextAnswer = false
+            s.appendAnswer(
+                AnswerGroup(
+                    id = groupId,
+                    questionPage = page.index,
+                    status = status,
+                    error = error,
+                )
+            )
+        }
+        pendingSummon = false
+        setStirring(false)
+    }
+
     private fun onSummonCancelled() {
         // The controller already cancelled the job; the coroutine records the
-        // cancelled group. The indicator is cleared there too.
+        // cancelled group. Show a brief "…as you were." before hiding.
         if (pendingSummon) {
             stirIndicator.setText(R.string.summon_as_you_were)
             handler.postDelayed({ if (!pendingSummon) setStirring(false) }, 1200L)
@@ -430,39 +324,53 @@ class NotebookScreen @JvmOverloads constructor(
 
     // ------------------------------------------------------------ answers
 
-    private fun renderAnswers() {
+    private fun renderAnswers(reveal: Boolean) {
+        if (this.reveal.isActive()) this.reveal.skip() // stale steps reference old views
         answerSection.removeAllViews()
-        val page = currentPage() ?: return
-        for (group in page.answers) {
-            answerSection.addView(AnswerSectionRenderer.buildGroupView(context, group))
+        val page = session?.currentPage() ?: return
+        val groups = page.answers
+        val lastIndex = groups.lastIndex
+        for ((i, group) in groups.withIndex()) {
+            val built = AnswerSectionRenderer.buildGroupView(
+                context,
+                group,
+                reveal = reveal && i == lastIndex && group.status == "complete",
+            )
+            answerSection.addView(built.view)
+            if (built.revealSteps.isNotEmpty()) {
+                this.reveal.start(built.revealSteps)
+            }
         }
     }
 
     private fun scrollToTop() {
-        findViewById<com.nisaba.ui.InkScrollView>(R.id.pageScroll)?.let {
-            it.post { it.scrollTo(0, 0) }
-        }
+        val scroll = findViewById<InkScrollView>(R.id.pageScroll)
+        scroll?.post { scroll.scrollTo(0, 0) }
     }
 
     private fun scrollToBottom() {
-        findViewById<com.nisaba.ui.InkScrollView>(R.id.pageScroll)?.let {
-            it.post { it.fullScroll(View.FOCUS_DOWN) }
+        val scroll = findViewById<InkScrollView>(R.id.pageScroll)
+        scroll?.post { scroll.fullScroll(View.FOCUS_DOWN) }
+    }
+
+    // ------------------------------------------------------------ background
+
+    private fun loadBackground() {
+        val page = session?.currentPage() ?: return
+        inkView.background = null
+        val rel = page.background ?: return
+        val cache = bgCache ?: return
+        cache.get(page.index) { bmp ->
+            if (session?.currentPage()?.index == page.index) {
+                inkView.background = bmp
+            }
         }
     }
 
-    // ------------------------------------------------------------ save
+    // ------------------------------------------------------------ lifecycle
 
-    private fun scheduleAutosave() {
-        saveHandler.removeCallbacks(autosave)
-        saveHandler.postDelayed(autosave, AUTOSAVE_MS)
-    }
-
-    /** Flushes pending autosave synchronously (back, page turn, onPause). */
     fun saveNow() {
-        saveHandler.removeCallbacks(autosave)
-        val nb = notebook ?: return
-        nb.lastOpenedPage = pageIndex
-        onSave?.invoke(nb)
+        session?.saveNow()
     }
 
     /** Called when the screen is removed (activity back/pause). */
@@ -470,37 +378,28 @@ class NotebookScreen @JvmOverloads constructor(
         summonGeneration++ // the pending coroutine must not record after close
         summonJob?.cancel()
         summonController.shutdown()
-        saveNow()
+        reveal.skip()
+        session?.close()
         scope.cancel()
         bgCache?.shutdown()
     }
 
     private fun updateEraserVisual(active: Boolean) {
         if (active) {
-            eraserBtn.setTextColor(Color.WHITE)
+            eraserBtn.setTextColor(android.graphics.Color.WHITE)
             eraserBtn.setBackgroundColor(MagicTheme.ACCENT_RED)
         } else {
             eraserBtn.setTextColor(MagicTheme.INK)
-            eraserBtn.setBackgroundColor(Color.TRANSPARENT)
+            eraserBtn.setBackgroundColor(android.graphics.Color.TRANSPARENT)
         }
     }
 
-    private fun updatePageUi() {
-        val nb = notebook ?: return
-        pageLabel.text = context.getString(R.string.page_label, pageIndex + 1, nb.pages.size)
-        findViewById<TextView>(R.id.nbPrev).alpha = if (pageIndex > 0) 1f else 0.3f
-        findViewById<TextView>(R.id.nbNext).alpha = if (pageIndex < nb.pages.lastIndex) 1f else 0.3f
-        undoBtn.alpha = if (undoStack.isNotEmpty()) 1f else 0.3f
-        redoBtn.alpha = if (redoStack.isNotEmpty()) 1f else 0.3f
-    }
-
-    private fun markDirty() {
-        updatePageUi()
-        scheduleAutosave()
-    }
-
-    companion object {
-        private const val AUTOSAVE_MS = 800L
-        private const val MAX_UNDO = 50
+    private fun updateToolbar() {
+        val s = session ?: return
+        pageLabel.text = context.getString(R.string.page_label, s.pageIndex + 1, s.notebook.pages.size)
+        findViewById<TextView>(R.id.nbPrev).alpha = if (s.pageIndex > 0) 1f else 0.3f
+        findViewById<TextView>(R.id.nbNext).alpha = if (s.pageIndex < s.notebook.pages.lastIndex) 1f else 0.3f
+        undoBtn.alpha = if (s.canUndo()) 1f else 0.3f
+        redoBtn.alpha = if (s.canRedo()) 1f else 0.3f
     }
 }

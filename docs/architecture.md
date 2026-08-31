@@ -144,8 +144,9 @@ Audited against §3 (commit `e3433c8`). The codebase was written feature-first, 
 |---|---|---|---|
 | D2 | `notebook/NotebookStore` (data layer) calls `ink.StrokeRenderer` directly — data reaching into another module's core | New `ink/InkPageRenderer.kt` leaf: the *single* public rendering entry (strokes + optional background → bitmap). `NotebookStore` thumbnails call only it | ✅ fixed in this commit |
 | D3 | `llm/PageImagePreparer` (facade) also calls `ink.StrokeRenderer` directly | Same `InkPageRenderer` leaf; `PageImagePreparer` calls the public surface | ✅ fixed in this commit |
-| D1 | `ui/NotebookScreen` is a god-object: input, undo, pages, autosave, summon orchestration and answer rendering in one class (imports 6 modules) | Extract `core/SummonFlow` (summon orchestration + state) and keep the screen as wiring; do it when M4/M5 next touches notebook/llm | ⏳ M4/M5 |
-| D4 | `llm/AnswerParser` mixes validation (core) with placeholder mapping (facade) | Split only if it grows; both halves are small today | ⏳ when needed |
+| D1 | `ui/NotebookScreen` is a god-object: input, undo, pages, autosave, summon orchestration and answer rendering in one class (imports 6 modules) | `NotebookSession` (notebook core) now owns all state + mutation events; the screen is view wiring + summon orchestration (see `docs/architecture-review.md` D-A) | ✅ review round |
+| D4 | `llm/AnswerParser` mixes validation (core) with placeholder mapping (facade) | Split only if it grows; the M4 renderers validate separately (`SvgInkRenderer` returns null → smudge) | ⏳ when needed |
+| D5 | thumbnails rendered inside the data layer (`NotebookStore.kt`) | Moved to `render/PageThumbnail`; data calls the render domain's public surface | ✅ review round |
 
 **Migration path:** files are moved between layer folders **only when the feature is already being touched** — never as a standalone mass rename. The rules above bind from today; the physical layout catches up feature by feature.
 
