@@ -36,6 +36,7 @@ class ShelfScreen @JvmOverloads constructor(
     sealed interface ShelfAction {
         data object OpenBlank : ShelfAction
         data object OpenTome : ShelfAction
+        data object OpenSettings : ShelfAction
         data class Open(val id: String) : ShelfAction
     }
 
@@ -62,6 +63,10 @@ class ShelfScreen @JvmOverloads constructor(
 
         findViewById<TextView>(R.id.shelfTitle).apply {
             typeface = Fonts.dancingScript
+        }
+        findViewById<TextView>(R.id.shelfSettingsBtn).apply {
+            typeface = Fonts.kalam
+            setOnClickListener { listener(ShelfAction.OpenSettings) }
         }
 
         findViewById<TextView>(R.id.blankTome).apply {

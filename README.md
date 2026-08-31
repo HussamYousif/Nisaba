@@ -13,10 +13,11 @@ The answers come from **DeepSeek** (vision model: `deepseek-v4-flash-vision-exp`
 | Phase | State |
 |---|---|
 | Design docs (`docs/`) | ✅ Complete |
-| M1 – Drawing skeleton (APK + ink engine + persistence) | ✅ Code complete, 15/15 tests green on emulator; on-device probe on the Boox pending |
-| M2 – PDF import ("Open a Tome") | ✅ Code complete, 24/24 tests green; import flow verified end-to-end via UI; PDF pixel-render check env-gated (see docs/06) — on-device check pending |
-| Core loop (write → summon → answer) | ⏳ Next |
-| Magic polish (fonts, ink reveal, tone) | ⏳ Planned |
+| M1 – Drawing skeleton (APK + ink engine + persistence) | ✅ Code complete, tests green; on-device probe on the Boox pending |
+| M2 – PDF import ("Open a Tome") | ✅ Code complete, tests green; PDF pixel-render env-gated (docs/06) |
+| M3 – The summon (core loop) | ✅ Code complete: idle detection + cancel-on-resume, DeepSeek client, image prep, answer parsing, cursive text rendering, Settings; 28/28 tests green + full UI loop verified against a mock server |
+| M4 – Magic presentation (drawing/table renderers, ink reveal) | ⏳ Next |
+| M5 – Conversation polish (regenerate, smudge, export, onboarding) | ⏳ Planned |
 | Signed release APK | ⏳ Planned |
 
 ## Target device

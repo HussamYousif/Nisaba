@@ -10,6 +10,7 @@ import android.os.ParcelFileDescriptor
 import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.Executors
+import kotlin.coroutines.resume
 import kotlin.math.roundToInt
 
 /**
@@ -56,6 +57,12 @@ class PageBackgroundCache(
             mainHandler.post { onReady(bmp) }
         }
     }
+
+    /** Suspending variant for summon-time image preparation. */
+    suspend fun getSuspending(index: Int): Bitmap? =
+        kotlin.coroutines.suspendCoroutine { cont ->
+            get(index, onReady = { cont.resume(it) })
+        }
 
     private fun decode(index: Int): Bitmap? {
         // 1. Existing PNG?

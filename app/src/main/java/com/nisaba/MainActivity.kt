@@ -10,10 +10,12 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import com.nisaba.llm.AppSettings
 import com.nisaba.magic.Fonts
 import com.nisaba.notebook.NotebookStore
 import com.nisaba.pdf.PdfImporter
 import com.nisaba.ui.NotebookScreen
+import com.nisaba.ui.SettingsScreen
 import com.nisaba.ui.ShelfScreen
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -31,8 +33,10 @@ import java.util.concurrent.atomic.AtomicBoolean
 class MainActivity : AppCompatActivity() {
 
     private lateinit var store: NotebookStore
+    private lateinit var settings: AppSettings
     private lateinit var container: FrameLayout
     private var notebookScreen: NotebookScreen? = null
+    private var settingsScreen: SettingsScreen? = null
     private val importScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     private val pdfPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -42,6 +46,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         store = NotebookStore(this)
+        settings = AppSettings(this)
         Fonts.load(assets)
         setContentView(R.layout.activity_main)
         container = findViewById(R.id.container)
@@ -60,7 +65,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onBackPressed() {
-        if (notebookScreen != null) {
+        if (notebookScreen != null || settingsScreen != null) {
             showShelf()
         } else {
             super.onBackPressed()
@@ -72,6 +77,8 @@ class MainActivity : AppCompatActivity() {
     private fun showShelf() {
         notebookScreen?.onClose()
         notebookScreen = null
+        settingsScreen?.onClose()
+        settingsScreen = null
         container.removeAllViews()
         val shelf = ShelfScreen(this).apply {
             bind(store) { action ->
@@ -79,11 +86,23 @@ class MainActivity : AppCompatActivity() {
                     ShelfScreen.ShelfAction.OpenBlank -> openNotebook(store.createBlank().id)
                     ShelfScreen.ShelfAction.OpenTome ->
                         pdfPicker.launch(arrayOf("application/pdf"))
+                    ShelfScreen.ShelfAction.OpenSettings -> showSettings()
                     is ShelfScreen.ShelfAction.Open -> openNotebook(action.id)
                 }
             }
         }
         container.addView(shelf)
+    }
+
+    private fun showSettings() {
+        notebookScreen?.onClose()
+        notebookScreen = null
+        container.removeAllViews()
+        val screen = SettingsScreen(this).apply {
+            bind(settings) { showShelf() }
+        }
+        settingsScreen = screen
+        container.addView(screen)
     }
 
     // ------------------------------------------------------------ PDF import
@@ -141,10 +160,13 @@ class MainActivity : AppCompatActivity() {
     }.getOrNull()
 
     private fun openNotebook(id: String) {
+        settingsScreen?.onClose()
+        settingsScreen = null
         val notebook = store.load(id)
         val screen = NotebookScreen(this).apply {
             bind(
                 notebook = notebook,
+                settings = this@MainActivity.settings,
                 onBack = {
                     showShelf()
                 },

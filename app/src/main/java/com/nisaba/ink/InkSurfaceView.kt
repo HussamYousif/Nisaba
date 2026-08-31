@@ -29,6 +29,7 @@ open class InkSurfaceView @JvmOverloads constructor(
             transform.pageWidth = value?.width ?: 2480
             transform.pageHeight = value?.height ?: 1860
             transform.setViewport(width, height)
+            requestLayout() // page aspect may have changed
             invalidate()
         }
 
@@ -70,6 +71,18 @@ open class InkSurfaceView @JvmOverloads constructor(
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
         transform.setViewport(w, h)
+    }
+
+    /** The view sizes itself to the page aspect: answers live below the page. */
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val w = MeasureSpec.getSize(widthMeasureSpec)
+        val p = page
+        if (p != null && w > 0) {
+            val h = (w.toLong() * p.height / p.width).toInt()
+            setMeasuredDimension(w, h)
+        } else {
+            super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+        }
     }
 
     override fun onDraw(canvas: Canvas) {

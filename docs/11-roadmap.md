@@ -15,9 +15,9 @@ Status: **Draft v0.1** · Ordered by risk-first (the scary unknowns get disprove
 **Scope:** SAF import, copy, render pipeline, background cache, transactional failure handling (06).
 **Done when:** a 100-page PDF opens as a notebook, page turns feel clean, memory stays under budget, and a scanned-PDF page reads back crisply at 100%.
 
-### M3 — The summon (core loop v1)
+### M3 — The summon (core loop v1) ✅ *(code complete; live API verification pending a real key)*
 **Scope:** `DeepSeekClient` + `PageImagePreparer` + `PromptBuilder` + `AnswerParser` (07); idle detection with cancel-on-resume + quill button (F3); "ink stirs" indicator (09 §3); errors (09 §7); **live API verification** (OQ2/OQ3: vision input format, JSON reliability).
-**Done when:** the user writes *"summarize my week"*, pauses, and a correct text answer appears below — and writing mid-request visibly cancels it.
+**Done when (emulator-verified):** the user writes, pauses, and a correct text answer appears below — and writing mid-request visibly cancels it. Verified via instrumented end-to-end tests against an in-process mock server (28/28 green) and a full UI run against a host mock (`10.0.2.2`): settings → blank notebook → quill → answer rendered with ✦ flourish and persisted. **Remaining:** one live call with a real DeepSeek key (OQ2/OQ3) and the on-device pass.
 
 ### M4 — The answer in ink (magic presentation)
 **Scope:** cursive typography (08 §3), text/table/drawing renderers, SVG subset + ink-reveal engine (08 §4–6), flourish dividers, parchment palette & textures (09 §1), reveal animation tuning on e-ink; **legibility photo test** on the real screen (N11).
