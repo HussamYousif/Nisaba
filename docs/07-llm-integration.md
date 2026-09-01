@@ -14,7 +14,7 @@ Status: **Draft v0.1** · Provider: DeepSeek, model `deepseek-v4-flash-vision-ex
 | Timeout | connect 15 s / read 120 s (generation is slow; no aggressive read timeout) |
 | TLS | OkHttp defaults; `usesCleartextTraffic=false` |
 
-> **OQ2 (open):** the exact vision-input contract of this model must be verified with a live call in M3 (assumed OpenAI `image_url` data-URI format). The client is written against the OpenAI-compatible shape so a tweak is one-line if the provider differs.
+> **OQ2 (resolved, live 2026-08-31):** the model accepts the OpenAI `image_url` data-URI format exactly as implemented — verified with a generated test image (model correctly described it) and with a full on-device summon (blank page → "I see no writing on this page").
 
 ## 2. The vision input (page image)
 

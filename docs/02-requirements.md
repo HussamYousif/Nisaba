@@ -119,7 +119,7 @@ IDs are stable. Items marked **[v2]** are explicitly deferred, listed here so th
 | # | Question | Current default | Decided? |
 |---|---|---|---|
 | OQ1 | Exact Android version / Boox SDK availability on the Note Air 5c | Assume Android 13+, standard APIs; verify on device in M1 | ⏳ verify on device |
-| OQ2 | Does `deepseek-v4-flash-vision-exp` accept vision input exactly per OpenAI image_url format? | Assume yes (OpenAI-compatible); settings allow model override | ⏳ verify with live API in M3 |
+| OQ2 | Does `deepseek-v4-flash-vision-exp` accept vision input exactly per OpenAI image_url format? | **Yes — verified live** (2026-08-31): data-URI image_url accepted; model read a generated image and answered correctly | ✅ |
 | OQ3 | Max output tokens / JSON reliability of the model | 4096 max; robust parser + one "repair" retry (07 §7) | ⏳ verify |
 | OQ4 | Should auto-summon also fire when the notebook is *not* foregrounded? | No — foreground only | ✅ |
 | OQ5 | Cursive font legibility at small sizes on e-ink | Body ≥ 18sp; test with real device photos | ⏳ M4 |
