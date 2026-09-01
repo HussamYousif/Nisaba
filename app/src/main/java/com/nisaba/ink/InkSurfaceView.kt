@@ -11,6 +11,7 @@ import android.graphics.PathMeasure
 import android.os.Handler
 import android.os.Looper
 import com.nisaba.epd.Epd
+import com.nisaba.epd.Oec
 import com.nisaba.magic.MagicTheme
 import com.nisaba.notebook.model.NotebookPage
 import com.nisaba.notebook.model.Stroke
@@ -288,6 +289,7 @@ open class InkSurfaceView @JvmOverloads constructor(
                 flushHandler.removeCallbacks(flushRunnable)
                 flushScheduled = false
                 Epd.enableFastMode(this)
+                Oec.setRefreshMode(Oec.MODE_FAST)
                 onStrokePoint?.invoke()
                 invalidate()
                 return true
@@ -318,6 +320,7 @@ open class InkSurfaceView @JvmOverloads constructor(
                     drawing = false
                     current.cancel()
                     flushNow()
+                    Oec.setRefreshMode(Oec.MODE_NORMAL)
                     invalidate()
                 }
             }
@@ -333,6 +336,7 @@ open class InkSurfaceView @JvmOverloads constructor(
     private fun finishStroke() {
         drawing = false
         flushNow()
+        Oec.setRefreshMode(Oec.MODE_NORMAL)
         val stroke = current.build() ?: return
         onStrokeComplete?.invoke(stroke)
         invalidate()
