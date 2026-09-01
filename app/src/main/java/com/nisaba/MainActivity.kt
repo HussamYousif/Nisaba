@@ -51,6 +51,17 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         container = findViewById(R.id.container)
         hideSystemBars()
+        // Audit P4-7: onBackPressed() is deprecated on targetSdk 35.
+        onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (notebookScreen != null || settingsScreen != null) {
+                    showShelf()
+                } else {
+                    isEnabled = false
+                    onBackPressedDispatcher.onBackPressed()
+                }
+            }
+        })
         showShelf()
     }
 
@@ -69,14 +80,6 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         notebookScreen?.saveNow()
-    }
-
-    override fun onBackPressed() {
-        if (notebookScreen != null || settingsScreen != null) {
-            showShelf()
-        } else {
-            super.onBackPressed()
-        }
     }
 
     // ------------------------------------------------------------ screens

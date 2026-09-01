@@ -13,9 +13,9 @@ import org.junit.runner.RunWith
 
 /**
  * Exercises the real input pipeline: stylus capture, pressure recording,
- * finger rejection and hover-gated palm rejection (docs/04 §4–5).
- * Events are built with explicit sources so getToolType() classifies them
- * exactly like a real EMR pen / touchscreen.
+ * finger rejection (tool-type palm gating, audit P4-3) and the pen-side
+ * button eraser. Events are built with explicit sources so getToolType()
+ * classifies them exactly like a real EMR pen / touchscreen.
  */
 @RunWith(AndroidJUnit4::class)
 class InkSurfaceViewTest {
@@ -104,15 +104,15 @@ class InkSurfaceViewTest {
     }
 
     @Test
-    fun fingerTouchWhilePenHovering_isRejectedAsPalm() {
-        // Pen enters range, then a palm (touchscreen) lands.
-        view.dispatchTouchEvent(ev(MotionEvent.ACTION_HOVER_ENTER, 1200f, 900f))
+    fun fingerTouch_isRejectedAsPalmByToolType() {
+        // Palm rejection is tool-type gating (audit P4-3): a finger touch is
+        // ignored whether or not the pen is in range — there is no hover
+        // state to consult.
         val source = InputDevice.SOURCE_TOUCHSCREEN
         val tool = MotionEvent.TOOL_TYPE_FINGER
         view.dispatchTouchEvent(ev(MotionEvent.ACTION_DOWN, 200f, 200f, source = source, toolType = tool))
         view.dispatchTouchEvent(ev(MotionEvent.ACTION_MOVE, 600f, 600f, source = source, toolType = tool))
         view.dispatchTouchEvent(ev(MotionEvent.ACTION_UP, 600f, 600f, source = source, toolType = tool))
-        view.dispatchTouchEvent(ev(MotionEvent.ACTION_HOVER_EXIT, 1200f, 900f))
 
         assertEquals(0, page.strokes.size)
     }

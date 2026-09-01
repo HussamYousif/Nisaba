@@ -15,8 +15,8 @@ The answers come from **DeepSeek** (vision model: `deepseek-v4-flash-vision-exp`
 | Design docs (`docs/`) | ✅ Complete (+ architecture conventions & review) |
 | M1 – Drawing skeleton (APK + ink engine + persistence) | ✅ Code complete, tests green; on-device probe on the Boox pending |
 | M2 – PDF import ("Open a Tome") | ✅ Code complete, tests green; PDF pixel-render env-gated (docs/06) |
-| M3 – The summon (core loop) | ✅ Code complete: idle detection + cancel-on-resume, DeepSeek client, image prep, answer parsing, cursive text rendering, Settings; 28/28 tests green + full UI loop verified against a mock server |
-| M4 – Magic presentation | ✅ Code complete: SVG-subset ink renderer, self-inking drawings (PathMeasure reveal), ruled tables, InkReveal sequencer, tap-to-skip; 40/40 tests green |
+| M3 – The summon (core loop) | ✅ Code complete, live API verified (2026-08-31); on-device pass on the Boox pending (docs/11) |
+| M4 – Magic presentation | ✅ Code complete (SVG-subset ink renderer, self-inking drawings, ruled tables, tap-to-skip reveal); device pass pending — parchment textures + reveal tuning + N11 legibility photo test remain (docs/11) |
 | M5 – Conversation polish (regenerate, smudge, export, onboarding) | ⏳ Next |
 | Signed release APK | ⏳ Planned |
 
@@ -60,11 +60,11 @@ The answers come from **DeepSeek** (vision model: `deepseek-v4-flash-vision-exp`
 - **Language / UI**: Kotlin, single-activity, classic Android Views with a custom `InkSurfaceView` (deliberately *not* Compose — see ADR-003).
 - **Storage**: JSON notebook files with atomic writes; strokes as vector points with pressure.
 - **LLM**: OpenAI-compatible `/chat/completions` → `https://api.deepseek.com`, model `deepseek-v4-flash-vision-exp` (configurable), vision input as a page image, structured JSON output.
-- **PDF**: Android `PdfRenderer` for import backgrounds.
+- **PDF**: import backgrounds via the `PdfPageRenderer` seam — Android 15's framework `PdfRenderer` renders black on the Boox, so PdfBox-Android is the working engine there (ADR-004).
 - **Fonts**: bundled OFL fonts — Dancing Script (body), Great Vibes (headings), Kalam (small labels).
 - **minSdk** 26, **targetSdk** 35.
 
-## Repository layout (planned)
+## Repository layout
 
 ```
 nisaba/
@@ -72,16 +72,17 @@ nisaba/
 ├── docs/                  # design docs (this phase)
 ├── app/                   # Android application module
 │   ├── src/main/java/com/nisaba/
-│   │   ├── MainActivity.kt
-│   │   ├── ink/           # stroke capture, InkSurfaceView, rendering
-│   │   ├── notebook/      # data model, storage, notebook list
-│   │   ├── pdf/           # import & rendering
-│   │   ├── llm/           # DeepSeek client, image prep, prompt builder
-│   │   ├── render/        # answer blocks → ink rendering
-│   │   ├── magic/         # summon detection, animations, theming
-│   │   └── settings/      # API key, model, preferences
+│   │   ├── MainActivity.kt / NisabaApp.kt
+│   │   ├── ink/           # stylus input, stroke model, page-space math, ink rendering
+│   │   ├── notebook/      # data model + storage + summon detection
+│   │   │   └── model/     # kotlinx-serialization DTOs
+│   │   ├── pdf/           # PDF import & page-background rendering
+│   │   ├── llm/           # DeepSeek client, image prep, prompt builder, settings
+│   │   ├── render/        # answers → page-space ink layout, SVG, thumbnails
+│   │   ├── magic/         # parchment theme, bundled fonts, on-page summon indicator
+│   │   ├── epd/           # e-ink control (Boox/Onyx)
+│   │   └── ui/            # screens: shelf, notebook, settings
 │   └── src/main/assets/fonts/
-├── keystore/              # signing (gitignored)
 └── gradle/
 ```
 

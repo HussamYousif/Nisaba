@@ -9,7 +9,7 @@ import android.view.View
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
-import android.widget.Switch
+import androidx.appcompat.widget.SwitchCompat
 import android.widget.TextView
 import android.widget.Toast
 import com.nisaba.R
@@ -40,7 +40,7 @@ class SettingsScreen @JvmOverloads constructor(
     private lateinit var baseField: EditText
     private lateinit var modelField: EditText
     private lateinit var idleField: EditText
-    private lateinit var autoSwitch: Switch
+    private lateinit var autoSwitch: SwitchCompat
     private lateinit var testResult: TextView
 
     fun bind(settings: AppSettings, onBack: () -> Unit) {
@@ -107,7 +107,7 @@ class SettingsScreen @JvmOverloads constructor(
         root.addView(modelField)
 
         // Auto-summon
-        autoSwitch = Switch(context).apply {
+        autoSwitch = SwitchCompat(context).apply {
             isChecked = settings.autoSummonEnabled
             text = "Answer when I pause (auto-summon)"
             setTextColor(MagicTheme.INK)

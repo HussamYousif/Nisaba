@@ -14,7 +14,7 @@ Each summon appends one **AnswerGroup** to the page, rendered as **ink on the ca
 │  [block 1: text]                     │
 │  [block 2: drawing]                  │
 │  [block 3: table]                    │
-│  ✧  (end flourish)  ✒️ ↺ ⌫          │  ← regenerate / delete controls (F4.6)
+│  ✧  (end flourish)                  │  ← F4.6 regenerate/delete controls are M5 backlog (not in v1)
 ├──────────────────────────────────────┤
 │  …more user writing below…           │
 └──────────────────────────────────────┘
@@ -27,9 +27,9 @@ Each summon appends one **AnswerGroup** to the page, rendered as **ink on the ca
 
 | Type | Renderer | Notes |
 |---|---|---|
-| `text` | `MarkdownInk` | Markdown subset → cursive spans |
+| `text` | `AnswerInk` (Line items) | Markdown subset → cursive spans |
 | `drawing` | `SvgInkRenderer` | SVG subset → ink paths, draw-on animation |
-| `table` | `TableInkRenderer` | Ruled ledger, calligraphic headers |
+| `table` | `AnswerInk` (Rule items) | Ruled ledger, calligraphic headers |
 
 ## 3. Typography — cursive but legible (N11)
 

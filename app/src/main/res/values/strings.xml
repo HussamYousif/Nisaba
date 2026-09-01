@@ -17,13 +17,20 @@
     <string name="tome_open_failed">This tome cannot be opened — it may be damaged or from a newer version.</string>
     <string name="tome_empty">This tome is empty.</string>
 
-    <string name="nb_back">Back</string>
-    <string name="nb_undo">Undo</string>
-    <string name="nb_redo">Redo</string>
-    <string name="nb_eraser">Eraser</string>
-    <string name="nb_new_page">New page</string>
-    <string name="nb_prev_page">Previous page</string>
-    <string name="nb_next_page">Next page</string>
+    <string name="nb_back">←</string>
+    <string name="nb_undo">↶</string>
+    <string name="nb_redo">↷</string>
+    <string name="nb_eraser">✕</string>
+    <string name="nb_new_page">⇢</string>
+    <string name="nb_prev_page">◀</string>
+    <string name="nb_next_page">▶</string>
+    <string name="nb_back_desc">Back</string>
+    <string name="nb_undo_desc">Undo</string>
+    <string name="nb_redo_desc">Redo</string>
+    <string name="nb_eraser_desc">Eraser</string>
+    <string name="nb_new_page_desc">New page</string>
+    <string name="nb_prev_page_desc">Previous page</string>
+    <string name="nb_next_page_desc">Next page</string>
     <string name="nb_quill">Summon the answer</string>
     <string name="summon_error">The ink smudged — the spirit world was unreachable.</string>
     <string name="summon_error_retry">(tap the quill to write it again)</string>

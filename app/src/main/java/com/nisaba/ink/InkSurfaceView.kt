@@ -26,8 +26,9 @@ import kotlin.math.sin
 /**
  * The writing surface (docs/03 §2, docs/04 §3–5).
  *
- * - Stylus (EMR) draws with pressure; fingers never draw.
- * - Hover events gate palm rejection while the pen is in range.
+ * - Stylus (EMR) draws with pressure; fingers never draw. Palm rejection is
+ *   tool-type gating: non-stylus ACTION_DOWN is ignored outright (audit P4-3
+ *   — the old hover-based gate was unreachable dead code).
  * - Pen side button (BTN_STYLUS/BTN_STYLUS2) acts as a held eraser.
  * - Ink renders in page space through [PageTransform]; dirty-rect invalidation
  *   keeps per-move redraws minimal while writing.
@@ -59,7 +60,7 @@ open class InkSurfaceView @JvmOverloads constructor(
     var eraserActive: Boolean = false
 
     /** Decoded page background (PDF page); null = blank parchment. */
-    var background: android.graphics.Bitmap? = null
+    var pageBackground: android.graphics.Bitmap? = null
         set(value) {
             field = value
             rebuildBgLayer()
@@ -77,7 +78,6 @@ open class InkSurfaceView @JvmOverloads constructor(
 
     private val transform = PageTransform()
     private val current = StrokeBuilder()
-    private var penHovering = false
     private var drawing = false
     private var eraserButtonHeld = false
 
@@ -287,6 +287,13 @@ open class InkSurfaceView @JvmOverloads constructor(
         isFilterBitmap = true // smooth 200dpi → 300dpi upscale
     }
 
+    // Hoisted, not per-call: drawRules runs from onDraw (audit P4-7).
+    private val rulePaint = Paint().apply {
+        color = MagicTheme.INK
+        alpha = MagicTheme.RULE_ALPHA
+        strokeWidth = 1.2f
+    }
+
     // Cached static layer (parchment + rules + PDF background) at view
     // resolution: pen flushes redraw only the new ink on top, so the render
     // thread frees up earlier and fresh frames reach the e-ink panel sooner
@@ -306,10 +313,10 @@ open class InkSurfaceView @JvmOverloads constructor(
         c.save()
         c.translate(transform.offsetX, transform.offsetY)
         c.scale(transform.scale, transform.scale)
-        background?.let { bmp ->
+        pageBackground?.let { bmp ->
             c.drawBitmap(bmp, null, RectF(0f, 0f, p.width.toFloat(), p.height.toFloat()), bgPaint)
         }
-        if (background == null) drawRules(c, p)
+        if (pageBackground == null) drawRules(c, p)
         c.restore()
         bgLayer = layer
     }
@@ -425,10 +432,10 @@ open class InkSurfaceView @JvmOverloads constructor(
             canvas.save()
             canvas.translate(transform.offsetX, transform.offsetY)
             canvas.scale(transform.scale, transform.scale)
-            background?.let { bmp ->
+            pageBackground?.let { bmp ->
                 canvas.drawBitmap(bmp, null, android.graphics.RectF(0f, 0f, p.width.toFloat(), p.height.toFloat()), bgPaint)
             }
-            if (background == null) drawRules(canvas, p)
+            if (pageBackground == null) drawRules(canvas, p)
             canvas.restore()
         }
         canvas.save()
@@ -486,14 +493,9 @@ open class InkSurfaceView @JvmOverloads constructor(
     }
 
     private fun drawRules(canvas: Canvas, p: NotebookPage) {
-        val rule = Paint().apply {
-            color = MagicTheme.INK
-            alpha = MagicTheme.RULE_ALPHA
-            strokeWidth = 1.2f
-        }
         var y = MagicTheme.RULE_SPACING
         while (y < p.height) {
-            canvas.drawLine(0f, y, p.width.toFloat(), y, rule)
+            canvas.drawLine(0f, y, p.width.toFloat(), y, rulePaint)
             y += MagicTheme.RULE_SPACING
         }
     }
@@ -520,14 +522,10 @@ open class InkSurfaceView @JvmOverloads constructor(
         }
 
         when (event.actionMasked) {
-            MotionEvent.ACTION_HOVER_ENTER,
-            MotionEvent.ACTION_HOVER_MOVE -> penHovering = true
-
-            MotionEvent.ACTION_HOVER_EXIT -> penHovering = false
-
             MotionEvent.ACTION_DOWN -> {
-                // Palm rejection: fingers never draw; while the pen hovers,
-                // even finger touches are ignored outright.
+                // Palm rejection is tool-type gating: a finger is never a pen
+                // (audit P4-3 — the hover gate was unreachable; Android sends
+                // hover events to onGenericMotionEvent, which is not overridden).
                 if (!isStylus) return false
                 if (page == null) return false
                 val erasing = eraserActive || eraserButtonHeld

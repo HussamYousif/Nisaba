@@ -18,16 +18,16 @@ Status: **Draft v0.1** · Provider: DeepSeek, model `deepseek-v4-flash-vision-ex
 
 ## 2. The vision input (page image)
 
-`PageImagePreparer` — the page (strokes only, **no prior answers**, no UI chrome) rendered to a grayscale PNG:
+`PageImagePreparer` — the page (strokes only, **no prior answers**, no UI chrome) rendered to a grayscale JPEG:
 
 ```
 strokes + background(none for blank pages) 
-  → render at min(original, 1600px long edge)   // handwriting stays legible at this size
+  → render at min(original, 1600px long edge)   // handwriting stays legible at this size (audit P1-7: was 2000px/PNG)
   → grayscale (luminance), no thresholding in v1 (model reads tones fine; PDF text too)
-  → PNG-8 quantization → base64 → data:image/png;base64,…
+  → JPEG quality 85 → base64 → data:image/jpeg;base64,…
 ```
 
-- Target size ≤ ~1.5 MP and ≤ 2 MB payload (fits typical API limits; keeps upload fast on Wi-Fi).
+- Target size ≈ 1.9 MP (1600×1200) and a few hundred KB payload — JPEG, not PNG: `quality` actually does something, and handwriting on parchment compresses an order of magnitude better.
 - Strokes are rendered with the *ink color*; sepia ink on parchment grayscales to good contrast. PDF backgrounds included (the model must read printed text too).
 - **Why not OCR first (ADR-001):** the vision model reads any handwriting directly, sees layout/doodles/arrows, and needs no ML Kit dependency. Cost: bigger payloads and model-bound latency — accepted.
 

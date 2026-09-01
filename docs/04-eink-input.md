@@ -9,13 +9,13 @@ Status: **Draft v0.1** · Target: Boox Note Air 5c (verify all assumptions on th
 | Screen | 10.3" Kaleido 3, 2480×1860 px (300 ppi B/W, 150 ppi color) | settings / adb `wm size` |
 | OS | Android 13+ (Boox OS layer on top) | device `getprop ro.build.version.release` |
 | Stylus | Wacom EMR, ~4096 pressure levels, hover events, side button | write a probe app in M1 |
-| Palm rejection | System-level in Boox notes app; **not** guaranteed for third-party apps | must implement hover-gating ourselves (04 §4) |
+| Palm rejection | System-level in Boox notes app; **not** guaranteed for third-party apps | tool-type gating: only stylus events draw (04 §4) |
 | Boox SDK (`com.onyx.android.sdk`) | Exists for EPD mode control; availability on this device unknown | probe in M1; ADR-002 fallback = standard APIs |
 | Network | Wi-Fi only | — |
 
 **M1 device probe checklist** (do before any polish):
 1. `wm size`, density, Android version.
-2. Do `ACTION_HOVER_MOVE` events arrive for the EMR pen? (palm rejection feasibility)
+2. ~~Do `ACTION_HOVER_MOVE` events arrive for the EMR pen?~~ Resolved: hover is not used; palm rejection is tool-type gating (audit P4-3).
 3. Does the pen side-button deliver `BTN_STYLUS`/`BTN_STYLUS2` in MotionEvents or key events?
 4. Does standard `invalidate()` produce acceptable refresh while writing (A2-like), or do we need the Boox SDK / Regal hints?
 5. Cold start timing; frontlight on/off contrast of parchment palette.
@@ -52,7 +52,7 @@ The stroke path must feel instant (N1: ≤ 16 ms to first ink):
 
 ```
 MotionEvent (UI thread)
-  → StrokeCapture: convert to page space, append to point pool
+  → StrokeBuilder: convert to page space, append to point pool
   → compute ink quad for [p_{n-2}, p_{n-1}, p_n] segment   (~2–5 µs)
   → invalidate(bounding rect of new segment)
   → StrokeRenderer draws buffered quads into Canvas (GPU)
@@ -66,13 +66,11 @@ MotionEvent (UI thread)
 
 ## 4. Palm rejection (critical on Boox)
 
-Boox notes apps reject palms at the system level; third-party apps must do it themselves. Our design:
+Boox notes apps reject palms at the system level; third-party apps must do it themselves. Our design (as built — audit P4-3):
 
-1. **Hover-gating (primary):** EMR pens emit `ACTION_HOVER_ENTER/MOVE/EXIT` *before* touching. While `hoverActive == true`, any `ACTION_DOWN` that is not from the stylus tool type is treated as palm and ignored.
-2. **Tool-type gating:** only `TOOL_TYPE_STYLUS` events draw. `TOOL_TYPE_FINGER` draws nothing, ever.
-3. **Multi-touch**: two fingers = pan (v2 zoom); but while the pen is hovering or drawing, touch is fully ignored.
-4. **Edge case — gloves / hover not delivered:** if probe shows no hover events, fall back to: ignore finger events that land while the pen was used within the last 1.5 s, plus a "palm-off" region at the bottom-right (the natural resting zone) ignored for fingers. Decide after M1 probe.
-5. **Eraser via pen button:** side button toggles eraser *while held* (like the Boox default): `MotionEvent.isButtonPressed(BUTTON_STYLUS)` or key events — resolved in M1 probe. Eraser = stroke hit-test (v1), stroke erasure leaves no gaps (whole stroke disappears).
+1. **Tool-type gating (primary, implemented):** only `TOOL_TYPE_STYLUS`/`TOOL_TYPE_ERASER` events draw; `TOOL_TYPE_FINGER` draws nothing, ever. That is the whole defence — sufficient on Boox EMR. *(Hover-gating was designed as primary but never built: Android dispatches hover to `onGenericMotionEvent`, which the view does not override, so the hover branches were unreachable dead code and were deleted.)*
+2. **Eraser via pen button:** side button toggles eraser *while held* (like the Boox default): `MotionEvent.isButtonPressed(BUTTON_STYLUS_PRIMARY/SECONDARY)`. Eraser = stroke hit-test (v1), stroke erasure leaves no gaps (whole stroke disappears).
+3. **Multi-touch / glove fallback / "palm-off" region:** not implemented (v1 is single-pointer). Revisit with M5 zoom work if on-device testing shows stray marks.
 
 ## 5. Capture details
 
@@ -82,7 +80,7 @@ Boox notes apps reject palms at the system level; third-party apps must do it th
 | `ACTION_MOVE` (stylus) | append `(x, y, pressure, t)`, update dirty rect, reset summon idle timer |
 | `ACTION_UP` | finalize stroke → undo stack + autosave debounce; arm idle detection (F3.1) |
 | `ACTION_CANCEL` | discard current stroke |
-| `ACTION_HOVER_*` | set/clear hover gate |
+| `ACTION_HOVER_*` | not handled — hover goes to `onGenericMotionEvent`, which is not overridden (palm rejection is tool-type gating, §4) |
 | Side button | eraser while held (v1: whole-stroke erase) |
 
 Coordinates: page space is fixed (blank: 2480×1860; PDF: page box at 300 dpi), view applies `PageTransform` (scale+translate). Strokes are stored in page space so they are zoom-independent.

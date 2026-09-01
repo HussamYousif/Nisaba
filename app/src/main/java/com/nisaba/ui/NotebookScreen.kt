@@ -423,12 +423,12 @@ class NotebookScreen @JvmOverloads constructor(
 
     private fun loadBackground() {
         val page = session?.currentPage() ?: return
-        inkView.background = null
+        inkView.pageBackground = null
         val rel = page.background ?: return
         val cache = bgCache ?: return
         cache.get(page.index) { bmp ->
             if (session?.currentPage()?.index == page.index) {
-                inkView.background = bmp
+                inkView.pageBackground = bmp
             }
         }
     }
@@ -472,6 +472,8 @@ class NotebookScreen @JvmOverloads constructor(
     companion object {
         /** How far back to look for the pen's exit direction at a stroke's tail. */
         private const val EXIT_TANGENT_SAMPLES = 3
+        // Deliberately process-global (audit P4-7): the EPD hint toast should
+        // show once per app process, not once per screen instance.
         private var epdHintShown = false
     }
 }

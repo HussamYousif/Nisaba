@@ -71,7 +71,7 @@ Rule: **every animation is steps, not frames; every step is a partial refresh; e
 ```
 
 - The **quill button** (floating, bottom-right, ink-red quill icon) summons immediately — also used after errors and to re-summon the latest question (F3.3).
-- **First-run onboarding** (one screen, skip-able): a parchment explaining the three things — *write, pause, the book answers* — with a tiny live demo: a pre-drawn squiggle that gets answered by a script "Well met. Write me a question." (also serves as a live API-key test, F7.6).
+- **First-run onboarding** (one screen, skip-able): a parchment explaining the three things — *write, pause, the book answers* — with a tiny live demo: a pre-drawn squiggle that gets answered by a script "Well met. Write me a question." (also serves as a live API-key test, F7.6). **[M5 backlog — not in v1]**
 - No toasts, no dialogs during the flow — the page itself communicates.
 
 ## 4. Waiting-state copy (all in ink_soft, Kalam)
@@ -79,7 +79,7 @@ Rule: **every animation is steps, not frames; every step is a partial refresh; e
 | State | Copy |
 |---|---|
 | Request sent | *"The ink stirs…"* |
-| Still thinking (> 30 s) | *"The scribe turns the page…"* (second line appears) |
+| Still thinking (> 30 s) | *"The scribe turns the page…"* (second line appears) **[M5 backlog — not in v1]** |
 | Cancelled by writing | (nothing — silent un-fill; maybe *"…as you were."* at 0.35 opacity, fades via steps) |
 | Error | *"The ink smudged — the spirit world was unreachable."* + ✒️ Write it again + 🗝 Check the key (Settings) |
 | Offline | same error, with "check your connection" hint |
@@ -113,7 +113,7 @@ Every error keeps the notebook state intact and reads like the book apologizing,
 - All text ≥ 12 sp; body cursive ≥ 18 sp; contrast ≥ 7:1 (N11).
 - Frontlight-agnostic palette (works on unlit e-ink under a lamp and in the dark with frontlight on).
 - No motion required to use the app (tap-to-complete reveals; quill button is the primary summon).
-- Writing area is the whole screen minus the floating button; toolbar auto-hides after 4 s of writing (appears on a small edge-grip tap or when the pen hovers near the edge).
+- Writing area is the whole screen minus the floating button. **[M5 backlog — the 4 s toolbar auto-hide is not in v1]**
 
 ## 9. Anti-magic list (what we will NOT do)
 

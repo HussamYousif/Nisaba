@@ -11,7 +11,7 @@ filesDir/
         ├── notebook.json        # everything except page bitmaps
         ├── thumb.png            # shelf thumbnail (regenerated on save)
         └── backgrounds/         # only for PDF notebooks
-            └── p000.png         # page 0 background (RGB_565, ≤200 dpi)
+            └── p0.png           # page 0 background (RGB_565, ≤200 dpi)
 ```
 
 - A notebook is a **directory**; deleting a notebook deletes its directory.
@@ -22,30 +22,31 @@ filesDir/
 
 ```jsonc
 {
-  "schema_version": 1,
+  "schemaVersion": 1,
   "id": "3f9c…uuid",
   "title": "Notebook 3",
-  "created_at": "2025-08-31T09:00:00Z",
-  "updated_at": "2025-08-31T09:30:00Z",
+  "createdAt": "2025-08-31T09:00:00Z",
+  "updatedAt": "2025-08-31T09:30:00Z",
   "theme": "parchment-light",          // F7.5
-  "ink_color": "sepia",                 // F2.5 default
-  "source": {                           // null for blank notebooks
+  "inkColor": "sepia",                 // F2.5 default
+  "source": {                          // null for blank notebooks
     "type": "pdf",
     "file": "backgrounds/../import.pdf", // copied import (06 §5)
-    "page_count": 24,
-    "imported_at": "2025-08-31T08:00:00Z"
+    "pageCount": 24,
+    "importedAt": "2025-08-31T08:00:00Z"
   },
   "pages": [
     {
       "index": 0,
-      "page_space": { "width": 2480, "height": 1860 },  // blank: 2480×1860; PDF: page box @300dpi
-      "background": null,                // null = blank parchment
+      "width": 2480,                   // flat on the page: blank 2480×1860; PDF: page box @300dpi
+      "height": 1860,
+      "background": null,              // null = blank parchment; else relative path "backgrounds/p0.png" (≤200 dpi)
       "strokes": [ /* Stroke[], see below */ ],
       "answers": [ /* AnswerGroup[], see below */ ]
     }
   ],
   "transcript": [ /* TranscriptEntry[], see below */ ],
-  "last_opened_page": 0
+  "lastOpenedPage": 0
 }
 ```
 
@@ -54,7 +55,7 @@ filesDir/
 ```jsonc
 {
   "id": "s-42",
-  "tool": "pen",                 // "pen" | "eraser-stroke" (v2: "highlighter")
+  "tool": "pen",                 // "pen" | "eraser" (v2: "highlighter")
   "color": "sepia",              // palette key
   "width": 3.2,                  // base width in page px (pressure curve applied at render)
   "points": [
@@ -71,8 +72,8 @@ filesDir/
 ```jsonc
 {
   "id": "a-7",
-  "summoned_at": "2025-08-31T09:31:00Z",
-  "question_page_snapshot": { "page_index": 0, "stroke_count": 34 },
+  "summonedAt": "2025-08-31T09:31:00Z",
+  "questionPage": 0,               // page index the summon was made on (no nested snapshot)
   "model": "deepseek-v4-flash-vision-exp",
   "status": "complete",            // "pending" | "complete" | "cancelled" | "error"
   "error": null,                   // set when status == "error"
@@ -92,8 +93,8 @@ filesDir/
 {
   "role": "user" | "assistant",
   "at": "2025-08-31T09:31:00Z",
-  "user":  { "page_index": 0, "note": null },          // user turn: page ref (image regenerated on demand)
-  "assistant": { "answer_group_id": "a-7" }            // assistant turn: link to AnswerGroup
+  "pageIndex": 0,                  // page this turn refers to
+  "answerGroupId": "a-7"           // null for user turns / unanswered entries
 }
 ```
 
@@ -125,10 +126,10 @@ filesDir/
 - In-memory stack of mutations (`AddStroke`, `EraseStrokes`, `AddAnswerGroup`, `RegenerateAnswer`, `DeleteAnswer`), depth 50.
 - Undo/redo applies to the in-memory model + autosave; no journaling in v1.
 
-## 6. Export (F8, v1 = PNG)
+## 6. Export (F8) **[M5 backlog — not in v1]**
 
-`PageExporter`: render background + strokes at page resolution into an `ARGB_8888` bitmap → PNG → share sheet via `FileProvider`. PDF export and full-notebook backup (zip) are v2.
+Planned: render background + strokes at page resolution into an `ARGB_8888` bitmap → PNG → share sheet via `FileProvider`. PDF export and full-notebook backup (zip) are v2.
 
 ## 7. Migration path
 
-`schema_version` gate in `NotebookStore.load()`: v1 → future versions run sequential migrations (e.g. v2 adds `delta_encoding`, v3 adds per-page zoom state). Unknown-newer versions refuse to open (friendly error) rather than corrupt.
+`schemaVersion` gate in `NotebookStore.load()`: v1 → future versions run sequential migrations (e.g. v2 adds `deltaEncoding`, v3 adds per-page zoom state). Unknown-newer versions refuse to open (friendly error) rather than corrupt.

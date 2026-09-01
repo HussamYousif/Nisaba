@@ -19,7 +19,8 @@
             android:layout_height="match_parent"
             android:gravity="center"
             android:paddingHorizontal="14dp"
-            android:text="←"
+            android:text="@string/nb_back"
+            android:contentDescription="@string/nb_back_desc"
             android:textColor="@color/ink"
             android:textSize="26sp" />
 
@@ -40,7 +41,8 @@
             android:layout_height="match_parent"
             android:gravity="center"
             android:paddingHorizontal="10dp"
-            android:text="◀"
+            android:text="@string/nb_prev_page"
+            android:contentDescription="@string/nb_prev_page_desc"
             android:textColor="@color/ink"
             android:textSize="20sp" />
 
@@ -59,7 +61,8 @@
             android:layout_height="match_parent"
             android:gravity="center"
             android:paddingHorizontal="10dp"
-            android:text="▶"
+            android:text="@string/nb_next_page"
+            android:contentDescription="@string/nb_next_page_desc"
             android:textColor="@color/ink"
             android:textSize="20sp" />
 
@@ -75,7 +78,8 @@
             android:layout_height="match_parent"
             android:gravity="center"
             android:paddingHorizontal="10dp"
-            android:text="↶"
+            android:text="@string/nb_undo"
+            android:contentDescription="@string/nb_undo_desc"
             android:textColor="@color/ink"
             android:textSize="22sp" />
 
@@ -85,7 +89,8 @@
             android:layout_height="match_parent"
             android:gravity="center"
             android:paddingHorizontal="10dp"
-            android:text="↷"
+            android:text="@string/nb_redo"
+            android:contentDescription="@string/nb_redo_desc"
             android:textColor="@color/ink"
             android:textSize="22sp" />
 
@@ -95,7 +100,8 @@
             android:layout_height="match_parent"
             android:gravity="center"
             android:paddingHorizontal="10dp"
-            android:text="✕"
+            android:text="@string/nb_eraser"
+            android:contentDescription="@string/nb_eraser_desc"
             android:textColor="@color/ink"
             android:textSize="22sp" />
 
@@ -105,7 +111,8 @@
             android:layout_height="match_parent"
             android:gravity="center"
             android:paddingHorizontal="10dp"
-            android:text="⇢"
+            android:text="@string/nb_new_page"
+            android:contentDescription="@string/nb_new_page_desc"
             android:textColor="@color/ink"
             android:textSize="22sp" />
     </LinearLayout>

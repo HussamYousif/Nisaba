@@ -17,7 +17,7 @@ Status: **Draft v0.1** · Applies to v1 · Package root: `com.nisaba`
 | Async | Kotlin Coroutines (Dispatchers.IO for network/storage) | Simple, cancellable (needed for cancel-on-resume) |
 | JSON | `kotlinx.serialization` | Notebook files + LLM responses |
 | Network | OkHttp + `kotlinx.serialization` (no Retrofit needed for one endpoint) | Fewer deps; easy raw-stream cancellation |
-| PDF | Android `PdfRenderer` | Built-in; zero licensing issues; see ADR-004 |
+| PDF | `PdfPageRenderer` seam: framework `PdfRenderer` first, PdfBox-Android fallback | Android 15's framework renderer outputs black on the Boox; PdfBox is the working engine there; see ADR-004 |
 | Secrets | `EncryptedSharedPreferences` (AndroidX Security) | API key at rest |
 | Fonts | Bundled TTF in `assets/fonts` (OFL): Dancing Script, Great Vibes, Kalam | No runtime downloads (offline-first) |
 | minSdk / target | 26 / 35 | Boox is Android 13+; 26 keeps headroom |
@@ -35,40 +35,48 @@ Status: **Draft v0.1** · Applies to v1 · Package root: `com.nisaba`
 ```
 app/src/main/java/com/nisaba/
 ├── MainActivity.kt            # single activity, hosts all screens
+├── NisabaApp.kt               # Application class (PdfBox resource init)
+├── epd/                       # e-ink control for Onyx/Boox (defensive leaves)
+│   ├── Epd.kt                 # EPDController via reflection: fast refresh, clean pass
+│   └── Oec.kt                 # OEC binder service: refresh waveform while pen is down
 ├── ink/                       # THE core: stylus capture + page rendering
-│   ├── InkSurfaceView.kt      # custom view: input + draw
-│   ├── StrokeCapture.kt       # MotionEvent → Stroke (pressure, hover gating)
+│   ├── InkSurfaceView.kt      # custom view: input + draw + answer reveal
+│   ├── InkPageRenderer.kt     # strokes + background → bitmap (public leaf)
+│   ├── StrokeBuilder.kt       # MotionEvent → Stroke (pressure, tool-type gating)
 │   ├── StrokeRenderer.kt      # path batching, pressure width, incremental draw
 │   ├── PageTransform.kt       # page-space ↔ view-space matrix
-│   └── Eraser.kt              # stroke hit-testing (v1) 
+│   └── Eraser.kt              # stroke hit-testing
 ├── notebook/
-│   ├── model/                 # Notebook, Page, Stroke, Transcript (kotlinx DTOs)
-│   ├── NotebookStore.kt       # load/save, atomic writes, autosave queue
-│   ├── NotebookRepository.kt  # shelf CRUD, thumbnails
+│   ├── model/Models.kt        # Notebook, Page, Stroke, AnswerGroup, Transcript (kotlinx DTOs)
+│   ├── NotebookStore.kt       # load/save, atomic tmp+rename writes, tmp recovery
+│   ├── NotebookSession.kt     # notebook core: state, undo/redo, pages, save, events
+│   ├── SaveScheduler.kt       # debounced autosave (HandlerSaveScheduler)
 │   └── SummonController.kt    # idle detection + cancel-on-resume (F3)
 ├── pdf/
+│   ├── PdfPageRenderer.kt     # framework render → black-detect → PdfBox fallback
 │   ├── PdfImporter.kt         # SAF picker → copy → render pages
 │   └── PageBackgroundCache.kt # LRU bitmap cache, ≤200dpi RGB_565
 ├── llm/
 │   ├── DeepSeekClient.kt      # OkHttp → /chat/completions
+│   ├── AppSettings.kt         # API key + prefs (Keystore-backed)
+│   ├── ChatContract.kt        # wire ↔ model contract
 │   ├── PageImagePreparer.kt   # page → grayscale PNG-8 data-URI
 │   ├── PromptBuilder.kt       # system prompt + transcript + image
 │   └── AnswerParser.kt        # JSON → List<AnswerBlock>, repair retry
 ├── render/
-│   ├── AnswerBlockView.kt     # hosts blocks below the writing area
-│   ├── MarkdownInk.kt         # markdown subset → cursive Spans
-│   ├── SvgInkRenderer.kt      # SVG subset → Path + draw-on animation
-│   └── TableInkRenderer.kt    # ruled table layout
+│   ├── AnswerInk.kt           # answer group → page-space ink layout (text/drawing/table)
+│   ├── SvgPathParser.kt       # SVG path string → commands (pure, JVM-testable)
+│   ├── SvgInkRenderer.kt      # commands → android Paths
+│   └── PageThumbnail.kt       # page → shelf thumbnail bitmap
 ├── magic/
 │   ├── MagicTheme.kt          # parchment palette, ink colors, ornaments
-│   ├── InkReveal.kt           # discrete-step animation engine (e-ink safe)
-│   ├── FlourishDrawable.kt    # ✦ ✧ ❧ separators, page ornaments
-│   └── SummonIndicator.kt     # "the ink stirs…" state
-├── settings/
-│   ├── SettingsActivity.kt    # F7 screen
-│   └── AppSettings.kt         # encrypted key + prefs
-└── export/
-    └── PageExporter.kt        # page → PNG
+│   ├── Fonts.kt               # bundled cursive fonts (Dancing Script, Great Vibes, Kalam)
+│   └── SummonInk.kt           # the summon's on-page ink narrative ("the ink stirs…")
+└── ui/
+    ├── NotebookScreen.kt      # notebook screen: view wiring + summon orchestration
+    ├── ShelfScreen.kt         # shelf (notebook list)
+    ├── SettingsScreen.kt      # settings (F7)
+    └── InkScrollView.kt       # finger-only ScrollView; stylus passes through
 ```
 
 ## 3. Layers & data flow
@@ -77,16 +85,16 @@ app/src/main/java/com/nisaba/
 ┌────────────────────────────────────────────────────────────────┐
 │  UI layer (main thread only)                                   │
 │  MainActivity ── shelf ── notebook screen (InkSurfaceView +    │
-│                 AnswerBlockView + floating quill button)       │
+│                 AnswerInk + floating quill button)       │
 └───────────────┬────────────────────────────────────────────────┘
                 │ events            │ invalidate()
 ┌───────────────▼─────────┐  ┌──────▼───────────────────────────┐
 │ ink/ (stroke capture,   │  │ render/ + magic/ (answer blocks, │
-│ SummonController)       │  │ InkReveal)                       │
+│ SummonController)       │  │ reveal loop in InkSurfaceView)   │
 └───────────────┬─────────┘  └──────┬───────────────────────────┘
                 │ strokes/transcript│ blocks
 ┌───────────────▼───────────────────▼──────────────────────────┐
-│ Domain: NotebookRepository / NotebookStore / SummonController │
+│ Domain: NotebookSession / NotebookStore / SummonController │
 └───────┬──────────────────────────────┬───────────────────────┘
         │ save (IO)                    │ summon (IO)
 ┌───────▼──────────┐          ┌────────▼───────────────────┐
@@ -100,15 +108,15 @@ app/src/main/java/com/nisaba/
 - Storage I/O: `Dispatchers.IO`, serialized through a single `NotebookStore` mutex so saves never interleave with a summon read.
 - LLM: `Dispatchers.IO`, **cancellable** (OkHttp call in a `CoroutineScope` tied to the summon job — cancel-on-resume cancels the call, F3.2).
 - Image prep: off-main, one pass, no full-size ARGB intermediates (07 §3).
-- `InkReveal` animation: a single `Choreographer`-driven postInvalidate loop that only runs while an answer is drawing itself; steps are discrete and EPD-friendly (08 §5).
+- the reveal loop in `InkSurfaceView` animation: a single `Choreographer`-driven postInvalidate loop that only runs while an answer is drawing itself; steps are discrete and EPD-friendly (08 §5).
 
 ## 4. The core loop, end-to-end
 
-1. **Write**: `InkSurfaceView.onTouchEvent` → `StrokeCapture` (gated by hover palm-rejection) → points appended → dirty-rect `invalidate()` → `StrokeRenderer` batches quads → GPU draws.
+1. **Write**: `InkSurfaceView.onTouchEvent` → `StrokeBuilder` (gated by hover palm-rejection) → points appended → dirty-rect `invalidate()` → `StrokeRenderer` batches quads → GPU draws.
 2. **Pause**: `SummonController` runs a 3 s `Handler`-based timer (no polling); any new stroke point resets it. On fire: check F3.4 (new content since last summon) → if OK, enqueue summon; while pending, any new point → cancel job + reset timer.
 3. **Summon**: freeze the *input* page state (strokes snapshot), render current page → grayscale PNG (07 §3) on IO; build messages (system + transcript + image user message); POST to DeepSeek with 120 s timeout; show "ink stirs" indicator.
 4. **Parse**: strict JSON parse of `blocks`; on failure → one repair retry; on double failure → magical error state (09 §7).
-5. **Reveal**: blocks appended to `AnswerBlockView`, each animates in via `InkReveal` (discrete steps); page re-flows; autosave transcript.
+5. **Reveal**: blocks appended to `AnswerInk`, each animates in via the reveal loop in `InkSurfaceView` (discrete steps); page re-flows; autosave transcript.
 6. **Persist**: `NotebookStore.save()` debounced 800 ms after last mutation.
 
 ## 5. State management
@@ -146,7 +154,7 @@ All errors: **never lose strokes** — save happens before summon and on every a
 | ADR-001 | **Vision-first input** (send page image, no OCR) | The model is a vision model; reads any handwriting; no ML Kit dependency; the model sees layout & doodles. Cost: bigger payload, model-bound latency. |
 | ADR-002 | **Standard Android EPD behavior first; Boox SDK only if needed** | Avoids SDK availability/licensing risk on an unverified device; Boox "App Optimization" settings cover most refresh needs. Revisit after M1 device tests. |
 | ADR-003 | **Classic Views, not Compose** | Full control of draw order, dirty-rect invalidation, and refresh batching; Compose's animation/layout pipeline fights e-ink. Trade-off: more boilerplate UI. |
-| ADR-004 | **PdfRenderer, not MuPDF/PDF.js** | Zero cost, no AGPL, built-in; renders at fixed DPI which fits our background-image model. Trade-off: no interactive re-render at arbitrary zoom (v2 may add MuPDF). |
+| ADR-004 | **Framework PdfRenderer with PdfBox-Android fallback, not MuPDF/PDF.js** | Zero cost, no AGPL; renders at fixed DPI which fits our background-image model. Amended (audit P4-6): Android 15's Skia-based `PdfRenderer` renders every page solid black on the Boox Note Air 5c (and API 34/35 emulators) — verified on-device — so the `pdf/PdfPageRenderer` seam renders framework-first, detects > 85 % dark output, and falls back to the bundled PdfBox-Android 2.0.27.0 (pure Java; ~5 MB dependency). PdfBox is the engine that actually works on the target device. Trade-off: no interactive re-render at arbitrary zoom (v2 may add MuPDF). |
 | ADR-005 | **JSON notebook files, not SQLite** | Notebooks are document-shaped; atomic rename-write is enough; humans can inspect/backup files. Trade-off: full-text search would need work later. |
 | ADR-006 | **Structured JSON `blocks` from the model, not raw markdown** | Robust rendering of drawings/tables; one parser; repair-retry path. Trade-off: model must follow the schema (mitigated by prompt + validation + repair). |
 | ADR-007 | **Cancel-on-resume auto-summon** (user decision) | The summon is *conditional*: fires on 3 s idle, cancels when the user writes again. Prevents the notebook answering mid-thought; quill button covers explicit summons. |

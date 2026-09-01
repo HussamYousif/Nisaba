@@ -4,14 +4,14 @@ Status: **Review + decisions** · Date: after commit `1dacdc7` (conventions rati
 
 ## 1. What was reviewed
 
-Every `com.nisaba.*` file (27 main + 11 test), the cross-module import map, `AGENTS.md`/`docs/architecture.md` rules, and the M1–M3 verification state (28/28 tests, lint clean, emulator-verified flows).
+Every `com.nisaba.*` file (35 main + 23 test), the cross-module import map, `AGENTS.md`/`docs/architecture.md` rules, and the verification state (60 JVM + 77 instrumented tests — 72 passing, 5 deliberate skips — lint clean with baseline, emulator-verified flows; audit P4-5).
 
 ## 2. Findings
 
 ### Strengths (keep as-is)
 
 1. **Feature-per-package with honest layers.** `ink/`, `pdf/`, `llm/`, `render/`, `magic/` are self-contained; pure logic (StrokeBuilder, Eraser, PageTransform, PromptBuilder, AnswerParser, SummonController) is separated from Android views and I/O. The D2/D3 `InkPageRenderer` fix removed the last internal reaches.
-2. **Leaves are real.** DeepSeekClient, PdfImporter, PageBackgroundCache, InkPageRenderer, MarkdownInk call nothing inside their own modules.
+2. **Leaves are real.** DeepSeekClient, PdfImporter, PageBackgroundCache, InkPageRenderer, AnswerInk call nothing inside their own modules.
 3. **Typed errors + failures-as-data.** `ApiException`/`NetworkException`/`ParseException`/`ImportCancelled`; `AnswerGroup.status` records pending/complete/cancelled/error in the model instead of toasts.
 4. **Composition root is honest.** `MainActivity` wires; business logic is elsewhere.
 5. **Tests mirror modules** and mostly go through public surfaces.
@@ -20,9 +20,9 @@ Every `com.nisaba.*` file (27 main + 11 test), the cross-module import map, `AGE
 
 | # | Problem | Severity |
 |---|---|---|
-| P1 | **`ui/NotebookScreen` is a 506-line god-object**: view wiring + undo/redo + page navigation + autosave + content tracking + summon orchestration + answer rendering + stir indicator in one class, importing 6 modules. It mixes *state* (mutable notebook, stacks, versions) with *view* concerns. The state half is untestable without an activity and the view half is unreadable. | High |
+| P1 | **`ui/NotebookScreen` is a 477-line god-object**: view wiring + undo/redo + page navigation + autosave + content tracking + summon orchestration + answer rendering + stir indicator in one class, importing 6 modules. It mixes *state* (mutable notebook, stacks, versions) with *view* concerns. The state half is untestable without an activity and the view half is unreadable. | High |
 | P2 | **No single mutation path.** The screen calls `markDirty()`/`renderAnswers()`/`updatePageUi()` ad hoc after each mutation; state can drift (e.g. an answer appended without re-render). | Medium |
-| P3 | **Thumbnail rendering lives in the data layer** (`ThumbnailRenderer` inside `NotebookStore.kt`): `notebook/data` imports `ink`'s renderer — a data-layer file doing presentation. | Low |
+| P3 | **Thumbnail rendering lived in the data layer** (`PageThumbnail` inside `NotebookStore.kt`): `notebook/data` imported `ink`'s renderer — a data-layer file doing presentation. *Resolved by D-B (`render/PageThumbnail`).* | Low |
 | P4 | **Answer parsing merges two jobs** (`AnswerParser` validates *and* maps failures to placeholder text). Small today; will grow with the SVG/table contract. | Low |
 | P5 | **Reveal/state coupling risk for M4**: `renderAnswers()` rebuilds the whole section; M4's ink-reveal animations need incremental, skippable presentation — must be designed in before the renderers land, or the screen grows worse. | Medium (future) |
 
@@ -41,15 +41,15 @@ The session owns: notebook state, page index, undo/redo stacks, content version 
 **D-B. Move thumbnails to the `render` domain (P3).** `render/PageThumbnail` becomes the presentation-side entry; `NotebookStore` (data) stops doing presentation.
 
 **D-C. M4 renderers arrive as leaves with their own pure core (P5).**
-`render/` grows: `SvgPathParser` (pure string→commands, JVM-testable), `SvgInkRenderer` (commands→android Paths), `DrawingInkView` (self-animating view: per-element PathMeasure ink-draw, discrete steps, skippable), `TableInkRenderer` (ruled rows, row-by-row reveal), and `InkReveal` (the step sequencer). `AnswerSectionRenderer` composes them; the screen only *plays* a reveal sequence and can skip it with one tap. Old answers render instantly on reopen (no reveal) — additive.
+`render/` grew into: `SvgPathParser` (pure string→commands, JVM-testable), `SvgInkRenderer` (commands→android Paths), and `AnswerInk` — which composes text/tables/drawings into one page-space layout with per-item reveal ticks. The planned `DrawingInkView`/`TableInkRenderer`/`InkReveal`/`AnswerSectionRenderer` collapsed into `AnswerInk` + the reveal loop inside `InkSurfaceView` (audit P4-2).
 
 **D-D. Explicitly rejected:** DI frameworks, ViewModels, Flow/LiveData, navigation libraries, a shared cross-module "utils" package. Each would couple modules that today can be deleted in isolation.
 
 ## 4. Consequences & verification
 
 - `NotebookSession` is JVM-testable (injectable `SaveScheduler`), so undo/redo/page/content-gate logic gets real unit tests that were impossible inside the screen.
-- The screen shrinks ~50%; every mutation flows through `session.changed(reason)`, so the view can no longer drift.
-- Existing tests (28) must pass **unchanged** except the summon flow test's *additions* for M4 block types.
+- D1 was resolved by extracting `NotebookSession`: the screen is now view wiring + summon orchestration only, and every mutation flows through `session.changed(reason)`, so the view can no longer drift.
+- Existing tests must pass **unchanged** except the summon flow test's *additions* for M4 block types.
 - M4 continues after the refactor in the same commit series.
 
 ## 5. Debt register after this review

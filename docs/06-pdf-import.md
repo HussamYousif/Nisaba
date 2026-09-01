@@ -25,9 +25,9 @@ PdfRenderer.openPage(i)
   → compress as PNG → backgrounds/pNNN.png
 ```
 
-**Page space mapping** (must match 05 §2): render the PDF page box at 300 dpi *logically* — i.e. `page_space.width/height = page.width/height × (300/72)`. The *background bitmap* is stored at ≤ 200 dpi (or 150 dpi if storage demands) and scaled to fit page space at draw time. Strokes are stored in page space and thus remain crisp regardless of background resolution.
+**Page space mapping** (must match 05 §2): the page box at 300 dpi *logically* — i.e. `width/height = page.width/height × (300/72)` stored flat on `NotebookPage`. The *background bitmap* is stored at ≤ 200 dpi (or 150 dpi if storage demands) and scaled to fit page space at draw time. Strokes are stored in page space and thus remain crisp regardless of background resolution.
 
-- Blank 4:3 pages (`page_space` 2480×1860) apply to blank notebooks; PDF pages use their own aspect (A4 → 2480×3508 @ 300 dpi).
+- Blank 4:3 pages (2480×1860) apply to blank notebooks; PDF pages use their own aspect (A4 → 2480×3508 @ 300 dpi).
 - **Letterboxing**: background draws to fill page space with `CENTER_CROP`-style mapping (PDF page boxes are usually exact; crop whitespace edges to maximize usable writing area — v1: render as-is).
 
 ## 3. On-screen rendering & cache

@@ -17,10 +17,10 @@ Status: **Draft v0.1** · Ordered by risk-first (the scary unknowns get disprove
 
 ### M3 — The summon (core loop v1) ✅ *(code complete; live API verification pending a real key)*
 **Scope:** `DeepSeekClient` + `PageImagePreparer` + `PromptBuilder` + `AnswerParser` (07); idle detection with cancel-on-resume + quill button (F3); "ink stirs" indicator (09 §3); errors (09 §7); **live API verification** (OQ2/OQ3: vision input format, JSON reliability).
-**Done when (emulator-verified):** the user writes, pauses, and a correct text answer appears below — and writing mid-request visibly cancels it. Verified via instrumented end-to-end tests against an in-process mock server (40/40 green) and a full UI run against a host mock (`10.0.2.2`). **Live API verified (2026-08-31):** real DeepSeek call from the app — blank page summon returned a correct vision-grounded answer, rendered with ✦ flourish and persisted; OQ2/OQ3 closed. **Remaining:** the on-device pass on the Boox.
+**Done when (emulator-verified):** the user writes, pauses, and a correct text answer appears below — and writing mid-request visibly cancels it. Verified via instrumented end-to-end tests against an in-process mock server and a full UI run against a host mock (`10.0.2.2`). Current counts: 60 JVM + 77 instrumented tests (72 passing, 5 deliberate skips). **Live API verified (2026-08-31):** real DeepSeek call from the app — blank page summon returned a correct vision-grounded answer, rendered with ✦ flourish and persisted; OQ2/OQ3 closed. **Remaining:** the on-device pass on the Boox.
 
-### M4 — The answer in ink (magic presentation)
-**Scope:** cursive typography (08 §3), text/table/drawing renderers, SVG subset + ink-reveal engine (08 §4–6), flourish dividers, parchment palette & textures (09 §1), reveal animation tuning on e-ink; **legibility photo test** on the real screen (N11).
+### M4 — The answer in ink (magic presentation) *(code complete; device pass pending)*
+**Scope:** cursive typography (08 §3), text/table/drawing renderers, SVG subset + ink-reveal engine (08 §4–6), flourish dividers. **Remaining from the original scope:** parchment textures (09 §1), reveal animation tuning on e-ink, and the **legibility photo test** on the real screen (N11) — these ride along with the on-device pass.
 **Done when:** a summon returns a mixed answer (text + table + drawing) that draws itself in, is legible at arm's length, and has no ghosting artifacts after the final clean pass.
 
 ### M5 — Conversation & polish
