@@ -48,6 +48,10 @@ class SummonFlowTest {
             apiKey = "test-key"
             baseUrl = server.url("/").toString().trimEnd('/')
             idlePauseSeconds = 1
+            // Explicit: settings persist to app prefs, and other tests (and
+            // earlier runs on the same install) may have turned auto-summon
+            // off — the idle flow must not silently depend on leftover state.
+            autoSummonEnabled = true
         }
         notebook = store.createBlank()
         notebook.title = "Summon Test"
@@ -162,15 +166,22 @@ class SummonFlowTest {
         val sent = runCatching { server.takeRequest(10, TimeUnit.SECONDS) }.getOrNull()
         assertTrue("request was never sent", sent != null)
 
-        // The user keeps writing → cancel-on-resume (F3.2).
+        // The user keeps writing → cancel-on-resume (F3.2): the request dies
+        // and the ink draws back into the stroke.
         scenario.onActivity { dispatchStroke(inkView(), listOf(800f to 400f, 900f to 500f)) }
+        scenario.onActivity { settings.autoSummonEnabled = false } // no idle re-summon
 
-        val cancelled = waitFor({ notebook.pages[0].answers.any { it.status == "cancelled" } }, 10_000)
-        assertTrue("summon was not cancelled by writing", cancelled)
+        val receded = waitFor({ !inkView().isSummonInkActive }, 10_000)
+        assertTrue("summon ink never receded", receded)
 
-        // And no complete answer may appear afterwards.
-        Thread.sleep(4_500) // past the mock's 4 s delay
-        assertTrue(notebook.pages[0].answers.none { it.status == "complete" })
+        // User cancellation is not an event worth persisting (audit P0-5): no
+        // group of any status may be written into the notebook.
+        Thread.sleep(4_500) // past the mock's 4 s delay — the late reply must not land
+        assertTrue(
+            "cancelled summon wrote a junk group: " +
+                notebook.pages[0].answers.joinToString { "${it.status}:${it.error?.take(80)}" },
+            notebook.pages[0].answers.isEmpty(),
+        )
     }
 
     @Test

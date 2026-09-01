@@ -69,6 +69,20 @@ class SummonInkTest {
         assertEquals(SummonInk.threadLength(a), SummonInk.threadLength(b), 0.001f)
     }
 
+    /**
+     * Every summon passes a real exit tangent — the two lead-out points plus
+     * start, waypoints and curl must fit the knot buffer (crash regression:
+     * the original sizing held one point too few and every summon blew up
+     * with ArrayIndexOutOfBoundsException).
+     */
+    @Test
+    fun buildThread_withExitTangent_fitsItsKnotBuffer() {
+        val path = SummonInk.buildThread(60f, 300f, 300f, 100f, 0.9f, -0.4f)
+        val bounds = android.graphics.RectF()
+        path.computeBounds(bounds, true)
+        assertTrue("path must be non-empty", bounds.width() > 0f || bounds.height() > 0f)
+    }
+
     /** However far it wanders, the thread stays pinned to stroke and locus. */
     @Test
     fun theThreadStaysPinnedToBothEnds() {
@@ -236,5 +250,45 @@ class SummonInkTest {
         Thread.sleep(400)
         v.draw(Canvas(bmp))
         assertFalse(v.isSummonInkActive) // fully receded
+    }
+
+    /**
+     * Audit P0-7: the summon narrative is page-local. Turning the page
+     * mid-summon must clear the thread and blot — nothing of the old page's
+     * ink may follow — and a later endSummonInk must be a clean no-op.
+     */
+    @Test
+    fun newPage_resetsTheSummonNarrative() {
+        val v = InkSurfaceView(ctx).apply {
+            layout(0, 0, 800, 800)
+            page = NotebookPage(index = 0, width = 2480, height = 1860)
+        }
+        v.beginSummonInk(400f, 600f, 400f, 300f, 0.9f, -0.4f)
+        assertTrue(v.isSummonInkActive)
+
+        v.page = NotebookPage(index = 1, width = 2480, height = 1860)
+        assertFalse("the blot must not follow you to the next page", v.isSummonInkActive)
+
+        // The late keep/cancel from the old page's flow is a no-op now.
+        v.endSummonInk(keep = true)
+        assertFalse(v.isSummonInkActive)
+        v.draw(Canvas(Bitmap.createBitmap(800, 800, Bitmap.Config.ARGB_8888)))
+    }
+
+    /** Audit P0-3: the page transform stays fit-width — offsetY pinned at 0. */
+    @Test
+    fun pageSetter_keepsFitWidthAnchoring() {
+        val v = InkSurfaceView(ctx).apply {
+            layout(0, 0, 2400, 2400) // view taller than the page
+            page = NotebookPage(index = 0, width = 2480, height = 1860)
+        }
+        assertEquals(
+            "contain-fit would have centered the page (offsetY > 0)",
+            0f, v.transformOffsetY, 1e-3f,
+        )
+
+        // And turning the page must not re-introduce the shift.
+        v.page = NotebookPage(index = 1, width = 2480, height = 1860)
+        assertEquals(0f, v.transformOffsetY, 1e-3f)
     }
 }

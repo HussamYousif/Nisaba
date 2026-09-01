@@ -74,4 +74,45 @@ class PageTransformTest {
         }
         assertEquals(1f, t.scale, 1e-6f) // capped at MAX_SCALE
     }
+
+    @Test
+    fun fitWidth_spansTheViewAndAnchorsToTheTop() {
+        // Audit P0-3: the page setter runs fit-width, so the page must span
+        // the full view width with offsetY pinned to 0 — never contain-fit's
+        // vertical centering (which shifts ink and touch coordinates).
+        val t = PageTransform().apply {
+            pageWidth = 2480
+            pageHeight = 1860
+            setViewportFitWidth(1600)
+        }
+        assertEquals(1600f / 2480f, t.scale, 1e-6f)
+        assertEquals(0f, t.offsetX, 1e-3f)
+        assertEquals(0f, t.offsetY, 1e-3f)
+        assertEquals(1600f, t.toViewX(2480f), 1e-2f) // spans the full width
+    }
+
+    @Test
+    fun fitWidth_ignoresViewHeight() {
+        // In a view taller than the page (answers push content below), a
+        // contain-fit would center the page and shift every coordinate; the
+        // content grows the view instead, so offsetY must stay 0.
+        val t = PageTransform().apply {
+            pageWidth = 2480
+            pageHeight = 1860
+            setViewportFitWidth(2400)
+        }
+        assertEquals(2400f / 2480f, t.scale, 1e-6f)
+        assertEquals(0f, t.offsetY, 1e-3f)
+    }
+
+    @Test
+    fun fitWidth_isSafeWithAZeroWidth() {
+        val t = PageTransform().apply {
+            pageWidth = 2480
+            pageHeight = 1860
+            setViewportFitWidth(0) // pre-layout setter run
+        }
+        assertEquals(1f, t.scale, 1e-6f)
+        assertEquals(0f, t.offsetY, 1e-3f)
+    }
 }

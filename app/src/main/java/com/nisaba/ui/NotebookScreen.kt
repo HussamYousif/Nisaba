@@ -131,6 +131,10 @@ class NotebookScreen @JvmOverloads constructor(
                     }
                     NotebookSession.Reason.PAGE,
                     NotebookSession.Reason.STRUCTURE -> {
+                        // A held answer belongs to the old page; its drain can
+                        // never complete here (the view reset its ink), so stop
+                        // holding it or it would stay filtered out forever.
+                        holdRevealFor = null
                         inkView.page = nbSession.currentPage()
                         loadBackground()
                         renderAnswerInk(animateLast = false)
@@ -311,8 +315,16 @@ class NotebookScreen @JvmOverloads constructor(
                 pendingSummon = false
                 inkView.endSummonInk(keep = true)
             } catch (e: kotlinx.coroutines.CancellationException) {
-                if (generation != summonGeneration) return@launch // superseded
-                recordAborted(s, groupId, "cancelled", e.message)
+                // A newer summon owns the ink now — leave everything to it.
+                if (generation != summonGeneration) throw e
+                // User cancellation (writing, back): not an event worth
+                // persisting (audit P0-5) — no junk group in notebook.json.
+                // The ink draws back; onSummonCancelled may already have
+                // started it — endSummonInk is idempotent.
+                pendingSummon = false
+                holdRevealFor = null
+                inkView.endSummonInk(keep = false)
+                throw e
             } catch (e: Exception) {
                 if (generation != summonGeneration) return@launch // superseded
                 recordAborted(s, groupId, "error", e.message)
@@ -358,7 +370,14 @@ class NotebookScreen @JvmOverloads constructor(
         val page = session?.currentPage() ?: return
         val held = holdRevealFor
         val groups = page.answers.filter { it.status == "complete" && it.id != held }
-        if (groups.isEmpty()) return
+        if (groups.isEmpty()) {
+            // Nothing to lay out: stale ink from the previous page/answer must
+            // not linger (audit P0-2). While an answer is held for the drain
+            // the canvas already shows it, so a blank would blank a live
+            // reveal — only clear when nothing is held.
+            if (held == null) inkView.setAnswers(emptyList(), page.height.toFloat(), animateLast = false)
+            return
+        }
         var y = contentBottom(page) + 140f
         val layouts = ArrayList<AnswerInk.Layout>(groups.size)
         for (g in groups) {

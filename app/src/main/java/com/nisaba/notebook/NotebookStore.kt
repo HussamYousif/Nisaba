@@ -53,7 +53,12 @@ class NotebookStore(private val context: Context) {
     fun list(): List<NotebookSummary> {
         root.mkdirs()
         return root.listFiles()
-            ?.filter { it.isDirectory && File(it, "notebook.json").exists() }
+            // A tmp-only dir is a crash between fsync and rename: recover it
+            // (audit P0-6), or the notebook silently vanishes from the shelf.
+            ?.filter { dir ->
+                dir.isDirectory &&
+                    (File(dir, "notebook.json").exists() || File(dir, "notebook.json.tmp").exists())
+            }
             ?.mapNotNull { dir ->
                 try {
                     val nb = parse(File(dir, "notebook.json"))
@@ -71,8 +76,18 @@ class NotebookStore(private val context: Context) {
         return parse(file)
     }
 
-    private fun parse(file: File): Notebook =
-        json.decodeFromString(Notebook.serializer(), file.readText())
+    private fun parse(file: File): Notebook {
+        if (!file.exists()) {
+            // Recovery (docs/05:120, audit P0-6): a crash between fsync and
+            // rename leaves a complete tmp while notebook.json is missing —
+            // read it rather than losing the notebook.
+            val tmp = File(file.parentFile, "notebook.json.tmp")
+            if (tmp.exists()) {
+                return json.decodeFromString(Notebook.serializer(), tmp.readText())
+            }
+        }
+        return json.decodeFromString(Notebook.serializer(), file.readText())
+    }
 
     // ------------------------------------------------------------ write
 
@@ -92,8 +107,10 @@ class NotebookStore(private val context: Context) {
             out.fd.sync()
         }
         if (!tmp.renameTo(final)) {
-            final.delete()
-            if (!tmp.renameTo(final)) throw IllegalStateException("rename failed for ${nb.id}")
+            // Never delete the last known-good copy to retry a rename that
+            // just failed (audit P0-6) — a second failure would lose the
+            // notebook entirely, and list() filters on notebook.json existing.
+            throw IllegalStateException("rename failed for ${nb.id}")
         }
         writeThumbnail(nb)
     }

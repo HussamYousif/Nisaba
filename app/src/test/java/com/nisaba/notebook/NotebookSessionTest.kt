@@ -78,6 +78,32 @@ class NotebookSessionTest {
     }
 
     @Test
+    fun undoWithDuplicateIds_removesOnlyTheLastStroke() {
+        // Audit P0-1 regression: id-filtering undo dropped every stroke that
+        // shared an id ("s-preview" for all of them); the wholesale restore
+        // must keep the other strokes intact.
+        session.addStroke(stroke("dup"))
+        session.addStroke(stroke("dup"))
+        session.undo()
+        assertEquals("one undo removes exactly one stroke", 1, notebook.pages[0].strokes.size)
+        session.redo()
+        assertEquals(2, notebook.pages[0].strokes.size)
+    }
+
+    @Test
+    fun eraseUndo_restoresTheFullList() {
+        session.addStroke(stroke("a", x = 1000f, y = 1000f))
+        session.addStroke(stroke("b", x = 200f, y = 200f))
+        session.eraseStroke(listOf(StrokePoint(215f, 215f, 0.5f, 0L)))
+        assertEquals(listOf("a"), notebook.pages[0].strokes.map { it.id })
+
+        session.undo()
+        assertEquals(listOf("a", "b"), notebook.pages[0].strokes.map { it.id })
+        session.redo()
+        assertEquals(listOf("a"), notebook.pages[0].strokes.map { it.id })
+    }
+
+    @Test
     fun addPage_andUndoStructure() {
         session.addPage()
         assertEquals(2, notebook.pages.size)

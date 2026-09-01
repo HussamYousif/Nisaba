@@ -41,7 +41,11 @@ class StrokeBuilder {
         val s = buildPreview() ?: return null
         started = false
         pts.clear()
-        return s
+        // buildPreview() is shared with onDraw, where the id is irrelevant;
+        // a committed stroke needs a unique id — undo/redo and erasing match
+        // strokes by id, and "s-preview" for every stroke made undo drop the
+        // wrong one (audit P0-1).
+        return s.copy(id = "s-" + UUID.randomUUID().toString().take(8))
     }
 
     /** Non-consuming snapshot of the in-progress stroke (for onDraw). */

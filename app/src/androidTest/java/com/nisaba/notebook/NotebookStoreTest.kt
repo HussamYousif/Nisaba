@@ -75,4 +75,54 @@ class NotebookStoreTest {
         // The corrupt notebook must not crash the shelf listing.
         assertTrue(store.list().none { it.id == nb.id })
     }
+
+    @Test
+    fun missingJson_recoversFromTheTmpFile() {
+        // Audit P0-6: a crash between fsync and rename leaves notebook.json
+        // missing while notebook.json.tmp holds the complete write — load()
+        // must recover it instead of failing.
+        val nb = store.createBlank()
+        nb.title = "Recovered"
+        store.save(nb)
+
+        val dir = store.dirOf(nb.id)
+        val json = java.io.File(dir, "notebook.json")
+        val tmp = java.io.File(dir, "notebook.json.tmp")
+        val good = json.readText()
+        json.delete()
+        tmp.writeText(good) // simulate the crash window: only the tmp survives
+
+        val recovered = store.load(nb.id)
+        assertEquals("Recovered", recovered.title)
+        assertTrue(store.list().any { it.id == nb.id })
+    }
+
+    @Test
+    fun save_failureLeavesTheGoodCopyIntact() {
+        // Audit P0-6: the old rename fallback deleted notebook.json to retry
+        // a rename that just failed — a second failure would lose the
+        // notebook entirely. A failed save must throw and leave the last
+        // known-good file untouched.
+        val nb = store.createBlank()
+        store.save(nb)
+        val dir = store.dirOf(nb.id)
+        val json = java.io.File(dir, "notebook.json")
+        val good = json.readText()
+
+        // Force the write to fail after the good file exists: the tmp path is
+        // now a directory, so the tmp write throws (EISDIR) before any rename.
+        val tmp = java.io.File(dir, "notebook.json.tmp")
+        tmp.delete()
+        tmp.mkdirs()
+
+        try {
+            store.save(nb)
+            // On filesystems where this somehow succeeds, the good file must
+            // still be present and parseable below.
+        } catch (_: Exception) {
+            // expected — the failure must not have touched notebook.json
+        }
+        assertTrue("the good copy must survive a failed save", json.exists())
+        assertEquals("the good copy must be unchanged", good, json.readText())
+    }
 }

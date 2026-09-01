@@ -64,7 +64,13 @@ class SettingsScreen @JvmOverloads constructor(
             textSize = 26f
             setTextColor(MagicTheme.INK)
             setPadding(0, 0, dp(16), 0)
-            setOnClickListener { this@SettingsScreen.onBack?.invoke() }
+            setOnClickListener {
+                // A TextView is not focusable in touch mode: tapping it never
+                // moves focus off the EditTexts, so without an explicit flush
+                // a freshly typed key would be discarded (audit P0-8).
+                persist()
+                this@SettingsScreen.onBack?.invoke()
+            }
         })
         header.addView(TextView(context).apply {
             text = "Settings"
@@ -147,20 +153,25 @@ class SettingsScreen @JvmOverloads constructor(
         }
 
         // Persist on change (paper-feel: no save button).
-        keyField.setOnFocusChangeListener { _, hasFocus -> if (!hasFocus) settings.apiKey = keyField.text.toString() }
-        baseField.setOnFocusChangeListener { _, hasFocus -> if (!hasFocus) settings.baseUrl = baseField.text.toString() }
-        modelField.setOnFocusChangeListener { _, hasFocus -> if (!hasFocus) settings.model = modelField.text.toString() }
-        idleField.setOnFocusChangeListener { _, hasFocus ->
-            if (!hasFocus) settings.idlePauseSeconds = idleField.text.toString().toIntOrNull() ?: 3
-        }
+        keyField.setOnFocusChangeListener { _, hasFocus -> if (!hasFocus) persist() }
+        baseField.setOnFocusChangeListener { _, hasFocus -> if (!hasFocus) persist() }
+        modelField.setOnFocusChangeListener { _, hasFocus -> if (!hasFocus) persist() }
+        idleField.setOnFocusChangeListener { _, hasFocus -> if (!hasFocus) persist() }
         autoSwitch.setOnCheckedChangeListener { _, checked -> settings.autoSummonEnabled = checked }
     }
 
-    private fun testConnection() {
+    /** Flushes the editable fields into settings (audit P0-8). */
+    private fun persist() {
         val s = settings ?: return
         s.apiKey = keyField.text.toString()
         s.baseUrl = baseField.text.toString()
         s.model = modelField.text.toString()
+        s.idlePauseSeconds = idleField.text.toString().toIntOrNull() ?: 3
+    }
+
+    private fun testConnection() {
+        val s = settings ?: return
+        persist()
         if (s.effectiveApiKey().isBlank()) {
             testResult.text = "The quill has no ink — enter your API key first."
             return
@@ -187,6 +198,9 @@ class SettingsScreen @JvmOverloads constructor(
     }
 
     fun onClose() {
+        // The screen is leaving without a focus change (system back, app
+        // close): flush so a freshly typed key survives (audit P0-8).
+        persist()
         scope.cancel()
     }
 

@@ -99,11 +99,15 @@ class NotebookSession(
 
     fun addStroke(stroke: Stroke) {
         val page = currentPage() ?: return
-        page.strokes = page.strokes + stroke
+        val before = page.strokes
+        page.strokes = before + stroke
         push(
             reason = Reason.STROKES,
-            undo = { page.strokes = page.strokes.filterNot { it.id == stroke.id } },
-            redo = { page.strokes = page.strokes + stroke },
+            // Wholesale restore: id-filtering corrupted the list when ids were
+            // ever shared (audit P0-1), and stays correct if duplicates ever
+            // reappear.
+            undo = { page.strokes = before },
+            redo = { page.strokes = before + stroke },
         )
         contentVersion++
         changed(Reason.STROKES)
@@ -112,14 +116,13 @@ class NotebookSession(
     /** Erases strokes near the eraser path; returns the removed ones. */
     fun eraseStroke(path: List<StrokePoint>): List<Stroke> {
         val page = currentPage() ?: return emptyList()
+        val before = page.strokes
         val removed = Eraser.erase(page, path)
         if (removed.isEmpty()) return emptyList()
         push(
             reason = Reason.STROKES,
-            undo = { page.strokes = page.strokes + removed },
-            redo = {
-                page.strokes = page.strokes.filterNot { s -> removed.any { it.id == s.id } }
-            },
+            undo = { page.strokes = before },
+            redo = { page.strokes = before - removed.toSet() },
         )
         contentVersion++
         changed(Reason.STROKES)

@@ -41,7 +41,15 @@ open class InkSurfaceView @JvmOverloads constructor(
             field = value
             transform.pageWidth = value?.width ?: 2480
             transform.pageHeight = value?.height ?: 1860
-            transform.setViewport(width, height)
+            // Fit-width everywhere (audit P0-3): contain-fit offset the page
+            // vertically, so ink and touch coordinates shifted on page turns.
+            transform.setViewportFitWidth(width)
+            // The summon narrative and the answer ink are page-local — a new
+            // page must not inherit the old page's thread/blot or answer
+            // layouts (audit P0-7, P0-2).
+            inkHandler.removeCallbacks(inkTick)
+            clearSummonInk()
+            setAnswers(emptyList(), 0f, animateLast = false)
             requestLayout() // page aspect may have changed
             rebuildBgLayer()
             invalidate()
@@ -345,6 +353,9 @@ open class InkSurfaceView @JvmOverloads constructor(
 
     /** Test/UI accessor: how many answer ink items are on the canvas. */
     val answerItemCount: Int get() = answerLayouts.sumOf { it.itemCount }
+
+    /** Test accessor: the page→view vertical offset (audit P0-3 asserts it stays 0). */
+    val transformOffsetY: Float get() = transform.offsetY
     val answerPathCount: Int
         get() = answerLayouts.sumOf { l -> l.items.count { it is AnswerInk.Layout.Item.Path } }
     val answerRuleCount: Int
@@ -417,14 +428,16 @@ open class InkSurfaceView @JvmOverloads constructor(
     private fun drawAnswerInk(canvas: Canvas) {
         if (answerLayouts.isEmpty()) return
         val animatingLayout = answerAnimating
-        var cumTicks = 0
         for ((li, layout) in answerLayouts.withIndex()) {
             val isLast = li == answerLayouts.lastIndex
-            val layoutTicks = if (isLast) layout.totalTicks else Int.MAX_VALUE
-            var itemStart = cumTicks
+            // Only the last layout ever animates; its item offsets are relative
+            // to its own start — no cross-layout accumulator (audit P0-4: the
+            // old cumTicks overflowed past Int.MAX_VALUE and the newest answer
+            // never revealed).
+            var itemStart = 0
             for (item in layout.items) {
                 val ticks = item.revealTicks
-                val local = if (!isLast || !animatingLayout || answerTicks >= layoutTicks) {
+                val local = if (!isLast || !animatingLayout || answerTicks >= layout.totalTicks) {
                     1f
                 } else {
                     ((answerTicks - itemStart).toFloat() / ticks).coerceIn(0f, 1f)
@@ -451,7 +464,6 @@ open class InkSurfaceView @JvmOverloads constructor(
                 }
                 itemStart += ticks
             }
-            cumTicks += layoutTicks
         }
     }
 

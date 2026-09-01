@@ -120,7 +120,9 @@ object SummonInk {
         // Which way the whole meander leans — seeded, so it varies per summon.
         val hand = if (wobble(0, seed) >= 0f) 1f else -1f
 
-        val pts = FloatArray(2 * (WAYPOINT_T.size + 4))
+        // 1 start + 2 exit lead-out + WAYPOINT_T.size meander + 2 curl = 9;
+        // one point of slack so the sizing can't bite again.
+        val pts = FloatArray(2 * (WAYPOINT_T.size + 6))
         var n = 0
         fun add(x: Float, y: Float) {
             pts[n * 2] = x
