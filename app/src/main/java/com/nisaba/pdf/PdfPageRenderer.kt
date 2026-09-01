@@ -39,12 +39,24 @@ object PdfPageRenderer {
         private val framework = PdfRenderer(fd)
         private var pdfBox: PDDocument? = null
 
-        val pageCount: Int get() = framework.pageCount
+        private fun pdfBoxDoc(): PDDocument =
+            pdfBox ?: PDDocument.load(file).also { pdfBox = it }
+
+        /**
+         * PdfBox's count is authoritative. The Android 15 framework renderer
+         * on the Boox does not just render black — it also mis-reports
+         * `pageCount` for some PDFs (verified on-device: a 5-page document
+         * imported as 1), silently dropping pages. PdfBox is the engine that
+         * works on the target device; the framework keeps the fast render
+         * path on healthy devices only.
+         */
+        val pageCount: Int get() = pdfBoxDoc().numberOfPages
 
         /** Logical page box in points (72 dpi space) — dimensions only. */
         fun pageBox(index: Int): Pair<Int, Int> {
             require(index in 0 until pageCount) { "page $index out of range" }
-            framework.openPage(index).use { page -> return page.width to page.height }
+            val box = pdfBoxDoc().getPage(index).cropBox ?: pdfBoxDoc().getPage(index).mediaBox
+            return box.width.roundToInt() to box.height.roundToInt()
         }
 
         /** Renders page [index] at [dpi] into an RGB_565 bitmap; null when every engine fails. */
@@ -79,11 +91,7 @@ object PdfPageRenderer {
 
         private fun renderWithPdfBox(index: Int, dpi: Float): Bitmap? = runCatching {
             // Parse the document once per session, not once per page (P1-8).
-            var doc = pdfBox
-            if (doc == null) {
-                doc = PDDocument.load(file)
-                pdfBox = doc
-            }
+            val doc = pdfBoxDoc()
             val renderer = PDFRenderer(doc)
             val argb = renderer.renderImageWithDPI(index, dpi.toFloat())
             val rgb565 = argb.copy(Bitmap.Config.RGB_565, false)

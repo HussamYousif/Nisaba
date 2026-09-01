@@ -153,6 +153,21 @@ class PdfImporterTest {
     }
 
     @Test
+    fun session_pageCount_andPageBox_comeFromPdfBox() {
+        // S3 on-device find: the Boox's framework PdfRenderer mis-reports
+        // pageCount (a 5-page PDF imported as 1 page, silently dropping the
+        // rest). The session must count and measure via PdfBox — the engine
+        // that works on the target device.
+        val pdf = createPdf("count.pdf", 4)
+        PdfPageRenderer.Session(pdf).use { session ->
+            assertEquals(4, session.pageCount)
+            val (w, h) = session.pageBox(2)
+            assertEquals(595, w)
+            assertEquals(842, h)
+        }
+    }
+
+    @Test
     fun import_failureRollsBackCleanly() {
         val pdf = createPdf("boom.pdf", 5)
         val before = existingNotebookDirs()
