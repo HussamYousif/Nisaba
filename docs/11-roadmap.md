@@ -51,7 +51,7 @@ M1 ──▶ M2 ──▶ M3 ──▶ M4 ──▶ M5 ──▶ M6
 | R6 | **Cursive legibility on 150 ppi color layer** | Med | Med | ≥18 sp body, arm's-length photo tests, Kalam fallback for dense text (08 §3) |
 | R7 | **Long latency (30–60 s) feels broken** | High | Med | "ink stirs" progress + second-line copy; skippable; cancel always available |
 | R8 | **Accidental auto-summons while doodling** | Med | Low | Cancel-on-resume; new-content gate (F3.4); 3 s pause is generous |
-| R9 | **PdfRenderer black render (dev environment)** — sandboxed headless emulators render every PDF black (API 34+35); root cause is environmental, but must be disproven on the Boox | Med | Med | M2 on-device acceptance: "a scanned-PDF page reads back crisply at 100%"; pixel assertions soft-skip in black-rendering environments (`PdfTestSupport`); probe tests (`PdfRenderProbeTest`) ready to run on the device |
+| R9 | **PdfRenderer black render** — Android 15's new Skia-based `PdfRenderer` renders every page black; NOT emulator-only: reproduced on the Boox Note Air 5c (Android 15) in every mode/matrix/clip | High (was Med) | ✅ **Resolved**: `pdf/PdfPageRenderer` seam renders with the framework first, detects black output (>85% dark), falls back to bundled PdfBox-Android (pure Java, no JNI). Hard-assert regression test `renderSeam_producesContentEverywhere` passes on the Boox and emulators; background PNG verified white+text on-device |
 
 ## 4. Backlog (explicitly after v1)
 

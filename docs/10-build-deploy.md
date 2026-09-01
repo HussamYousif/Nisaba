@@ -95,6 +95,8 @@ keyPassword=…
 1. Copy the APK to the tablet (Send to Boox, Google Drive, or a USB cable).
 2. Open the APK in the file manager → allow "install unknown apps" for it → install.
 
+**Boox quirk — disabled after install:** Boox firmware marks freshly installed/sideloaded packages `DISABLED_USER` (`enabled=3`); the activity then "does not exist". After every `adb install` (including test-run reinstalls) run `adb shell pm enable com.nisaba` (or open the app once from the launcher). Also enable USB debugging + "USB debugging (Security settings)" in Developer Options.
+
 **Boox OS settings for Nisaba** (critical for feel, 04 §2):
 - **App Optimization** (Boox settings → Apps → Nisaba): refresh mode **Regal** (or Fast/Ultra-Fast if offered); enable "Disable animation" if the OS has it.
 - **Battery optimization**: exclude Nisaba (prevents background kills mid-summon).

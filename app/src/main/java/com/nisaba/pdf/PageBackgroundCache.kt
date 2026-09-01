@@ -71,34 +71,17 @@ class PageBackgroundCache(
             val opts = BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.RGB_565 }
             return BitmapFactory.decodeFile(png.absolutePath, opts)
         }
-        // 2. Re-derive from the imported PDF.
+        // 2. Re-derive from the imported PDF (through the engine seam).
         val pdf = pdfFile ?: return null
         if (!pdf.exists()) return null
         return runCatching {
-            val fd = ParcelFileDescriptor.open(pdf, ParcelFileDescriptor.MODE_READ_ONLY)
-            val renderer = PdfRenderer(fd)
-            try {
-                if (index !in 0 until renderer.pageCount) return null
-                renderer.openPage(index).use { page ->
-                    val scale = PdfImporter.RENDER_DPI / 72f
-                    val w = (page.width * scale).roundToInt()
-                    val h = (page.height * scale).roundToInt()
-                    val argb = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-                    val matrix = Matrix().apply { setScale(scale, scale) }
-                    page.render(argb, null, matrix, PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
-                    val bmp = argb.copy(Bitmap.Config.RGB_565, false)
-                    argb.recycle()
-                    // Persist so the next open is cheap.
-                    png.parentFile?.mkdirs()
-                    FileOutputStream(png).use { fos ->
-                        bmp.compress(Bitmap.CompressFormat.PNG, 90, fos)
-                    }
-                    bmp
-                }
-            } finally {
-                renderer.close()
-                fd.close()
+            val bmp = PdfPageRenderer.render(pdf, index, PdfImporter.RENDER_DPI) ?: return null
+            // Persist so the next open is cheap.
+            png.parentFile?.mkdirs()
+            FileOutputStream(png).use { fos ->
+                bmp.compress(Bitmap.CompressFormat.PNG, 90, fos)
             }
+            bmp
         }.getOrNull()
     }
 

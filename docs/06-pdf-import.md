@@ -19,7 +19,7 @@ PdfRenderer.openPage(i)
 
 > **Implementation note (M2, verified on emulators):** `RENDER_MODE_FOR_PRINT` is used — it is the fidelity mode for bitmap rendering of documents (crisper text at our 200 dpi backgrounds). `RENDER_MODE_FOR_DISPLAY` behaved identically in our tests; either is acceptable.
 >
-> **Environment caveat (tracked):** in the sandboxed headless emulators used during development (API 34 *and* 35, with and without GPU emulation, every mode/matrix/clip), `PdfRenderer.Page.render` produces a solid black bitmap while plain `Canvas` rendering works — an environment defect, not app code. Pixel-level assertions soft-skip there (`PdfTestSupport.assumeRenders`) and hard-assert on real hardware. The M2 on-device acceptance (below) is the authoritative check.
+> **Rendering seam (R9, resolved):** Android 15's framework `PdfRenderer` renders every page as a solid black bitmap — reproduced on the Boox Note Air 5c and on API 34/35 emulators, in every mode/matrix/clip. `PdfPageRenderer` (the pdf domain's render seam) tries the framework first, detects black output (sampled dark ratio > 85%), and falls back to the bundled PdfBox-Android engine. The hard-assert test `renderSeam_producesContentEverywhere` passes on all devices; `PdfTestSupport` still soft-skips the framework-only probe tests, which document the bug.
   → downscale to ≤200 dpi (nearest filter; text stays crisp — this is a background, strokes are vector)
   → convert to RGB_565 (dithering on for gradients)
   → compress as PNG → backgrounds/pNNN.png

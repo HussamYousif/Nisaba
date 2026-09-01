@@ -104,4 +104,22 @@ class PdfRenderProbeTest {
         )
         assertContent("clip+display", dark, light)
     }
+
+    /**
+     * HARD assertion (no env-skip): the render seam (framework-first with
+     * black-detection + PdfBox fallback) must produce real content on every
+     * device — this is the R9 regression guard (docs/11).
+     */
+    @Test
+    fun renderSeam_producesContentEverywhere() {
+        val ctx = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val file = makePdf("seam.pdf")
+        val bmp = PdfPageRenderer.render(file, 0, 200f)
+        org.junit.Assert.assertNotNull("seam returned null", bmp)
+        val (dark, light) = sample(bmp!!)
+        org.junit.Assert.assertTrue(
+            "seam produced black content: dark=$dark light=$light",
+            light > dark * 10 && dark > 2,
+        )
+    }
 }

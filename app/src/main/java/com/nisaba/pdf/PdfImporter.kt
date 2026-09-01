@@ -1,7 +1,6 @@
 package com.nisaba.pdf
 
 import android.graphics.Bitmap
-import android.graphics.Matrix
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
 import com.nisaba.notebook.NotebookStore
@@ -105,7 +104,7 @@ class PdfImporter(private val store: NotebookStore) {
             for (i in 0 until count) {
                 if (cancelled()) throw ImportCancelled()
                 progress(i, count)
-                renderPage(renderer, i, File(bgDir, "$BACKGROUND_PREFIX$i.png"))
+                renderPage(pdfFile, i, File(bgDir, "$BACKGROUND_PREFIX$i.png"))
             }
             progress(count, count)
             return count
@@ -115,23 +114,15 @@ class PdfImporter(private val store: NotebookStore) {
         }
     }
 
-    private fun renderPage(renderer: PdfRenderer, index: Int, out: File) {
-        renderer.openPage(index).use { page ->
-            // 200 dpi target: PDF points (1/72") × 200/72.
-            val scale = RENDER_DPI / 72f
-            val w = (page.width * scale).roundToInt()
-            val h = (page.height * scale).roundToInt()
-            // PdfRenderer only renders into ARGB_8888; convert for storage.
-            val argb = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-            val matrix = Matrix().apply { setScale(scale, scale) }
-            page.render(argb, null, matrix, PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
-            val rgb565 = argb.copy(Bitmap.Config.RGB_565, false)
-            argb.recycle()
-            FileOutputStream(out).use { fos ->
-                rgb565.compress(Bitmap.CompressFormat.PNG, 90, fos)
-            }
-            rgb565.recycle()
+    private fun renderPage(pdfFile: File, index: Int, out: File) {
+        // The seam picks the working engine (framework vs bundled PdfBox —
+        // Android 15's framework renderer is black on some devices, R9).
+        val bmp = PdfPageRenderer.render(pdfFile, index, RENDER_DPI)
+            ?: throw IllegalStateException("page $index could not be rendered")
+        FileOutputStream(out).use { fos ->
+            bmp.compress(Bitmap.CompressFormat.PNG, 90, fos)
         }
+        bmp.recycle()
     }
 
     /** The logical page box at 300 dpi (strokes live here). */

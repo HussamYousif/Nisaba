@@ -61,6 +61,9 @@ client (external services) = leaf
   D1 (NotebookScreen god-object) was resolved by extracting `NotebookSession`
   (notebook core: state/undo/pages/save/events) — the screen is view wiring +
   summon orchestration only (docs/architecture-review.md).
-- Environment caveat: sandboxed emulators render PDFs black via `PdfRenderer`
-  (see `PdfTestSupport`) — pixel assertions are env-gated, never "fixed" by
-  weakening them; verify on real hardware.
+- PDF rendering caveat: Android 15's framework `PdfRenderer` renders every
+  page black (Boox + emulators). The `pdf/PdfPageRenderer` seam handles it
+  (framework → black-detect → PdfBox fallback); the hard test
+  `renderSeam_producesContentEverywhere` guards it. Framework-only probes
+  stay soft-skipped (`PdfTestSupport`) — they document the bug, never weaken
+  the guard.
