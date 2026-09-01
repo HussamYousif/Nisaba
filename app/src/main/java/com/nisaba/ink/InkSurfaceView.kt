@@ -14,8 +14,8 @@ import android.os.Handler
 import android.os.Looper
 import com.nisaba.epd.Epd
 import com.nisaba.epd.Oec
-import com.nisaba.magic.InkStir
 import com.nisaba.magic.MagicTheme
+import com.nisaba.magic.SummonInk
 import com.nisaba.notebook.model.NotebookPage
 import com.nisaba.notebook.model.Stroke
 import com.nisaba.render.AnswerInk
@@ -93,49 +93,119 @@ open class InkSurfaceView @JvmOverloads constructor(
         Epd.cleanRefresh(this)
     }
 
-    // The summon's ink-stirring locus, drawn ON the page (docs/09 §3).
-    private var stirActive = false
-    private var stirStep = 0
-    private var stirX = 0f
-    private var stirY = 0f
-    private val stirHandler = Handler(Looper.getMainLooper())
-    private val stirTick: Runnable = object : Runnable {
+    // The summon's organic ink narrative (docs/09 §3): a thread of ink flows
+    // from the last stroke's tail to the answer locus, gathers into a blot,
+    // and is gently fed by travelling ink beads while the scribe thinks.
+    private enum class InkPhase { IDLE, THREAD, FLOW, SETTLED, RECEDE }
+
+    private var inkPhase = InkPhase.IDLE
+    private var threadPath: Path? = null
+    private var threadLen = 0f
+    private var threadProgress = 0f
+    private var beadProgress = 0f
+    private var rippleT = 0f
+    private var flowPause = 0
+    private var blotX = 0f
+    private var blotY = 0f
+    private val inkHandler = Handler(Looper.getMainLooper())
+    private val inkTick: Runnable = object : Runnable {
         override fun run() {
-            stirStep++
-            if (stirStep > STIR_CYCLE) stirStep = 0
+            advanceInk()
+            if (inkPhase != InkPhase.IDLE && inkPhase != InkPhase.SETTLED) {
+                inkHandler.postDelayed(this, INK_STEP_MS)
+            }
             invalidate()
-            if (stirActive) stirHandler.postDelayed(this, STIR_MS)
         }
     }
 
-    val isStirring: Boolean get() = stirActive
+    val isSummonInkActive: Boolean get() = inkPhase != InkPhase.IDLE
 
-    /** The ink gathers and stirs at the spot where the answer will write itself. */
-    fun beginStir(pageX: Float, pageY: Float) {
-        stirX = pageX
-        stirY = pageY
-        stirActive = true
-        stirStep = 1
-        stirHandler.removeCallbacks(stirTick)
-        stirHandler.postDelayed(stirTick, STIR_MS)
+    /**
+     * The ink reaches out: a thread draws from the last stroke's tail to the
+     * answer locus ([blotX],[blotY]), then beads flow while waiting.
+     */
+    fun beginSummonInk(tailX: Float, tailY: Float, blotX: Float, blotY: Float) {
+        this.blotX = blotX
+        this.blotY = blotY
+        threadPath = SummonInk.buildThread(tailX, tailY, blotX, blotY)
+        threadLen = SummonInk.threadLength(threadPath!!)
+        threadProgress = 0f
+        beadProgress = 0f
+        rippleT = 0f
+        flowPause = 0
+        inkPhase = InkPhase.THREAD
+        inkHandler.removeCallbacks(inkTick)
+        inkHandler.postDelayed(inkTick, INK_STEP_MS)
         invalidate()
     }
 
     /**
-     * The answer arrived (or the summon ended): freeze the full-stir pose.
-     * [keep] true — the answer ink reveals over the pool; false — the pool
-     * clears itself after a beat.
+     * The answer arrived (or the summon ended). [keep] true — the thread and
+     * blot stay while the answer ink reveals over them; false — the thread
+     * draws back into the stroke and everything clears.
      */
-    fun endStir(keep: Boolean) {
-        stirActive = false
-        stirHandler.removeCallbacks(stirTick)
-        stirStep = STIR_CYCLE
-        invalidate()
-        if (!keep) {
-            stirHandler.postDelayed({
-                stirStep = 0
-                invalidate()
-            }, 900L)
+    fun endSummonInk(keep: Boolean) {
+        if (inkPhase == InkPhase.IDLE) return
+        if (keep) {
+            inkPhase = InkPhase.SETTLED
+            inkHandler.removeCallbacks(inkTick)
+            threadProgress = 1f
+            beadProgress = 0f
+            invalidate()
+        } else {
+            inkPhase = InkPhase.RECEDE
+            invalidate()
+        }
+    }
+
+    private fun advanceInk() {
+        when (inkPhase) {
+            InkPhase.THREAD -> {
+                threadProgress += 1f / THREAD_STEPS
+                if (threadProgress >= 1f) {
+                    threadProgress = 1f
+                    inkPhase = InkPhase.FLOW
+                    flowPause = FLOW_PAUSE_STEPS
+                }
+            }
+            InkPhase.FLOW -> {
+                if (flowPause > 0) {
+                    flowPause--
+                } else {
+                    beadProgress += 1f / BEAD_STEPS
+                    if (beadProgress >= 1f) {
+                        beadProgress = 0f
+                        rippleT = 1f
+                        flowPause = FLOW_PAUSE_STEPS
+                    }
+                }
+                if (rippleT > 0f) rippleT -= RIPPLE_STEP
+            }
+            InkPhase.RECEDE -> {
+                threadProgress -= 1f / RECEDE_STEPS
+                if (threadProgress <= 0f) {
+                    threadProgress = 0f
+                    inkPhase = InkPhase.IDLE
+                    threadPath = null
+                    threadLen = 0f
+                }
+            }
+            else -> Unit
+        }
+    }
+
+    private fun drawSummonInk(canvas: Canvas) {
+        if (inkPhase == InkPhase.IDLE) return
+        val path = threadPath
+        if (path != null && threadLen > 0f && threadProgress > 0f) {
+            SummonInk.drawThread(canvas, path, threadLen, threadProgress)
+            if (inkPhase == InkPhase.FLOW) {
+                SummonInk.drawBead(canvas, path, threadLen, beadProgress)
+            }
+        }
+        if (threadProgress >= 1f || inkPhase == InkPhase.SETTLED || inkPhase == InkPhase.RECEDE) {
+            SummonInk.drawBlot(canvas, blotX, blotY, BLOT_RADIUS)
+            if (rippleT > 0f) SummonInk.drawRipple(canvas, blotX, blotY, BLOT_RADIUS, rippleT)
         }
     }
 
@@ -278,9 +348,7 @@ open class InkSurfaceView @JvmOverloads constructor(
         inkPaint.color = inkColor
         for (s in p.strokes) StrokeRenderer.draw(canvas, s, inkPaint)
         current.buildPreview()?.let { StrokeRenderer.draw(canvas, it, inkPaint) }
-        if (stirStep > 0) {
-            InkStir.draw(canvas, stirX, stirY, STIR_RADIUS, stirStep, STIR_CYCLE)
-        }
+        drawSummonInk(canvas)
         drawAnswerInk(canvas)
         canvas.restore()
     }
@@ -474,8 +542,12 @@ open class InkSurfaceView @JvmOverloads constructor(
         private const val FLUSH_MS = 16L
         private const val CLEAN_PASS_MS = 400L
         private const val ANSWER_STEP_MS = 110L
-        private const val STIR_MS = 380L
-        private const val STIR_CYCLE = 12
-        private const val STIR_RADIUS = 54f
+        private const val INK_STEP_MS = 160L
+        private const val THREAD_STEPS = 14
+        private const val BEAD_STEPS = 8
+        private const val FLOW_PAUSE_STEPS = 16
+        private const val RECEDE_STEPS = 6
+        private const val RIPPLE_STEP = 0.18f
+        private const val BLOT_RADIUS = 24f
     }
 }

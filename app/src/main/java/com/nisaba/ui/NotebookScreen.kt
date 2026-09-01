@@ -228,10 +228,12 @@ class NotebookScreen @JvmOverloads constructor(
         // applies to the automatic idle summon (F3.4).
         s.markSummoned()
         pendingSummon = true
-        // The ink gathers and stirs where the answer will write itself.
+        // The ink reaches out: a thread flows from the last stroke's tail to
+        // the spot where the answer will write itself (docs/09 §3).
         val locusPage = s.currentPage() ?: return
-        val locusY = contentBottom(locusPage) + 240f
-        inkView.beginStir(190f, locusY)
+        val (tailX, tailY) = lastStrokeTail(locusPage, locusPage.width.toFloat(), locusPage.height.toFloat())
+        val locusY = contentBottom(locusPage) + 190f
+        inkView.beginSummonInk(tailX, tailY, 190f, locusY)
         summonController.clearPendingRequest()
 
         val generation = summonGeneration
@@ -285,7 +287,7 @@ class NotebookScreen @JvmOverloads constructor(
                     )
                 )
                 pendingSummon = false
-                inkView.endStir(keep = true)
+                inkView.endSummonInk(keep = true)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 if (generation != summonGeneration) return@launch // superseded
                 recordAborted(s, groupId, "cancelled", e.message)
@@ -311,7 +313,7 @@ class NotebookScreen @JvmOverloads constructor(
             )
         }
         pendingSummon = false
-        inkView.endStir(keep = false)
+        inkView.endSummonInk(keep = false)
         if (status == "error") {
             Toast.makeText(context, R.string.summon_error, Toast.LENGTH_LONG).show()
         }
@@ -319,9 +321,9 @@ class NotebookScreen @JvmOverloads constructor(
 
     private fun onSummonCancelled() {
         // The controller already cancelled the job; the coroutine records the
-        // cancelled group and settles the pool.
+        // cancelled group and the thread draws back into the stroke.
         if (pendingSummon) {
-            inkView.endStir(keep = false)
+            inkView.endSummonInk(keep = false)
         }
     }
 
@@ -340,6 +342,17 @@ class NotebookScreen @JvmOverloads constructor(
             y += l.heightPx + 60f
         }
         inkView.setAnswers(layouts, y, animateLast)
+    }
+
+    /** The end of the last pen stroke — where the ink reaches out from. */
+    private fun lastStrokeTail(page: NotebookPage, pageW: Float, pageH: Float): Pair<Float, Float> {
+        for (stroke in page.strokes.asReversed()) {
+            if (stroke.tool != "pen") continue
+            val last = stroke.points.lastOrNull()
+            if (last != null) return last.x to last.y
+        }
+        // No strokes yet (blank summon): reach from the upper page area.
+        return pageW / 2f to 160f
     }
 
     private fun contentBottom(page: NotebookPage): Float {
