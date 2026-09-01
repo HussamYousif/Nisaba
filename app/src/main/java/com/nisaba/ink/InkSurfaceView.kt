@@ -1,8 +1,10 @@
 package com.nisaba.ink
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
@@ -39,6 +41,7 @@ open class InkSurfaceView @JvmOverloads constructor(
             transform.pageHeight = value?.height ?: 1860
             transform.setViewport(width, height)
             requestLayout() // page aspect may have changed
+            rebuildBgLayer()
             invalidate()
         }
 
@@ -49,6 +52,7 @@ open class InkSurfaceView @JvmOverloads constructor(
     var background: android.graphics.Bitmap? = null
         set(value) {
             field = value
+            rebuildBgLayer()
             invalidate()
         }
 
@@ -96,6 +100,33 @@ open class InkSurfaceView @JvmOverloads constructor(
 
     private val bgPaint = Paint().apply {
         isFilterBitmap = true // smooth 200dpi → 300dpi upscale
+    }
+
+    // Cached static layer (parchment + rules + PDF background) at view
+    // resolution: pen flushes redraw only the new ink on top, so the render
+    // thread frees up earlier and fresh frames reach the e-ink panel sooner
+    // (docs/04 §3). Strokes and answer ink stay vector — cheap to redraw.
+    private var bgLayer: Bitmap? = null
+
+    private fun rebuildBgLayer() {
+        bgLayer?.recycle()
+        bgLayer = null
+        val w = width
+        val h = height
+        if (w <= 0 || h <= 0) return
+        val p = page ?: return
+        val layer = Bitmap.createBitmap(w, h, Bitmap.Config.RGB_565)
+        val c = Canvas(layer)
+        c.drawColor(MagicTheme.PARCHMENT)
+        c.save()
+        c.translate(transform.offsetX, transform.offsetY)
+        c.scale(transform.scale, transform.scale)
+        background?.let { bmp ->
+            c.drawBitmap(bmp, null, RectF(0f, 0f, p.width.toFloat(), p.height.toFloat()), bgPaint)
+        }
+        if (background == null) drawRules(c, p)
+        c.restore()
+        bgLayer = layer
     }
 
     // The scribe's answer, drawn as ink on the canvas (docs/08 §1).
@@ -162,6 +193,7 @@ open class InkSurfaceView @JvmOverloads constructor(
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
         transform.setViewportFitWidth(w)
+        rebuildBgLayer()
     }
 
     /** Fit-width: the page plus any answer ink below it. */
@@ -180,13 +212,22 @@ open class InkSurfaceView @JvmOverloads constructor(
     override fun onDraw(canvas: Canvas) {
         canvas.drawColor(MagicTheme.PARCHMENT)
         val p = page ?: return
+        val layer = bgLayer
+        if (layer != null) {
+            canvas.drawBitmap(layer, 0f, 0f, null)
+        } else {
+            canvas.save()
+            canvas.translate(transform.offsetX, transform.offsetY)
+            canvas.scale(transform.scale, transform.scale)
+            background?.let { bmp ->
+                canvas.drawBitmap(bmp, null, android.graphics.RectF(0f, 0f, p.width.toFloat(), p.height.toFloat()), bgPaint)
+            }
+            if (background == null) drawRules(canvas, p)
+            canvas.restore()
+        }
         canvas.save()
         canvas.translate(transform.offsetX, transform.offsetY)
         canvas.scale(transform.scale, transform.scale)
-        background?.let { bmp ->
-            canvas.drawBitmap(bmp, null, android.graphics.RectF(0f, 0f, p.width.toFloat(), p.height.toFloat()), bgPaint)
-        }
-        if (background == null) drawRules(canvas, p) // rules only on blank parchment
         inkPaint.color = inkColor
         for (s in p.strokes) StrokeRenderer.draw(canvas, s, inkPaint)
         current.buildPreview()?.let { StrokeRenderer.draw(canvas, it, inkPaint) }
@@ -380,7 +421,7 @@ open class InkSurfaceView @JvmOverloads constructor(
     val isDrawing: Boolean get() = drawing
 
     companion object {
-        private const val FLUSH_MS = 24L
+        private const val FLUSH_MS = 16L
         private const val CLEAN_PASS_MS = 400L
         private const val ANSWER_STEP_MS = 110L
     }

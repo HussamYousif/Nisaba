@@ -26,7 +26,8 @@ class OecProbeTest {
     fun dumpFullApi() {
         val s = runCatching { service() }.getOrNull()
         if (s == null) {
-            Log.w("NisabaOec", "service unavailable")
+            Log.w("NisabaOec", "service unavailable (expected off-Boox)")
+            assertTrue(true)
             return
         }
         for (m in s.javaClass.methods.sortedBy { it.name }) {
@@ -35,16 +36,50 @@ class OecProbeTest {
                 Log.w("NisabaOec", "API ${m.name}($params) -> ${m.returnType.name}")
             }
         }
-        val stubClass = Class.forName("android.onyx.optimization.IOECService\$Stub")
-        for (f in stubClass.declaredFields.filter { it.name.startsWith("TRANSACTION_") }) {
+        val stubClass = runCatching { Class.forName("android.onyx.optimization.IOECService\$Stub") }.getOrNull()
+        stubClass?.declaredFields?.filter { it.name.startsWith("TRANSACTION_") }?.forEach { f ->
             Log.w("NisabaOec", "CODE ${f.getInt(null)} = ${f.name}")
         }
         assertTrue(true)
     }
 
     @Test
+    fun dumpEacConfigFieldsAndApply() {
+        // 1. EACAppConfig field names = candidate Bundle keys.
+        val cfgClass = runCatching { Class.forName("android.onyx.optimization.EACAppConfig") }.getOrNull()
+        if (cfgClass != null) {
+            for (f in cfgClass.declaredFields) {
+                Log.w("NisabaOec", "CFG ${f.name}")
+            }
+        } else {
+            Log.w("NisabaOec", "EACAppConfig class not found")
+        }
+        // 2. Try writing our refresh config via Bundle.
+        val s = runCatching { service() }.getOrNull() ?: return
+        val applier = s.javaClass.methods.firstOrNull { it.name == "applyAppConfigToService" }
+        if (applier != null) {
+            val bundle = android.os.Bundle().apply {
+                putString("refreshModeIndex", "refresh_mode_1")
+                putInt("updateMode", 3)
+            }
+            try {
+                applier.invoke(s, listOf("com.nisaba"), bundle)
+                Log.w("NisabaOec", "applyAppConfigToService called OK")
+            } catch (e: Exception) {
+                Log.w("NisabaOec", "apply FAILED: ${e.cause?.message ?: e.message}")
+            }
+        }
+        assertTrue(true)
+    }
+
+    @Test
     fun dumpTransactionCodesAndSweepModes() {
-        val stubClass = Class.forName("android.onyx.optimization.IOECService\$Stub")
+        val stubClass = runCatching { Class.forName("android.onyx.optimization.IOECService\$Stub") }.getOrNull()
+            ?: run {
+                Log.w("NisabaOec", "service unavailable (expected off-Boox)")
+                assertTrue(true)
+                return
+            }
         val constants = stubClass.declaredFields
             .filter { it.name.startsWith("TRANSACTION_") }
             .sortedBy { runCatching { it.getInt(null) }.getOrDefault(Int.MAX_VALUE) }
@@ -52,7 +87,7 @@ class OecProbeTest {
             Log.w("NisabaOec", "CODE ${f.getInt(null)} = ${f.name}")
         }
 
-        val s = service()
+        val s = runCatching { service() }.getOrNull() ?: return
         val setter = s.javaClass.methods.first { it.name == "setAppScopeRefreshMode" }
         val getter = s.javaClass.methods.first { it.name == "getAppScopeRefreshMode" }
         val current = getter.invoke(s)
