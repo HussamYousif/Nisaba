@@ -79,9 +79,19 @@ class AppSettings(context: Context) {
         get() = plain.getInt(KEY_IDLE_SECONDS, 3)
         set(value) = plain.edit().putInt(KEY_IDLE_SECONDS, value.coerceIn(1, 30)).apply()
 
+    /** Writing ink palette key: "ink" | "sepia" | "blue" (F2.5, M5). */
+    var inkColor: String
+        get() = plain.getString(KEY_INK_COLOR, "sepia") ?: "sepia"
+        set(value) = plain.edit().putString(KEY_INK_COLOR, value).apply()
+
     var soundsEnabled: Boolean
         get() = plain.getBoolean(KEY_SOUNDS, false)
         set(value) = plain.edit().putBoolean(KEY_SOUNDS, value).apply()
+
+    /** First-run onboarding shown once (docs/09 §6, M5). */
+    var onboardingSeen: Boolean
+        get() = plain.getBoolean(KEY_ONBOARDING_SEEN, false)
+        set(value) = plain.edit().putBoolean(KEY_ONBOARDING_SEEN, value).apply()
 
     /** Normalized chat-completions URL for the configured base. */
     fun chatCompletionsUrl(): String {
@@ -106,6 +116,8 @@ class AppSettings(context: Context) {
         private const val KEY_MAX_TOKENS = "max_tokens"
         private const val KEY_AUTO_SUMMON = "auto_summon"
         private const val KEY_IDLE_SECONDS = "idle_seconds"
+        private const val KEY_INK_COLOR = "ink_color"
         private const val KEY_SOUNDS = "sounds"
+        private const val KEY_ONBOARDING_SEEN = "onboarding_seen"
     }
 }

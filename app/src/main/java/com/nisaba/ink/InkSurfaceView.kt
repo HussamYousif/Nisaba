@@ -329,10 +329,43 @@ open class InkSurfaceView @JvmOverloads constructor(
     private var answerAnimating = false
     private val answerHandler = Handler(Looper.getMainLooper())
     private val answerTick = Runnable { advanceAnswer() }
+    private val smudgeTick = Runnable { advanceSmudge() }
+
+    /** Page-space top of each answer layout, parallel to [answerLayouts] (M5). */
+    private var answerLayoutStarts: List<Float> = emptyList()
+
+    /** Layout index currently smudging away, or -1. */
+    private var smudgeIndex = -1
+    private var smudgeStep = 0
+
+    /** Fired when a long-press lands on the page (finger); page-space coords. */
+    var onAnswerLongPress: ((pageX: Float, pageY: Float) -> Unit)? = null
+
+    /** Fired when the smudge-away animation finished; the caller removes the answer. */
+    var onSmudgeComplete: (() -> Unit)? = null
+
+    // Explicit main-looper handler: the view may be constructed off the main
+    // thread (instrumented tests), and GestureDetector's default handler binds
+    // to the constructing thread.
+    private val gestureDetector = android.view.GestureDetector(
+        context,
+        object : android.view.GestureDetector.SimpleOnGestureListener() {
+            override fun onLongPress(e: android.view.MotionEvent) {
+                onAnswerLongPress?.invoke(transform.toPageX(e.x), transform.toPageY(e.y))
+            }
+        },
+        Handler(Looper.getMainLooper()),
+    )
 
     /** Replaces the answer ink; [animateLast] writes only the newest in. */
-    fun setAnswers(layouts: List<AnswerInk.Layout>, displayBottom: Float, animateLast: Boolean) {
+    fun setAnswers(
+        layouts: List<AnswerInk.Layout>,
+        displayBottom: Float,
+        animateLast: Boolean,
+        layoutStarts: List<Float> = emptyList(),
+    ) {
         answerLayouts = layouts
+        answerLayoutStarts = layoutStarts
         answerDisplayBottom = displayBottom
         if (animateLast && layouts.isNotEmpty()) {
             answerTicks = 0
@@ -348,6 +381,45 @@ open class InkSurfaceView @JvmOverloads constructor(
             answerTicks = Int.MAX_VALUE
         }
         requestLayout() // the page may need to grow
+        invalidate()
+    }
+
+    /** Which answer layout contains [pageX]/[pageY], or null (M5 hit-testing). */
+    fun answerGroupIndexAt(pageX: Float, pageY: Float): Int? {
+        for (i in answerLayouts.indices) {
+            val start = answerLayoutStarts.getOrNull(i) ?: continue
+            val end = start + answerLayouts[i].heightPx
+            if (pageY in start..end) return i
+        }
+        return null
+    }
+
+    /**
+     * Plays the smudge-away animation for layout [index] (F4.6, M5): the ink
+     * streaks into gray smudges over a few steps, then [onSmudgeComplete]
+     * fires and the caller removes the answer from the session.
+     */
+    fun beginSmudge(index: Int) {
+        if (index !in answerLayouts.indices || smudgeIndex != -1) return
+        smudgeIndex = index
+        smudgeStep = 0
+        answerHandler.removeCallbacks(smudgeTick)
+        answerHandler.postDelayed(smudgeTick, INK_STEP_MS)
+        invalidate()
+    }
+
+    val isSmudging: Boolean get() = smudgeIndex != -1
+
+    private fun advanceSmudge() {
+        if (smudgeIndex == -1) return
+        smudgeStep++
+        if (smudgeStep >= SMUDGE_STEPS) {
+            smudgeIndex = -1
+            answerHandler.removeCallbacks(smudgeTick)
+            onSmudgeComplete?.invoke()
+        } else {
+            answerHandler.postDelayed(smudgeTick, INK_STEP_MS)
+        }
         invalidate()
     }
 
@@ -401,6 +473,8 @@ open class InkSurfaceView @JvmOverloads constructor(
         super.onDetachedFromWindow()
         inkHandler.removeCallbacks(inkTick)
         answerHandler.removeCallbacks(answerTick)
+        answerHandler.removeCallbacks(smudgeTick)
+        smudgeIndex = -1
         flushHandler.removeCallbacks(flushRunnable)
         flushHandler.removeCallbacks(cleanRunnable)
         inkPhase = InkPhase.IDLE
@@ -454,6 +528,10 @@ open class InkSurfaceView @JvmOverloads constructor(
         if (answerLayouts.isEmpty()) return
         val animatingLayout = answerAnimating
         for ((li, layout) in answerLayouts.withIndex()) {
+            if (li == smudgeIndex) {
+                drawSmudge(canvas, layout, smudgeStep.toFloat() / SMUDGE_STEPS)
+                continue
+            }
             val isLast = li == answerLayouts.lastIndex
             // Only the last layout ever animates; its item offsets are relative
             // to its own start — no cross-layout accumulator (audit P0-4: the
@@ -492,6 +570,40 @@ open class InkSurfaceView @JvmOverloads constructor(
         }
     }
 
+    /**
+     * The smudge-away (F4.6, M5): the answer streaks horizontally into gray
+     * smudges as [progress] goes 0→1 — three passes at widening offsets with
+     * fading alpha reads as ink being smeared, not erased.
+     */
+    private fun drawSmudge(canvas: Canvas, layout: AnswerInk.Layout, progress: Float) {
+        if (progress <= 0f) return
+        val streak = progress * 10f
+        val fade = (0xFF * (1f - progress)).toInt().coerceIn(0, 0xFF)
+        for ((ii, item) in layout.items.withIndex()) {
+            val wob = ((ii * 7) % 5 - 2) * streak * 0.35f // per-item smear direction
+            for (pass in -1..1) {
+                val dx = pass * streak + wob * pass
+                when (item) {
+                    is AnswerInk.Layout.Item.Line -> {
+                        val p = Paint(item.paint).apply { alpha = fade }
+                        canvas.drawText(item.text, item.x + dx, item.baselineY, p)
+                    }
+                    is AnswerInk.Layout.Item.Rule -> {
+                        val p = Paint(item.paint).apply { alpha = fade }
+                        canvas.drawLine(item.x1 + dx, item.y1, item.x2 + dx, item.y2, p)
+                    }
+                    is AnswerInk.Layout.Item.Path -> {
+                        val p = Paint(item.paint).apply { alpha = fade }
+                        canvas.save()
+                        canvas.translate(dx, 0f)
+                        canvas.drawPath(item.path, p)
+                        canvas.restore()
+                    }
+                }
+            }
+        }
+    }
+
     private fun drawRules(canvas: Canvas, p: NotebookPage) {
         var y = MagicTheme.RULE_SPACING
         while (y < p.height) {
@@ -506,6 +618,11 @@ open class InkSurfaceView @JvmOverloads constructor(
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         val isStylus = isStylusEvent(event)
+
+        // Fingers never draw, but they feed the gesture detector: a long-press
+        // on the answer area summons the per-answer controls (M5, F4.6). The
+        // event itself is still declined so parents can scroll/click.
+        if (!isStylus) gestureDetector.onTouchEvent(event)
 
         // A touch during the drain finishes it now — never consumed here, so
         // pen input carries on untouched (docs/09 §2).
@@ -644,6 +761,7 @@ open class InkSurfaceView @JvmOverloads constructor(
         private const val BEAD_STEPS = 12
         private const val FLOW_PAUSE_STEPS = 22
         private const val RECEDE_STEPS = 8
+        private const val SMUDGE_STEPS = 5 // ~0.5 s smudge-away (M5, F4.6)
         private const val BREATH_STEPS = 60 // ~6 s breathing cycle at INK_STEP_MS
         private const val RIPPLE_STEP = 0.18f
         private const val BLOT_RADIUS = 24f

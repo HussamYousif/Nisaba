@@ -30,7 +30,7 @@ IDs are stable. Items marked **[v2]** are explicitly deferred, listed here so th
 - **F1.2** Create a notebook from a PDF (see F6).
 - **F1.3** List notebooks on the shelf with a rendered thumbnail of the most recent page.
 - **F1.4** Delete a notebook (with a two-step confirm — long-press → "Smudge away").
-- **F1.5** Rename a notebook. **[M5 backlog — not in v1]**
+- **F1.5** Rename a notebook (long-press a tome on the shelf).
 - **F1.6** Multi-page notebooks: swipe or tap page-edge to turn pages; new blank page button (⇢). **[v2: insert blank pages between PDF pages]**
 
 ### F2 — Stylus writing
@@ -38,7 +38,7 @@ IDs are stable. Items marked **[v2]** are explicitly deferred, listed here so th
 - **F2.2** Fingers never draw. Palm rejection = tool-type gating: only stylus events draw (see 04 §4; hover-based gating was considered and dropped — audit P4-3).
 - **F2.3** Eraser: pen side-button toggle + toolbar eraser tool; erases whole strokes in v1 (pixel-level erasing in v2).
 - **F2.4** Undo/redo stack (stroke-level), including erases.
-- **F2.5** Ink colors: *Ink Black*, *Sepia*, *Deep Blue*. **[M5 backlog — `MagicTheme.inkColor()` exists but no UI; v1 writes sepia only]**
+- **F2.5** Ink colors: *Ink Black*, *Sepia*, *Deep Blue* — chosen in Settings, adopted by notebooks on open.
 - **F2.6** Stroke data must survive app death at any point (autosave debounce + atomic writes, see 05 §4).
 - **F2.7** Zoom: fixed 100% fit-width in v1; pinch-zoom with re-render in v2. (10.3" at 300ppi makes 100% usable; revisit after device testing.)
 
@@ -47,7 +47,7 @@ IDs are stable. Items marked **[v2]** are explicitly deferred, listed here so th
 - **F3.2** Cancel-on-resume: if the user produces new stroke points while a request is pending, cancel the request (network call aborted) and re-arm idle detection. A partially-started answer is discarded cleanly.
 - **F3.3** Manual summon: floating **quill button**; also re-summons the *latest question* (e.g. after an error) and re-sends the current page with full context.
 - **F3.4** Only send when there is something new to answer; never re-summon identical content automatically.
-- **F3.5** While a request is in flight: the summon ink narrative plays on the page; input remains fully usable (user may doodle). **[M5 backlog — the small ✕ manual cancel is not in v1; writing cancels, and tap-to-skip drains the ink]**
+- **F3.5** While a request is in flight: the summon ink narrative plays on the page; input remains fully usable (user may doodle); after 30 s a word appears ("The scribe turns the page…"). Writing cancels; tap-to-skip drains the ink. **[v2: explicit ✕ cancel]**
 - **F3.6** Only the **current page** is sent as image (plus conversation transcript as text — see 07 §5). **[v2: include last N pages]**
 
 ### F4 — Answer blocks (the response)
@@ -56,7 +56,7 @@ IDs are stable. Items marked **[v2]** are explicitly deferred, listed here so th
 - **F4.3** Text renders in the cursive body font, legible at arm's length (≥ ~18sp effective), headings in the calligraphic font (see 08 §3).
 - **F4.4** Drawings animate in as "ink being drawn" (PathMeasure, discrete steps — see 08 §5). Drawings are constrained to a safe SVG subset (no gradients, no text, bounded size).
 - **F4.5** Tables render as ruled lines with calligraphic headers, auto-sized columns (see 08 §6).
-- **F4.6** Per-answer controls: regenerate (✒️), delete (smudge), and "copy text" on long-press. **[M5 backlog — not in v1; deleting an answer removes it and its context contribution (F5.3)** **[v2: edit]**
+- **F4.6** Per-answer controls on long-press: regenerate (✒️), smudge-away delete, and copy text. Deleting removes the answer and its context contribution (F5.3). **[v2: edit]**
 - **F4.7** Answers are stored in the notebook transcript; reopening the page re-renders them exactly (vector, not screenshots).
 
 ### F5 — Conversation memory
@@ -76,12 +76,12 @@ IDs are stable. Items marked **[v2]** are explicitly deferred, listed here so th
 ### F7 — Settings
 - **F7.1** DeepSeek **API key** (masked, stored in EncryptedSharedPreferences — see 03 §7).
 - **F7.2** Base URL (default `https://api.deepseek.com`), **model name** (default `deepseek-v4-flash-vision-exp`).
-- **F7.3** Response language (default English), temperature (default 0.7), max tokens (default 4096). **[M5 backlog — temperature/maxTokens exist in `AppSettings` but have no UI; language is English-only in v1]**
+- **F7.3** Temperature (default 0.7) and max tokens (default 4096) in Settings. Response language: English-only in v1 **[v2: language setting]**.
 - **F7.4** Idle-pause duration (default 3 s), auto-summon on/off. **[M5 backlog — sounds on/off: `soundsEnabled` exists but nothing plays sounds]**
 - **F7.5** Theme tone (parchment shades), ink color default.
 - **F7.6** "Test the connection" button that sends a tiny request and reports a friendly result.
 
-### F8 — Export **[M5 backlog — not in v1; v1 has no export]** **[v2: PDF export; v1 = PNG]**
+### F8 — Export **[v2: PDF export; v1 = PNG]**
 - **F8.1** Export current page → PNG at page resolution (strokes + background).
 - **F8.2** Share sheet after export.
 

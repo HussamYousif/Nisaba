@@ -48,7 +48,7 @@ E-ink cannot do smooth motion — so the magic is **discrete and deliberate**:
    **The answer is written with the ink that reached out.** `DRINK` is why the trail disappears, and it is a different gesture from `RECEDE`: consumed (drained tail-first into the blot) versus undone (retracted tip-first back into the stroke). The drain is skippable — a touch finishes it at once.
 4. **Page turns**: instant swap + single clear refresh (04 §2.3). No slide.
 5. **Summon-cancel feedback**: when writing resumes and the summon cancels, the thread retracts tip-first back into the stroke and the blot goes with it — the notebook "steps back". Deliberately not the same motion as `DRINK`.
-6. **Smudge-away delete** (08 §7): the answer streaks into gray smudges (5 steps), then vanishes with a clean pass.
+6. **Smudge-away delete** (08 §7): long-press an answer → smudge it away: the ink streaks into gray smudges (5 steps), then vanishes with a clean pass.
 
 Rule: **every animation is steps, not frames; every step is a partial refresh; every animation completes in ≤ 8 s and is skippable by tap.**
 
@@ -71,7 +71,7 @@ Rule: **every animation is steps, not frames; every step is a partial refresh; e
 ```
 
 - The **quill button** (floating, bottom-right, ink-red quill icon) summons immediately — also used after errors and to re-summon the latest question (F3.3).
-- **First-run onboarding** (one screen, skip-able): a parchment explaining the three things — *write, pause, the book answers* — with a tiny live demo: a pre-drawn squiggle that gets answered by a script "Well met. Write me a question." (also serves as a live API-key test, F7.6). **[M5 backlog — not in v1]**
+- **First-run onboarding** (one screen): a parchment explaining the three things — *write, pause, the book answers* — shown once until dismissed. **[v2: the live squiggle demo]**
 - No toasts, no dialogs during the flow — the page itself communicates.
 
 ## 4. Waiting-state copy (all in ink_soft, Kalam)
@@ -79,7 +79,7 @@ Rule: **every animation is steps, not frames; every step is a partial refresh; e
 | State | Copy |
 |---|---|
 | Request sent | *"The ink stirs…"* |
-| Still thinking (> 30 s) | *"The scribe turns the page…"* (second line appears) **[M5 backlog — not in v1]** |
+| Still thinking (> 30 s) | *"The scribe turns the page…"* (toast after 30 s) |
 | Cancelled by writing | (nothing — silent un-fill; maybe *"…as you were."* at 0.35 opacity, fades via steps) |
 | Error | *"The ink smudged — the spirit world was unreachable."* + ✒️ Write it again + 🗝 Check the key (Settings) |
 | Offline | same error, with "check your connection" hint |

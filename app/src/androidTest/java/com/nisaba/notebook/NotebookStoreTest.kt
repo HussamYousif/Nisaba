@@ -163,6 +163,17 @@ class NotebookStoreTest {
     }
 
     @Test
+    fun rename_updatesTitleAndPersists() {
+        // F1.5 (M5): rename writes through and survives a reload.
+        val nb = store.createBlank()
+        store.rename(nb.id, "  My lecture notes  ")
+        assertEquals("My lecture notes", store.load(nb.id).title)
+
+        store.rename(nb.id, "   ")
+        assertEquals("blank titles are rejected", "My lecture notes", store.load(nb.id).title)
+    }
+
+    @Test
     fun save_failureLeavesTheGoodCopyIntact() {
         // Audit P0-6: the old rename fallback deleted notebook.json to retry
         // a rename that just failed — a second failure would lose the

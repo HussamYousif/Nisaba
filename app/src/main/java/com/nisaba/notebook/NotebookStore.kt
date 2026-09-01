@@ -214,6 +214,15 @@ class NotebookStore(private val context: Context) {
 
     fun thumbnailFile(id: String): File = File(dirOf(id), "thumb.png")
 
+    /** Renames a notebook (F1.5, M5); no-op for a blank title. */
+    fun rename(id: String, title: String) {
+        val trimmed = title.trim()
+        if (trimmed.isEmpty()) return
+        val nb = load(id)
+        nb.title = trimmed
+        saveNow(nb)
+    }
+
     // ------------------------------------------------------------ delete
 
     fun delete(id: String) {

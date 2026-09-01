@@ -40,7 +40,10 @@ class SettingsScreen @JvmOverloads constructor(
     private lateinit var baseField: EditText
     private lateinit var modelField: EditText
     private lateinit var idleField: EditText
+    private lateinit var tempField: EditText
+    private lateinit var tokensField: EditText
     private lateinit var autoSwitch: SwitchCompat
+    private lateinit var selectedHint: TextView
     private lateinit var testResult: TextView
 
     fun bind(settings: AppSettings, onBack: () -> Unit) {
@@ -124,6 +127,64 @@ class SettingsScreen @JvmOverloads constructor(
         }
         root.addView(idleField)
 
+        // Temperature (F7.3, M5)
+        root.addView(label(context, "Temperature (0–2)"))
+        tempField = EditText(context).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+            setText(settings.temperature.toString())
+            setTextColor(MagicTheme.INK)
+        }
+        root.addView(tempField)
+
+        // Max tokens (F7.3, M5)
+        root.addView(label(context, "Max tokens"))
+        tokensField = EditText(context).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER
+            setText(settings.maxTokens.toString())
+            setTextColor(MagicTheme.INK)
+        }
+        root.addView(tokensField)
+
+        // Ink color (F2.5, M5): the palette from docs/04 §6.
+        root.addView(label(context, "Ink colour"))
+        val inkRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, 0, 0, dp(6))
+        }
+        fun selectSwatch(chosen: TextView) {
+            for (i in 0 until inkRow.childCount) inkRow.getChildAt(i).background = null
+            chosen.background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0x22FFFFFF.toInt())
+                cornerRadius = 6f
+            }
+        }
+        for ((key, color) in listOf(
+            "ink" to MagicTheme.INK,
+            "sepia" to MagicTheme.INK_SOFT,
+            "blue" to MagicTheme.BLUE_INK,
+        )) {
+            inkRow.addView(TextView(context).apply {
+                text = "●"
+                textSize = 26f
+                setTextColor(color)
+                setPadding(dp(10), 0, dp(10), 0)
+                setOnClickListener {
+                    settings.inkColor = key
+                    selectSwatch(this)
+                    selectedHint.text = context.getString(R.string.settings_ink_selected, key)
+                }
+                if (settings.inkColor == key) selectSwatch(this)
+            })
+        }
+        root.addView(inkRow)
+        selectedHint = TextView(context).apply {
+            textSize = 12f
+            typeface = Fonts.kalam
+            setTextColor(MagicTheme.INK_SOFT)
+            setPadding(0, 0, 0, dp(8))
+        }
+        root.addView(selectedHint)
+
         // Test connection
         root.addView(TextView(context).apply {
             text = "🖋 Test the connection"
@@ -157,6 +218,8 @@ class SettingsScreen @JvmOverloads constructor(
         baseField.setOnFocusChangeListener { _, hasFocus -> if (!hasFocus) persist() }
         modelField.setOnFocusChangeListener { _, hasFocus -> if (!hasFocus) persist() }
         idleField.setOnFocusChangeListener { _, hasFocus -> if (!hasFocus) persist() }
+        tempField.setOnFocusChangeListener { _, hasFocus -> if (!hasFocus) persist() }
+        tokensField.setOnFocusChangeListener { _, hasFocus -> if (!hasFocus) persist() }
         autoSwitch.setOnCheckedChangeListener { _, checked -> settings.autoSummonEnabled = checked }
     }
 
@@ -167,6 +230,8 @@ class SettingsScreen @JvmOverloads constructor(
         s.baseUrl = baseField.text.toString()
         s.model = modelField.text.toString()
         s.idlePauseSeconds = idleField.text.toString().toIntOrNull() ?: 3
+        s.temperature = tempField.text.toString().toFloatOrNull()?.coerceIn(0f, 2f) ?: 0.7f
+        s.maxTokens = tokensField.text.toString().toIntOrNull()?.coerceIn(256, 16384) ?: 4096
     }
 
     private fun testConnection() {

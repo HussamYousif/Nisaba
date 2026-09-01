@@ -159,6 +159,32 @@ class NotebookSession(
         changed(Reason.ANSWERS)
     }
 
+    /**
+     * Removes an answer and its transcript contribution (F5.3, M5): the
+     * exchange disappears from context too. Undoable.
+     */
+    fun removeAnswer(groupId: String) {
+        val page = currentPage() ?: return
+        if (page.answers.none { it.id == groupId }) return
+        val beforeAnswers = page.answers
+        val beforeTranscript = notebook.transcript
+        page.answers = beforeAnswers.filterNot { it.id == groupId }
+        notebook.transcript = beforeTranscript.filterNot { it.answerGroupId == groupId }
+        push(
+            reason = Reason.ANSWERS,
+            undo = {
+                page.answers = beforeAnswers
+                notebook.transcript = beforeTranscript
+            },
+            redo = {
+                page.answers = beforeAnswers.filterNot { it.id == groupId }
+                notebook.transcript = beforeTranscript.filterNot { it.answerGroupId == groupId }
+            },
+        )
+        contentVersion++
+        changed(Reason.ANSWERS)
+    }
+
     fun appendTranscript(entries: List<TranscriptEntry>) {
         notebook.transcript = notebook.transcript + entries
     }

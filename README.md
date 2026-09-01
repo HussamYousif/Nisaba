@@ -17,7 +17,7 @@ The answers come from **DeepSeek** (vision model: `deepseek-v4-flash-vision-exp`
 | M2 – PDF import ("Open a Tome") | ✅ Code complete, tests green; PDF pixel-render env-gated (docs/06) |
 | M3 – The summon (core loop) | ✅ Code complete, live API verified (2026-08-31); on-device pass on the Boox pending (docs/11) |
 | M4 – Magic presentation | ✅ Code complete (SVG-subset ink renderer, self-inking drawings, ruled tables, tap-to-skip reveal); device pass pending — parchment textures + reveal tuning + N11 legibility photo test remain (docs/11) |
-| M5 – Conversation polish (regenerate, smudge, export, onboarding) | ⏳ Next |
+| M5 – Conversation polish (regenerate, smudge-away, copy, export, rename, onboarding, settings extras) | ✅ Code complete, tests green; on-device pass pending |
 | Signed release APK | ⏳ Planned |
 
 ## Target device

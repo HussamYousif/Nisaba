@@ -62,7 +62,67 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         })
-        showShelf()
+        if (settings.onboardingSeen) {
+            showShelf()
+        } else {
+            showOnboarding()
+        }
+    }
+
+    /** First-run onboarding (docs/09 §6, M5): one parchment, three words. */
+    private fun showOnboarding() {
+        val screen = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setBackgroundColor(com.nisaba.magic.MagicTheme.PARCHMENT)
+            setPadding(90, 160, 90, 90)
+            addView(android.widget.TextView(context).apply {
+                text = getString(R.string.onboarding_title)
+                typeface = com.nisaba.magic.Fonts.dancingScript
+                textSize = 64f
+                setTextColor(com.nisaba.magic.MagicTheme.INK)
+                gravity = android.view.Gravity.CENTER
+            })
+            addView(android.widget.TextView(context).apply {
+                text = getString(R.string.onboarding_subtitle)
+                typeface = com.nisaba.magic.Fonts.kalam
+                textSize = 22f
+                setTextColor(com.nisaba.magic.MagicTheme.INK_SOFT)
+                gravity = android.view.Gravity.CENTER
+                setPadding(0, 10, 0, 90)
+            })
+            for (line in listOf(
+                getString(R.string.onboarding_step_write),
+                getString(R.string.onboarding_step_pause),
+                getString(R.string.onboarding_step_answer),
+            )) {
+                addView(android.widget.TextView(context).apply {
+                    text = line
+                    typeface = com.nisaba.magic.Fonts.kalam
+                    textSize = 30f
+                    setTextColor(com.nisaba.magic.MagicTheme.INK)
+                    gravity = android.view.Gravity.CENTER
+                    setPadding(0, 28, 0, 28)
+                })
+            }
+            addView(android.widget.TextView(context).apply {
+                text = getString(R.string.onboarding_begin)
+                typeface = com.nisaba.magic.Fonts.kalamBold
+                textSize = 26f
+                setTextColor(android.graphics.Color.WHITE)
+                gravity = android.view.Gravity.CENTER
+                setPadding(0, 22, 0, 22)
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(com.nisaba.magic.MagicTheme.INK)
+                    cornerRadius = 14f
+                }
+                setOnClickListener {
+                    settings.onboardingSeen = true
+                    container.removeAllViews()
+                    showShelf()
+                }
+            })
+        }
+        container.addView(screen)
     }
 
     override fun onDestroy() {

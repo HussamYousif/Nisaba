@@ -10,6 +10,7 @@ import com.nisaba.notebook.model.AnswerGroup
 import com.nisaba.notebook.model.NotebookPage
 import com.nisaba.render.AnswerInk
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -160,5 +161,39 @@ class InkAnswerTest {
 
         v.page = NotebookPage(index = 1, width = 2480, height = 1860)
         assertEquals("no answer ink may follow you to the next page", 0, v.answerItemCount)
+    }
+
+    @Test
+    fun answerGroupIndexAt_hitTestsTheLayoutBounds() {
+        // M5, F4.6: long-press hit-testing must find the answer under the
+        // finger, using the page-space layout starts passed to setAnswers.
+        val v = view()
+        val a = AnswerInk.Layout(items = emptyList(), heightPx = 100f)
+        val b = AnswerInk.Layout(items = emptyList(), heightPx = 80f)
+        v.setAnswers(listOf(a, b), 2000f, animateLast = false, layoutStarts = listOf(500f, 660f))
+
+        assertEquals("first answer", 0, v.answerGroupIndexAt(100f, 550f))
+        assertEquals("second answer", 1, v.answerGroupIndexAt(100f, 680f))
+        assertEquals("above all answers", null, v.answerGroupIndexAt(100f, 400f))
+        assertEquals("below all answers", null, v.answerGroupIndexAt(100f, 900f))
+    }
+
+    @Test
+    fun beginSmudge_playsThenFiresOnSmudgeComplete() {
+        // M5, F4.6: the smudge-away animation runs a few steps and then the
+        // caller is told to remove the answer.
+        val v = view()
+        v.setAnswers(listOf(sampleLayout()), 2000f, animateLast = false)
+        var completed = false
+        v.onSmudgeComplete = { completed = true }
+
+        v.beginSmudge(0)
+        assertTrue(v.isSmudging)
+        v.beginSmudge(0) // already smudging: ignored, one animation only
+        Thread.sleep(150)
+        v.draw(Canvas(Bitmap.createBitmap(600, 500, Bitmap.Config.ARGB_8888))) // mid-smudge: no crash
+        Thread.sleep(700) // 5 steps × 100 ms + slack
+        assertTrue("smudge must complete", completed)
+        assertFalse(v.isSmudging)
     }
 }

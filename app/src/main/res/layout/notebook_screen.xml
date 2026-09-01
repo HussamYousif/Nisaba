@@ -106,6 +106,17 @@
             android:textSize="22sp" />
 
         <TextView
+            android:id="@+id/nbExport"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:paddingHorizontal="10dp"
+            android:text="@string/nb_export"
+            android:contentDescription="@string/nb_export_desc"
+            android:textColor="@color/ink"
+            android:textSize="22sp" />
+
+        <TextView
             android:id="@+id/nbNewPage"
             android:layout_width="wrap_content"
             android:layout_height="match_parent"

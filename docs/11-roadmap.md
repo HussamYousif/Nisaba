@@ -23,8 +23,8 @@ Status: **Draft v0.1** · Ordered by risk-first (the scary unknowns get disprove
 **Scope:** cursive typography (08 §3), text/table/drawing renderers, SVG subset + ink-reveal engine (08 §4–6), flourish dividers. **Remaining from the original scope:** parchment textures (09 §1), reveal animation tuning on e-ink, and the **legibility photo test** on the real screen (N11) — these ride along with the on-device pass.
 **Done when:** a summon returns a mixed answer (text + table + drawing) that draws itself in, is legible at arm's length, and has no ghosting artifacts after the final clean pass.
 
-### M5 — Conversation & polish
-**Scope:** transcript context (F5), regenerate/smudge-away, per-answer controls, settings screen (F7) incl. encrypted key + connection test, PNG export (F8), onboarding screen, sounds (optional), anti-magic audit (09 §9).
+### M5 — Conversation & polish *(code complete; device pass pending)*
+**Scope:** transcript context (F5), regenerate/smudge-away (long-press), per-answer controls, settings screen (F7) incl. encrypted key + connection test + temperature/max-tokens/ink-colour, rename (F1.5), PNG export via share sheet (F8), onboarding screen, the >30 s thinking line, anti-magic audit (09 §9). **Remaining:** sounds (optional — nothing plays them yet) and the on-device pass.
 **Done when:** a 10-exchange conversation in one notebook stays coherent; everything from S1–S14 passes on-device.
 
 ### M6 — Release

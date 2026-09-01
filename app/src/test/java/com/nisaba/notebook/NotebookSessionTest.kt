@@ -159,4 +159,50 @@ class NotebookSessionTest {
         // Only the last 50 strokes are undoable.
         assertEquals(10, notebook.pages[0].strokes.size)
     }
+
+    @Test
+    fun removeAnswer_removesGroupAndTranscript_withUndo() {
+        // M5, F5.3: smudging an answer removes it AND its transcript
+        // contribution; undo brings both back.
+        val g = com.nisaba.notebook.model.AnswerGroup(
+            id = "a1", status = "complete",
+            blocks = listOf(com.nisaba.notebook.model.AnswerBlock(type = "text", markdown = "hi")),
+        )
+        session.appendAnswer(g)
+        session.appendTranscript(
+            listOf(
+                com.nisaba.notebook.model.TranscriptEntry(role = "user", at = "t", pageIndex = 0),
+                com.nisaba.notebook.model.TranscriptEntry(role = "assistant", at = "t", pageIndex = 0, answerGroupId = "a1"),
+            )
+        )
+        assertEquals(1, notebook.pages[0].answers.size)
+        assertEquals(2, notebook.transcript.size)
+
+        session.removeAnswer("a1")
+        assertEquals(0, notebook.pages[0].answers.size)
+        // The user's question stays in the transcript; the answer's entry leaves.
+        assertEquals(1, notebook.transcript.size)
+        assertEquals("user", notebook.transcript[0].role)
+
+        session.undo()
+        assertEquals(1, notebook.pages[0].answers.size)
+        assertEquals(2, notebook.transcript.size)
+
+        session.redo()
+        assertEquals(0, notebook.pages[0].answers.size)
+        assertEquals(1, notebook.transcript.size)
+    }
+
+    @Test
+    fun removeAnswer_unknownId_isANoOp() {
+        session.appendAnswer(
+            com.nisaba.notebook.model.AnswerGroup(
+                id = "a1", status = "complete",
+                blocks = listOf(com.nisaba.notebook.model.AnswerBlock(type = "text", markdown = "hi")),
+            )
+        )
+        session.removeAnswer("ghost")
+        assertEquals(1, notebook.pages[0].answers.size)
+        assertFalse(session.canUndo())
+    }
 }

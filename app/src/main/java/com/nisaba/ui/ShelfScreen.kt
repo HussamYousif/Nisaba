@@ -55,6 +55,10 @@ class ShelfScreen @JvmOverloads constructor(
             store?.delete(item.id)
             refresh()
         },
+        onRename = { id, title ->
+            store?.rename(id, title)
+            refresh()
+        },
     )
     // Shelf listing does disk I/O (summary decode of every tome); never on
     // the main thread (audit P1-4).
@@ -116,6 +120,7 @@ class ShelfScreen @JvmOverloads constructor(
     private class ShelfAdapter(
         private val onOpen: (ShelfAction) -> Unit,
         private val onDelete: (NotebookSummary) -> Unit,
+        private val onRename: (id: String, title: String) -> Unit,
     ) : RecyclerView.Adapter<ShelfAdapter.Holder>() {
 
         private var items: List<NotebookSummary> = emptyList()
@@ -166,7 +171,7 @@ class ShelfScreen @JvmOverloads constructor(
 
             holder.itemView.setOnClickListener { onOpen(ShelfAction.Open(item.id)) }
             holder.itemView.setOnLongClickListener {
-                confirmDelete(holder.itemView.context, item)
+                confirmActions(holder.itemView.context, item)
                 true
             }
         }
@@ -190,14 +195,36 @@ class ShelfScreen @JvmOverloads constructor(
             return bmp
         }
 
-        private fun confirmDelete(context: Context, item: NotebookSummary) {
+        /** Long-press: rename (F1.5, M5) or smudge away (F1.4). */
+        private fun confirmActions(context: Context, item: NotebookSummary) {
+            val options = arrayOf(
+                context.getString(R.string.rename_title),
+                context.getString(R.string.delete_confirm),
+            )
             AlertDialog.Builder(context)
-                .setTitle(R.string.delete_title)
-                .setMessage(context.getString(R.string.delete_message, item.title))
-                .setPositiveButton(R.string.delete_confirm) { _, _ ->
-                    onDelete(item)
+                .setTitle(item.title)
+                .setItems(options) { _, which ->
+                    when (which) {
+                        0 -> promptRename(context, item)
+                        1 -> onDelete(item)
+                    }
                 }
-                .setNegativeButton(R.string.cancel, null)
+                .setNegativeButton(R.string.dismiss, null)
+                .show()
+        }
+
+        private fun promptRename(context: Context, item: NotebookSummary) {
+            val input = android.widget.EditText(context).apply {
+                setText(item.title)
+                selectAll()
+            }
+            AlertDialog.Builder(context)
+                .setTitle(R.string.rename_title)
+                .setView(input)
+                .setPositiveButton(R.string.rename_confirm) { _, _ ->
+                    onRename(item.id, input.text.toString())
+                }
+                .setNegativeButton(R.string.dismiss, null)
                 .show()
         }
 

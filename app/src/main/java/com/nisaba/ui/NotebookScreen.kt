@@ -9,6 +9,9 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import com.nisaba.R
+import android.content.Intent
+import android.graphics.Bitmap
+import com.nisaba.ink.InkPageRenderer
 import com.nisaba.ink.InkSurfaceView
 import com.nisaba.llm.AnswerParser
 import com.nisaba.llm.AppSettings
@@ -29,6 +32,7 @@ import com.nisaba.notebook.model.TranscriptEntry
 import com.nisaba.pdf.PageBackgroundCache
 import com.nisaba.render.AnswerInk
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -36,6 +40,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.FileOutputStream
 import java.time.Instant
 import java.util.UUID
 import kotlin.math.max
@@ -166,6 +171,11 @@ class NotebookScreen @JvmOverloads constructor(
         }
 
         inkView.page = nbSession.currentPage()
+        // Writing ink follows the chosen palette (F2.5, M5); adopt it into
+        // the notebook so it persists with the page.
+        val inkKey = settings.inkColor
+        nbSession.notebook.inkColor = inkKey
+        inkView.inkColor = MagicTheme.inkColor(inkKey)
         loadBackground()
         renderAnswerInk(animateLast = false)
         inkView.onStrokePoint = {
@@ -181,6 +191,9 @@ class NotebookScreen @JvmOverloads constructor(
                 renderAnswerInk(animateLast = true)
             }
         }
+        // Long-press on an answer → per-answer controls (M5, F4.6).
+        inkView.onAnswerLongPress = ::onAnswerLongPress
+        inkView.onSmudgeComplete = ::onSmudgeDone
 
         findViewById<TextView>(R.id.nbBack).apply {
             typeface = Fonts.kalam
@@ -192,6 +205,7 @@ class NotebookScreen @JvmOverloads constructor(
         findViewById<TextView>(R.id.nbPrev).apply { setOnClickListener { nbSession.turnPage(-1) } }
         findViewById<TextView>(R.id.nbNext).apply { setOnClickListener { nbSession.turnPage(1) } }
         findViewById<TextView>(R.id.nbNewPage).apply { setOnClickListener { nbSession.addPage() } }
+        findViewById<TextView>(R.id.nbExport).apply { setOnClickListener { exportPage() } }
         undoBtn.setOnClickListener { nbSession.undo() }
         redoBtn.setOnClickListener { nbSession.redo() }
         eraserBtn.setOnClickListener {
@@ -273,7 +287,16 @@ class NotebookScreen @JvmOverloads constructor(
                     max_tokens = settings!!.maxTokens,
                     messages = messages,
                 )
+                // Still thinking after 30 s: a word on the page (docs/09 §6,
+                // M5). Cancelled the moment the reply lands.
+                val slowToast = scope.launch {
+                    delay(30_000)
+                    if (generation == summonGeneration && pendingSummon) {
+                        Toast.makeText(context, R.string.summon_slow, Toast.LENGTH_LONG).show()
+                    }
+                }
                 val raw = client.chat(request)
+                slowToast.cancel()
                 val blocks = try {
                     AnswerParser.parse(raw)
                 } catch (e: AnswerParser.ParseException) {
@@ -364,6 +387,9 @@ class NotebookScreen @JvmOverloads constructor(
 
     // ------------------------------------------------------------ answers
 
+    /** The answers currently laid out on canvas, parallel to the view's layouts. */
+    private var renderedAnswers: List<AnswerGroup> = emptyList()
+
     /** Lays all complete answers out as canvas ink below the last content. */
     private fun renderAnswerInk(animateLast: Boolean) {
         val page = session?.currentPage() ?: return
@@ -374,17 +400,112 @@ class NotebookScreen @JvmOverloads constructor(
             // not linger (audit P0-2). While an answer is held for the drain
             // the canvas already shows it, so a blank would blank a live
             // reveal — only clear when nothing is held.
-            if (held == null) inkView.setAnswers(emptyList(), page.height.toFloat(), animateLast = false)
+            if (held == null) {
+                renderedAnswers = emptyList()
+                inkView.setAnswers(emptyList(), page.height.toFloat(), animateLast = false)
+            }
             return
         }
         var y = contentBottom(page) + 140f
         val layouts = ArrayList<AnswerInk.Layout>(groups.size)
+        val starts = ArrayList<Float>(groups.size)
         for (g in groups) {
             val l = AnswerInk.layout(g, page.width.toFloat(), y, context)
             layouts.add(l)
+            starts.add(y)
             y += l.heightPx + 60f
         }
-        inkView.setAnswers(layouts, y, animateLast)
+        renderedAnswers = groups
+        inkView.setAnswers(layouts, y, animateLast, layoutStarts = starts)
+    }
+
+    /** Long-press on the answer area: per-answer controls (M5, F4.6). */
+    private fun onAnswerLongPress(pageX: Float, pageY: Float) {
+        if (pendingSummon) return // the ink is mid-ritual; don't fight it
+        val idx = inkView.answerGroupIndexAt(pageX, pageY) ?: return
+        val group = renderedAnswers.getOrNull(idx) ?: return
+        val options = arrayOf(
+            context.getString(R.string.answer_regenerate),
+            context.getString(R.string.answer_smudge),
+            context.getString(R.string.answer_copy),
+        )
+        android.app.AlertDialog.Builder(context)
+            .setTitle(context.getString(R.string.answer_controls_title))
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> regenerateAnswer(group)
+                    1 -> smudgeAnswer(idx, group)
+                    2 -> copyAnswer(group)
+                }
+            }
+            .setNegativeButton(R.string.dismiss, null)
+            .show()
+    }
+
+    /** Regenerate: the old answer and its transcript entry vanish, then re-summon. */
+    private fun regenerateAnswer(group: AnswerGroup) {
+        val s = session ?: return
+        s.removeAnswer(group.id)
+        startSummon(manual = true)
+    }
+
+    /** Smudge-away: play the streak animation, then remove from the session. */
+    private fun smudgeAnswer(layoutIndex: Int, group: AnswerGroup) {
+        pendingSmudgeGroup = group
+        inkView.beginSmudge(layoutIndex)
+    }
+
+    /** The smudge finished; the answer leaves the page and the transcript. */
+    private fun onSmudgeDone() {
+        val s = session ?: return
+        pendingSmudgeGroup?.let { g ->
+            pendingSmudgeGroup = null
+            s.removeAnswer(g.id)
+        }
+    }
+
+    private var pendingSmudgeGroup: AnswerGroup? = null
+
+    /** Copies the answer's text blocks to the clipboard (F4.6, M5). */
+    private fun copyAnswer(group: AnswerGroup) {
+        val text = group.blocks
+            .filter { it.type == "text" }
+            .joinToString("\n\n") { it.markdown.orEmpty() }
+            .ifBlank { group.blocks.joinToString("\n") { b -> b.markdown ?: b.svg ?: b.rows.toString() } }
+        val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        cm.setPrimaryClip(android.content.ClipData.newPlainText(group.model, text))
+        android.widget.Toast.makeText(context, R.string.answer_copied, Toast.LENGTH_SHORT).show()
+    }
+
+    /** F8 (M5): export the current page (strokes + background) via the share sheet. */
+    private fun exportPage() {
+        val page = session?.currentPage() ?: return
+        scope.launch {
+            val uri = withContext(Dispatchers.IO) {
+                val bmp = InkPageRenderer.render(
+                    page = page,
+                    width = page.width,
+                    height = page.height,
+                    background = inkView.pageBackground,
+                    backgroundColor = MagicTheme.PARCHMENT,
+                    grayscale = false,
+                )
+                val file = File(context.cacheDir, "nisaba-page-${page.index}.png")
+                FileOutputStream(file).use { out ->
+                    bmp.compress(Bitmap.CompressFormat.PNG, 90, out)
+                }
+                bmp.recycle()
+                androidx.core.content.FileProvider.getUriForFile(
+                    context, "${context.packageName}.fileprovider", file
+                )
+            }
+            val share = Intent(Intent.ACTION_SEND).apply {
+                type = "image/png"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(Intent.createChooser(share, context.getString(R.string.export_share)))
+        }
     }
 
     /** The end of the last pen stroke — where the ink reaches out from. */
