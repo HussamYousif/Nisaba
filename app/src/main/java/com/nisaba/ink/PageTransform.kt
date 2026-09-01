@@ -26,6 +26,18 @@ class PageTransform {
         offsetY = (viewHeight - pageHeight * scale) / 2f
     }
 
+    /**
+     * Fit-width mode: the page (and any answer ink below it) spans the view
+     * width; the view height grows to the content. Used once answers render
+     * on the canvas (docs/08 §1).
+     */
+    fun setViewportFitWidth(viewWidth: Int) {
+        if (viewWidth <= 0) return
+        scale = minOf(viewWidth.toFloat() / pageWidth, MAX_SCALE)
+        offsetX = (viewWidth - pageWidth * scale) / 2f
+        offsetY = 0f
+    }
+
     fun toPageX(viewX: Float): Float = (viewX - offsetX) / scale
     fun toPageY(viewY: Float): Float = (viewY - offsetY) / scale
     fun toViewX(pageX: Float): Float = pageX * scale + offsetX

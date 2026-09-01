@@ -3,8 +3,6 @@ package com.nisaba.llm
 import android.content.Context
 import android.view.InputDevice
 import android.view.MotionEvent
-import android.view.View
-import android.widget.LinearLayout
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -80,12 +78,6 @@ class SummonFlowTest {
         return v!!
     }
 
-    private fun answerSection(): LinearLayout {
-        var v: LinearLayout? = null
-        scenario.onActivity { v = it.findViewById<LinearLayout>(R.id.answerSection) }
-        return v!!
-    }
-
     private fun completionJson(content: String) =
         """{"choices":[{"index":0,"message":{"role":"assistant","content":"${content.replace("\"", "\\\"")}"}}]}"""
 
@@ -139,9 +131,9 @@ class SummonFlowTest {
         assertEquals("text", group.blocks[0].type)
         assertTrue(group.blocks[0].markdown!!.contains("42"))
 
-        // The answer is rendered below the page in the UI.
-        val rendered = waitFor({ answerSection().childCount >= 1 }, 5_000)
-        assertTrue("answer section did not render", rendered)
+        // The answer is rendered as ink on the canvas.
+        val rendered = waitFor({ inkView().answerItemCount > 0 }, 5_000)
+        assertTrue("answer ink did not render on the canvas", rendered)
 
         // Transcript: user + assistant entries.
         assertEquals(2, notebook.transcript.size)
@@ -205,15 +197,13 @@ class SummonFlowTest {
         assertEquals(listOf("text", "table", "drawing"), group.blocks.map { it.type })
         assertEquals(listOf("Lumos", "Nox"), group.blocks[1].rows!!.map { it[0] })
 
-        // The reveal plays (~5 steps × 140 ms); the drawing must be visible
-        // and animating, and the table must be on screen.
+        // The reveal plays; the drawing ink (paths) and the ruled table
+        // (rules) must be on the canvas.
         val revealed = waitFor({
-            val section = answerSection()
-            val drawing = findInTree(section) { it is com.nisaba.render.DrawingInkView }
-            val tableTitle = findInTree(section) { (it as? android.widget.TextView)?.text == "Incantations" }
-            drawing != null && drawing.visibility == View.VISIBLE && tableTitle != null
+            val ink = inkView()
+            ink.answerPathCount > 0 && ink.answerRuleCount > 0
         }, 10_000)
-        assertTrue("drawing/table did not render", revealed)
+        assertTrue("drawing/table ink did not render", revealed)
 
         // And the whole answer persists.
         val persisted = waitFor({
@@ -222,13 +212,4 @@ class SummonFlowTest {
         assertTrue("mixed answer not persisted", persisted)
     }
 
-    private fun findInTree(root: android.view.View, predicate: (android.view.View) -> Boolean): android.view.View? {
-        if (predicate(root)) return root
-        if (root is android.view.ViewGroup) {
-            for (i in 0 until root.childCount) {
-                findInTree(root.getChildAt(i), predicate)?.let { return it }
-            }
-        }
-        return null
-    }
 }

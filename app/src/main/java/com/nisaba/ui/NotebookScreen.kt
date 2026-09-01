@@ -25,11 +25,11 @@ import com.nisaba.notebook.NotebookSession
 import com.nisaba.notebook.SummonController
 import com.nisaba.notebook.model.AnswerGroup
 import com.nisaba.notebook.model.Notebook
+import com.nisaba.notebook.model.NotebookPage
 import com.nisaba.notebook.model.Stroke
 import com.nisaba.notebook.model.TranscriptEntry
 import com.nisaba.pdf.PageBackgroundCache
-import com.nisaba.render.AnswerSectionRenderer
-import com.nisaba.render.InkReveal
+import com.nisaba.render.AnswerInk
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -40,6 +40,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.time.Instant
 import java.util.UUID
+import kotlin.math.max
 
 /**
  * The notebook page (docs/09 §3): view wiring + summon orchestration only.
@@ -61,13 +62,11 @@ class NotebookScreen @JvmOverloads constructor(
     private lateinit var eraserBtn: TextView
     private lateinit var undoBtn: TextView
     private lateinit var redoBtn: TextView
-    private lateinit var answerSection: LinearLayout
     private lateinit var stirIndicator: TextView
     private var bgCache: PageBackgroundCache? = null
 
     private val handler = Handler(Looper.getMainLooper())
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private val reveal = InkReveal(handler)
     private var summonJob: Job? = null
 
     private var pendingSummon = false
@@ -95,7 +94,6 @@ class NotebookScreen @JvmOverloads constructor(
         eraserBtn = findViewById(R.id.nbEraser)
         undoBtn = findViewById(R.id.nbUndo)
         redoBtn = findViewById(R.id.nbRedo)
-        answerSection = findViewById(R.id.answerSection)
         stirIndicator = findViewById(R.id.stirIndicator)
 
         titleView.text = notebook.title
@@ -130,15 +128,14 @@ class NotebookScreen @JvmOverloads constructor(
                     NotebookSession.Reason.STRUCTURE -> {
                         inkView.page = nbSession.currentPage()
                         loadBackground()
-                        renderAnswers(reveal = false)
+                        renderAnswerInk(animateLast = false)
                         updateToolbar()
                         scrollToTop()
                     }
                     NotebookSession.Reason.ANSWERS -> {
-                        renderAnswers(reveal = revealNextAnswer)
+                        renderAnswerInk(animateLast = revealNextAnswer)
                         revealNextAnswer = false
                         updateToolbar()
-                        scrollToBottom()
                     }
                 }
             }
@@ -164,7 +161,7 @@ class NotebookScreen @JvmOverloads constructor(
 
         inkView.page = nbSession.currentPage()
         loadBackground()
-        renderAnswers(reveal = false)
+        renderAnswerInk(animateLast = false)
         inkView.onStrokePoint = {
             summonController.onStrokePoint()
             nbSession.requestSave()
@@ -193,9 +190,9 @@ class NotebookScreen @JvmOverloads constructor(
             summonController.manualSummon()
         }
 
-        // One tap anywhere skips the ink reveal (docs/08 §5).
+        // One tap anywhere skips the answer ink reveal (docs/08 §5).
         findViewById<InkScrollView>(R.id.pageScroll).setOnTouchListener { _, _ ->
-            if (reveal.isActive()) reveal.skip()
+            inkView.skipAnswerReveal()
             false
         }
 
@@ -313,6 +310,9 @@ class NotebookScreen @JvmOverloads constructor(
         }
         pendingSummon = false
         setStirring(false)
+        if (status == "error") {
+            Toast.makeText(context, R.string.summon_error, Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun onSummonCancelled() {
@@ -331,33 +331,32 @@ class NotebookScreen @JvmOverloads constructor(
 
     // ------------------------------------------------------------ answers
 
-    private fun renderAnswers(reveal: Boolean) {
-        if (this.reveal.isActive()) this.reveal.skip() // stale steps reference old views
-        answerSection.removeAllViews()
+    /** Lays all complete answers out as canvas ink below the last content. */
+    private fun renderAnswerInk(animateLast: Boolean) {
         val page = session?.currentPage() ?: return
-        val groups = page.answers
-        val lastIndex = groups.lastIndex
-        for ((i, group) in groups.withIndex()) {
-            val built = AnswerSectionRenderer.buildGroupView(
-                context,
-                group,
-                reveal = reveal && i == lastIndex && group.status == "complete",
-            )
-            answerSection.addView(built.view)
-            if (built.revealSteps.isNotEmpty()) {
-                this.reveal.start(built.revealSteps)
-            }
+        val groups = page.answers.filter { it.status == "complete" }
+        if (groups.isEmpty()) return
+        var y = contentBottom(page) + 140f
+        val layouts = ArrayList<AnswerInk.Layout>(groups.size)
+        for (g in groups) {
+            val l = AnswerInk.layout(g, page.width.toFloat(), y, context)
+            layouts.add(l)
+            y += l.heightPx + 60f
         }
+        inkView.setAnswers(layouts, y, animateLast)
+    }
+
+    private fun contentBottom(page: NotebookPage): Float {
+        var bottom = 80f
+        for (stroke in page.strokes) {
+            for (pt in stroke.points) bottom = max(bottom, pt.y)
+        }
+        return bottom
     }
 
     private fun scrollToTop() {
         val scroll = findViewById<InkScrollView>(R.id.pageScroll)
         scroll?.post { scroll.scrollTo(0, 0) }
-    }
-
-    private fun scrollToBottom() {
-        val scroll = findViewById<InkScrollView>(R.id.pageScroll)
-        scroll?.post { scroll.fullScroll(View.FOCUS_DOWN) }
     }
 
     // ------------------------------------------------------------ background
@@ -385,7 +384,7 @@ class NotebookScreen @JvmOverloads constructor(
         summonGeneration++ // the pending coroutine must not record after close
         summonJob?.cancel()
         summonController.shutdown()
-        reveal.skip()
+        inkView.skipAnswerReveal()
         session?.close()
         scope.cancel()
         bgCache?.shutdown()

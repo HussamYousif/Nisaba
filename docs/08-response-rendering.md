@@ -4,7 +4,7 @@ Status: **Draft v0.1** · This is where "magic" becomes engineering. ADR-006: st
 
 ## 1. Layout model
 
-Each summon appends one **AnswerGroup** to the page, rendered in a `AnswerBlockView` region **below the user's writing** on the same scrollable page (F4.2):
+Each summon appends one **AnswerGroup** to the page, rendered as **ink on the canvas itself** — in page space, directly below the user's last content on the same scrollable page (F4.2). There is no separate UI section: the scribe's reply appears exactly where the user is looking, drawn by `AnswerInk` (text lines, drawing paths, ruled tables) and revealed step by step (`InkSurfaceView.setAnswers`). The page's display height grows to fit the answer.
 
 ```
 ┌──────────────────────────────────────┐

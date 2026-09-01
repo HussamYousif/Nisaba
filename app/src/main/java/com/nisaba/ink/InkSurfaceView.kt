@@ -6,12 +6,15 @@ import android.graphics.Paint
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
+import android.graphics.Path
+import android.graphics.PathMeasure
+import android.os.Handler
+import android.os.Looper
 import com.nisaba.epd.Epd
 import com.nisaba.magic.MagicTheme
 import com.nisaba.notebook.model.NotebookPage
 import com.nisaba.notebook.model.Stroke
-import android.os.Handler
-import android.os.Looper
+import com.nisaba.render.AnswerInk
 import kotlin.math.max
 import kotlin.math.min
 
@@ -94,6 +97,62 @@ open class InkSurfaceView @JvmOverloads constructor(
         isFilterBitmap = true // smooth 200dpi → 300dpi upscale
     }
 
+    // The scribe's answer, drawn as ink on the canvas (docs/08 §1).
+    private var answerLayouts: List<AnswerInk.Layout> = emptyList()
+    private var answerDisplayBottom = 0f // page-space bottom incl. answers
+    private var answerTicks = 0
+    private var answerTotalTicks = 0
+    private var answerAnimating = false
+    private val answerHandler = Handler(Looper.getMainLooper())
+    private val answerTick = Runnable { advanceAnswer() }
+
+    /** Replaces the answer ink; [animateLast] writes only the newest in. */
+    fun setAnswers(layouts: List<AnswerInk.Layout>, displayBottom: Float, animateLast: Boolean) {
+        answerLayouts = layouts
+        answerDisplayBottom = displayBottom
+        if (animateLast && layouts.isNotEmpty()) {
+            answerTicks = 0
+            answerTotalTicks = layouts.last().totalTicks
+            answerAnimating = answerTotalTicks > 0
+            if (answerAnimating) {
+                answerHandler.removeCallbacks(answerTick)
+                answerHandler.postDelayed(answerTick, ANSWER_STEP_MS)
+            }
+        } else {
+            answerAnimating = false
+            answerHandler.removeCallbacks(answerTick)
+            answerTicks = Int.MAX_VALUE
+        }
+        requestLayout() // the page may need to grow
+        invalidate()
+    }
+
+    fun skipAnswerReveal() {
+        answerAnimating = false
+        answerHandler.removeCallbacks(answerTick)
+        answerTicks = Int.MAX_VALUE
+        invalidate()
+    }
+
+    /** Test/UI accessor: how many answer ink items are on the canvas. */
+    val answerItemCount: Int get() = answerLayouts.sumOf { it.itemCount }
+    val answerPathCount: Int
+        get() = answerLayouts.sumOf { l -> l.items.count { it is AnswerInk.Layout.Item.Path } }
+    val answerRuleCount: Int
+        get() = answerLayouts.sumOf { l -> l.items.count { it is AnswerInk.Layout.Item.Rule } }
+
+    private fun advanceAnswer() {
+        if (!answerAnimating) return
+        answerTicks++
+        if (answerTicks >= answerTotalTicks) {
+            answerAnimating = false
+            answerTicks = Int.MAX_VALUE
+        } else {
+            answerHandler.postDelayed(answerTick, ANSWER_STEP_MS)
+        }
+        invalidate()
+    }
+
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         (context as? android.app.Activity)?.let { Epd.disableFullScreenUpdate(it) }
@@ -101,16 +160,17 @@ open class InkSurfaceView @JvmOverloads constructor(
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
-        transform.setViewport(w, h)
+        transform.setViewportFitWidth(w)
     }
 
-    /** The view sizes itself to the page aspect: answers live below the page. */
+    /** Fit-width: the page plus any answer ink below it. */
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val w = MeasureSpec.getSize(widthMeasureSpec)
         val p = page
         if (p != null && w > 0) {
-            val h = (w.toLong() * p.height / p.width).toInt()
-            setMeasuredDimension(w, h)
+            val scale = minOf(w.toFloat() / p.width, PageTransform.MAX_SCALE)
+            val display = max(p.height.toFloat(), answerDisplayBottom)
+            setMeasuredDimension(w, (display * scale).toInt())
         } else {
             super.onMeasure(widthMeasureSpec, heightMeasureSpec)
         }
@@ -129,7 +189,50 @@ open class InkSurfaceView @JvmOverloads constructor(
         inkPaint.color = inkColor
         for (s in p.strokes) StrokeRenderer.draw(canvas, s, inkPaint)
         current.buildPreview()?.let { StrokeRenderer.draw(canvas, it, inkPaint) }
+        drawAnswerInk(canvas)
         canvas.restore()
+    }
+
+    /** Draws the answer ink; only the newest layout animates (docs/08 §5). */
+    private fun drawAnswerInk(canvas: Canvas) {
+        if (answerLayouts.isEmpty()) return
+        val animatingLayout = answerAnimating
+        var cumTicks = 0
+        for ((li, layout) in answerLayouts.withIndex()) {
+            val isLast = li == answerLayouts.lastIndex
+            val layoutTicks = if (isLast) layout.totalTicks else Int.MAX_VALUE
+            var itemStart = cumTicks
+            for (item in layout.items) {
+                val ticks = item.revealTicks
+                val local = if (!isLast || !animatingLayout || answerTicks >= layoutTicks) {
+                    1f
+                } else {
+                    ((answerTicks - itemStart).toFloat() / ticks).coerceIn(0f, 1f)
+                }
+                when (item) {
+                    is AnswerInk.Layout.Item.Line -> {
+                        if (local >= 1f) canvas.drawText(item.text, item.x, item.baselineY, item.paint)
+                    }
+                    is AnswerInk.Layout.Item.Rule -> {
+                        if (local >= 1f) canvas.drawLine(item.x1, item.y1, item.x2, item.y2, item.paint)
+                    }
+                    is AnswerInk.Layout.Item.Path -> {
+                        if (local <= 0f) { /* nothing yet */ } else if (item.fill) {
+                            if (local >= 1f) canvas.drawPath(item.path, item.paint)
+                        } else {
+                            val measure = PathMeasure(item.path, false)
+                            if (measure.length > 0f) {
+                                val seg = android.graphics.Path()
+                                measure.getSegment(0f, measure.length * local, seg, true)
+                                if (!seg.isEmpty) canvas.drawPath(seg, item.paint)
+                            }
+                        }
+                    }
+                }
+                itemStart += ticks
+            }
+            cumTicks += layoutTicks
+        }
     }
 
     private fun drawRules(canvas: Canvas, p: NotebookPage) {
@@ -275,5 +378,6 @@ open class InkSurfaceView @JvmOverloads constructor(
     companion object {
         private const val FLUSH_MS = 24L
         private const val CLEAN_PASS_MS = 400L
+        private const val ANSWER_STEP_MS = 110L
     }
 }
