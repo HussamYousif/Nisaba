@@ -34,13 +34,12 @@ class PageImagePreparerTest {
         )
         val uri = PageImagePreparer.prepare(page, background = null)
 
-        assertTrue(uri.startsWith("data:image/png;base64,"))
-        val bytes = Base64.getDecoder().decode(uri.removePrefix("data:image/png;base64,"))
+        assertTrue(uri.startsWith("data:image/jpeg;base64,"))
+        val bytes = Base64.getDecoder().decode(uri.removePrefix("data:image/jpeg;base64,"))
         assertTrue("payload too big: ${bytes.size}", bytes.size < 2_000_000)
 
-        // Decode PNG header: dimensions must respect the long-edge cap.
-        val w = readInt(bytes, 16)
-        val h = readInt(bytes, 20)
+        // JPEG SOF header: dimensions must respect the long-edge cap.
+        val (w, h) = jpegDimensions(bytes)
         assertTrue("w=$w h=$h", maxOf(w, h) <= PageImagePreparer.MAX_LONG_EDGE)
         assertEquals(2480f / 1860f, w.toFloat() / h, 0.02f) // aspect preserved
     }
@@ -50,16 +49,30 @@ class PageImagePreparerTest {
         val page = NotebookPage(index = 0, width = 1654, height = 2339, background = "backgrounds/p0.png")
         val bg = Bitmap.createBitmap(100, 140, Bitmap.Config.RGB_565) // dummy background
         val uri = PageImagePreparer.prepare(page, background = bg)
-        assertTrue(uri.startsWith("data:image/png;base64,"))
-        val bytes = Base64.getDecoder().decode(uri.removePrefix("data:image/png;base64,"))
-        val w = readInt(bytes, 16)
-        val h = readInt(bytes, 20)
+        assertTrue(uri.startsWith("data:image/jpeg;base64,"))
+        val bytes = Base64.getDecoder().decode(uri.removePrefix("data:image/jpeg;base64,"))
+        val (w, h) = jpegDimensions(bytes)
         assertEquals(1654f / 2339f, w.toFloat() / h, 0.02f)
     }
 
-    private fun readInt(bytes: ByteArray, offset: Int): Int =
-        ((bytes[offset].toInt() and 0xFF) shl 24) or
-            ((bytes[offset + 1].toInt() and 0xFF) shl 16) or
-            ((bytes[offset + 2].toInt() and 0xFF) shl 8) or
-            (bytes[offset + 3].toInt() and 0xFF)
+    /** Parses the JPEG SOF marker: (width, height). */
+    private fun jpegDimensions(bytes: ByteArray): Pair<Int, Int> {
+        var i = 2 // skip SOI (FFD8)
+        while (i + 9 < bytes.size) {
+            if (bytes[i] != 0xFF.toByte()) {
+                i++
+                continue
+            }
+            val marker = bytes[i + 1].toInt() and 0xFF
+            if (marker in 0xC0..0xCF && marker != 0xC4 && marker != 0xC8 && marker != 0xCC) {
+                // SOF: height at i+5, width at i+7 (big-endian)
+                val h = ((bytes[i + 5].toInt() and 0xFF) shl 8) or (bytes[i + 6].toInt() and 0xFF)
+                val w = ((bytes[i + 7].toInt() and 0xFF) shl 8) or (bytes[i + 8].toInt() and 0xFF)
+                return w to h
+            }
+            val len = ((bytes[i + 2].toInt() and 0xFF) shl 8) or (bytes[i + 3].toInt() and 0xFF)
+            i += 2 + len
+        }
+        return 0 to 0
+    }
 }

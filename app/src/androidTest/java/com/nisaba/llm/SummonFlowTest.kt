@@ -59,7 +59,7 @@ class SummonFlowTest {
         scenario = ActivityScenario.launch(TestActivity::class.java)
         scenario.onActivity { activity ->
             screen = NotebookScreen(activity).apply {
-                bind(notebook, settings, onBack = {}, onSave = { store.save(it) })
+                bind(notebook, settings, onBack = {}, onSave = { nb, _ -> store.save(nb) })
             }
             activity.setContentView(screen)
         }

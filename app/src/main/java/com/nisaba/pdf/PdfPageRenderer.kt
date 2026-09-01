@@ -6,6 +6,7 @@ import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.rendering.PDFRenderer
+import java.io.Closeable
 import java.io.File
 import kotlin.math.roundToInt
 
@@ -27,25 +28,43 @@ object PdfPageRenderer {
     private const val BLACK_RATIO = 0.85f
 
     /**
-     * Renders page [index] of [pdfFile] at [dpi] into an RGB_565 bitmap.
-     * Returns null when every engine fails.
+     * One import/render session: a framework [PdfRenderer] plus a lazily
+     * opened PdfBox [PDDocument], both held open across the whole run.
+     * Re-opening and re-parsing the document once per page made imports
+     * O(n²) on the Boox (audit P1-8).
      */
-    @Synchronized // PdfBox documents are not thread-safe across renders
-    fun render(file: File, index: Int, dpi: Float): Bitmap? {
-        val framework = renderWithFramework(file, index, dpi)
-        if (framework != null && !looksBlack(framework)) return framework
-        framework?.recycle()
-        return renderWithPdfBox(file, index, dpi)
-    }
+    class Session(pdfFile: File) : Closeable {
+        private val file = pdfFile
+        private val fd = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
+        private val framework = PdfRenderer(fd)
+        private var pdfBox: PDDocument? = null
 
-    // ------------------------------------------------------------ engines
+        val pageCount: Int get() = framework.pageCount
 
-    private fun renderWithFramework(file: File, index: Int, dpi: Float): Bitmap? = runCatching {
-        val fd = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
-        val renderer = PdfRenderer(fd)
-        try {
-            if (index !in 0 until renderer.pageCount) return null
-            renderer.openPage(index).use { page ->
+        /** Logical page box in points (72 dpi space) — dimensions only. */
+        fun pageBox(index: Int): Pair<Int, Int> {
+            require(index in 0 until pageCount) { "page $index out of range" }
+            framework.openPage(index).use { page -> return page.width to page.height }
+        }
+
+        /** Renders page [index] at [dpi] into an RGB_565 bitmap; null when every engine fails. */
+        fun render(index: Int, dpi: Float): Bitmap? {
+            require(index in 0 until pageCount) { "page $index out of range" }
+            val frameworkBmp = renderWithFramework(index, dpi)
+            if (frameworkBmp != null && !looksBlack(frameworkBmp)) return frameworkBmp
+            frameworkBmp?.recycle()
+            return renderWithPdfBox(index, dpi)
+        }
+
+        override fun close() {
+            pdfBox?.close()
+            pdfBox = null
+            framework.close()
+            fd.close()
+        }
+
+        private fun renderWithFramework(index: Int, dpi: Float): Bitmap? = runCatching {
+            framework.openPage(index).use { page ->
                 val scale = dpi / 72f
                 val w = (page.width * scale).roundToInt()
                 val h = (page.height * scale).roundToInt()
@@ -53,25 +72,34 @@ object PdfPageRenderer {
                 val matrix = Matrix().apply { setScale(scale, scale) }
                 page.render(argb, null, matrix, PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
                 val rgb565 = argb.copy(Bitmap.Config.RGB_565, false)
-                argb.recycle()
+                argb.recycle() // the ARGB render is only a staging buffer
                 rgb565
             }
-        } finally {
-            renderer.close()
-            fd.close()
-        }
-    }.getOrNull()
+        }.getOrNull()
 
-    private fun renderWithPdfBox(file: File, index: Int, dpi: Float): Bitmap? = runCatching {
-        PDDocument.load(file).use { doc ->
+        private fun renderWithPdfBox(index: Int, dpi: Float): Bitmap? = runCatching {
+            // Parse the document once per session, not once per page (P1-8).
+            var doc = pdfBox
+            if (doc == null) {
+                doc = PDDocument.load(file)
+                pdfBox = doc
+            }
             val renderer = PDFRenderer(doc)
-            if (index !in 0 until doc.numberOfPages) return null
             val argb = renderer.renderImageWithDPI(index, dpi.toFloat())
             val rgb565 = argb.copy(Bitmap.Config.RGB_565, false)
             argb.recycle()
             rgb565
-        }
-    }.getOrNull()
+        }.getOrNull()
+    }
+
+    /**
+     * One-shot convenience for the background cache (docs/06 §4).
+     * Opens and closes a session per call; @Synchronized because the shared
+     * PdfBox engine state is not thread-safe across concurrent renders.
+     */
+    @Synchronized
+    fun render(file: File, index: Int, dpi: Float): Bitmap? =
+        Session(file).use { it.render(index, dpi) }
 
     // ------------------------------------------------------------ check
 

@@ -8,9 +8,10 @@ import java.util.Base64
 
 /**
  * Renders the current page (strokes + PDF background) into a compact
- * grayscale PNG data-URI for the vision model (docs/07 §2, ADR-001).
+ * JPEG data-URI for the vision model (docs/07 §2, ADR-001).
  *
- * - Long edge capped at [MAX_LONG_EDGE] px (≤ ~1.5 MP, ≤ ~2 MB payload).
+ * - Long edge capped at [MAX_LONG_EDGE] px — 1600×1200 = 1.9 MP, a few
+ *   hundred KB payload (docs/07 specifies 1600 px; audit P1-7).
  * - White background (best contrast for handwriting); grayscale filter.
  * - UI chrome and previous answers are never included.
  * - Rendering delegates to the ink domain's public surface
@@ -18,7 +19,7 @@ import java.util.Base64
  */
 object PageImagePreparer {
 
-    const val MAX_LONG_EDGE = 2000
+    const val MAX_LONG_EDGE = 1600
     const val STROKE_WIDTH_MULTIPLIER = 1.6f
 
     fun prepare(page: NotebookPage, background: Bitmap?): String {
@@ -37,9 +38,11 @@ object PageImagePreparer {
         )
 
         val out = ByteArrayOutputStream()
-        bmp.compress(Bitmap.CompressFormat.PNG, 90, out)
+        // JPEG, not PNG: quality actually does something, and handwriting on
+        // parchment compresses an order of magnitude better (audit P1-7).
+        bmp.compress(Bitmap.CompressFormat.JPEG, 85, out)
         bmp.recycle()
         val b64 = Base64.getEncoder().encodeToString(out.toByteArray())
-        return "data:image/png;base64,$b64"
+        return "data:image/jpeg;base64,$b64"
     }
 }

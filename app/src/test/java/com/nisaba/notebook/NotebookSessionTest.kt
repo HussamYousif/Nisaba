@@ -37,7 +37,7 @@ class NotebookSessionTest {
     fun setUp() {
         scheduler = FakeScheduler()
         notebook = Notebook(id = "n1", title = "Test")
-        session = NotebookSession(notebook, scheduler) { saves.add(it) }
+        session = NotebookSession(notebook, scheduler) { nb, _ -> saves.add(nb) }
         session.listener = object : NotebookSession.Listener {
             override fun onChanged(reason: NotebookSession.Reason) {
                 reasons.add(reason)

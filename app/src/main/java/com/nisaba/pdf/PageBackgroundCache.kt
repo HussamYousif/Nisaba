@@ -11,6 +11,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.Executors
 import kotlin.coroutines.resume
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.math.roundToInt
 
 /**
@@ -31,18 +32,16 @@ class PageBackgroundCache(
         Thread(r, "nisaba-bg").apply { priority = Thread.NORM_PRIORITY }
     }
 
-    private val lru = object : LinkedHashMap<Int, Bitmap>(maxEntries, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, Bitmap>): Boolean {
-            if (size > maxEntries) {
-                eldest.value.recycle()
-                return true
-            }
-            return false
-        }
-    }
+    private val lru = LinkedHashMap<Int, Bitmap>(maxEntries, 0.75f, true)
 
     /** Asks for page [index]; [onReady] is invoked on the main thread. */
     fun get(index: Int, onReady: (Bitmap?) -> Unit) {
+        if (executor.isShutdown) {
+            // A summon racing onClose() must not blow up with a
+            // RejectedExecutionException (audit P1-6); it gets a null page.
+            mainHandler.post { onReady(null) }
+            return
+        }
         synchronized(lru) {
             lru[index]?.let { bmp ->
                 mainHandler.post { onReady(bmp) }
@@ -58,10 +57,14 @@ class PageBackgroundCache(
         }
     }
 
-    /** Suspending variant for summon-time image preparation. */
+    /**
+     * Suspending variant for summon-time image preparation. Cancelling the
+     * caller aborts the wait; the decode itself finishes on the background
+     * executor but its result is discarded (audit P1-6).
+     */
     suspend fun getSuspending(index: Int): Bitmap? =
-        kotlin.coroutines.suspendCoroutine { cont ->
-            get(index, onReady = { cont.resume(it) })
+        suspendCancellableCoroutine { cont ->
+            get(index) { cont.resume(it) } // resume after cancel is a no-op
         }
 
     private fun decode(index: Int): Bitmap? {

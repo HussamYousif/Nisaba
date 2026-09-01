@@ -92,6 +92,9 @@ class DeepSeekClientTest {
 
     @Test
     fun mapsRateLimit429() = runBlocking {
+        // 429 is retryable (docs/07 §6): the client retries once after 5 s,
+        // then surfaces the status when the retry also fails.
+        server.enqueue(MockResponse().setResponseCode(429).setBody("""{"error":{"message":"busy"}}"""))
         server.enqueue(MockResponse().setResponseCode(429).setBody("""{"error":{"message":"busy"}}"""))
         var caught: DeepSeekClient.ApiException? = null
         try {
@@ -100,6 +103,26 @@ class DeepSeekClientTest {
             caught = e
         }
         assertEquals(429, caught?.code)
+        assertEquals(2, server.requestCount) // one retry, then the failure
+    }
+
+    @Test
+    fun retriesOnceOn5xx_thenSucceeds() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(503).setBody("""{"error":{"message":"overloaded"}}"""))
+        server.enqueue(MockResponse().setBody(completionJson("""{"blocks":[]}""")))
+        val content = DeepSeekClient(settings).chat(ChatContract.ChatRequest(model = "m"))
+        assertEquals("""{"blocks":[]}""", content)
+        assertEquals(2, server.requestCount)
+    }
+
+    @Test
+    fun nonRetryableStatus_doesNotRetry() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(400).setBody("""{"error":{"message":"bad request"}}"""))
+        try {
+            DeepSeekClient(settings).chat(ChatContract.ChatRequest(model = "m"))
+        } catch (_: DeepSeekClient.ApiException) {
+        }
+        assertEquals("400 must not retry", 1, server.requestCount)
     }
 
     @Test

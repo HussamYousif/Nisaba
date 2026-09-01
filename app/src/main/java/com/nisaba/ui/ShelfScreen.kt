@@ -1,10 +1,14 @@
 package com.nisaba.ui
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
+import android.os.Handler
+import android.os.Looper
 import android.util.AttributeSet
+import android.util.LruCache
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -24,6 +28,7 @@ import java.io.File
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.concurrent.Executors
 
 /**
  * The shelf of tomes (docs/09 §6). Two creation actions plus the notebook list.
@@ -51,6 +56,12 @@ class ShelfScreen @JvmOverloads constructor(
             refresh()
         },
     )
+    // Shelf listing does disk I/O (summary decode of every tome); never on
+    // the main thread (audit P1-4).
+    private val io = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "nisaba-shelf").apply { isDaemon = true }
+    }
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     init {
         orientation = VERTICAL
@@ -87,11 +98,19 @@ class ShelfScreen @JvmOverloads constructor(
         refresh()
     }
 
-    /** Reloads the shelf from disk. */
+    /** Reloads the shelf from disk (off the main thread, P1-4). */
     fun refresh() {
-        val items = store?.list().orEmpty()
-        adapter.submit(items)
-        emptyView.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
+        val store = this.store ?: return
+        io.execute {
+            val items = store.list()
+            mainHandler.post {
+                // The screen may have been rebound to another store meanwhile.
+                if (this.store === store) {
+                    adapter.submit(items)
+                    emptyView.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
+                }
+            }
+        }
     }
 
     private class ShelfAdapter(
@@ -100,6 +119,10 @@ class ShelfScreen @JvmOverloads constructor(
     ) : RecyclerView.Adapter<ShelfAdapter.Holder>() {
 
         private var items: List<NotebookSummary> = emptyList()
+
+        // Small decode cache: refresh() → notifyDataSetChanged() would
+        // otherwise re-decode every visible thumbnail each time (audit P1-4).
+        private val thumbs = LruCache<String, Bitmap>(THUMB_CACHE_BYTES)
 
         fun submit(newItems: List<NotebookSummary>) {
             items = newItems
@@ -127,10 +150,7 @@ class ShelfScreen @JvmOverloads constructor(
             holder.date.text = formatDate(item.updatedAt)
             holder.date.typeface = Fonts.kalam
 
-            val thumbFile = File(holder.itemView.context.filesDir, "notebooks/${item.id}/thumb.png")
-            val bmp = if (thumbFile.exists()) {
-                BitmapFactory.decodeFile(thumbFile.absolutePath)
-            } else null
+            val bmp = thumbOf(holder.itemView, item.id)
             if (bmp != null) {
                 holder.thumb.setImageBitmap(bmp)
             } else {
@@ -151,6 +171,25 @@ class ShelfScreen @JvmOverloads constructor(
             }
         }
 
+        /** Cached, downsized thumbnail decode (audit P1-4). */
+        private fun thumbOf(view: View, id: String): Bitmap? {
+            thumbs.get(id)?.let { return it }
+            val f = File(view.context.filesDir, "notebooks/$id/thumb.png")
+            if (!f.exists()) return null
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(f.absolutePath, bounds)
+            var sample = 1
+            while (bounds.outWidth / (sample * 2) >= THUMB_W ||
+                bounds.outHeight / (sample * 2) >= THUMB_H
+            ) {
+                sample *= 2
+            }
+            val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+            val bmp = BitmapFactory.decodeFile(f.absolutePath, opts) ?: return null
+            thumbs.put(id, bmp)
+            return bmp
+        }
+
         private fun confirmDelete(context: Context, item: NotebookSummary) {
             AlertDialog.Builder(context)
                 .setTitle(R.string.delete_title)
@@ -168,6 +207,12 @@ class ShelfScreen @JvmOverloads constructor(
                 .format(Instant.parse(iso))
         } catch (_: Exception) {
             ""
+        }
+
+        companion object {
+            private const val THUMB_W = 480
+            private const val THUMB_H = 360
+            private const val THUMB_CACHE_BYTES = 4 * 1024 * 1024 // ~4 MB
         }
     }
 }

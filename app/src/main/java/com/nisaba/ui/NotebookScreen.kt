@@ -86,7 +86,7 @@ class NotebookScreen @JvmOverloads constructor(
         orientation = VERTICAL
     }
 
-    fun bind(notebook: Notebook, settings: AppSettings, onBack: () -> Unit, onSave: (Notebook) -> Unit) {
+    fun bind(notebook: Notebook, settings: AppSettings, onBack: () -> Unit, onSave: (Notebook, thumbnail: Boolean) -> Unit) {
         this.settings = settings
         this.onBack = onBack
         val nbSession = NotebookSession(notebook, HandlerSaveScheduler(), onSave)
@@ -325,7 +325,9 @@ class NotebookScreen @JvmOverloads constructor(
                 holdRevealFor = null
                 inkView.endSummonInk(keep = false)
                 throw e
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                // Throwable, not Exception: an OutOfMemoryError mid-render must
+                // surface as a failed summon, not kill the app (audit P1-7).
                 if (generation != summonGeneration) return@launch // superseded
                 recordAborted(s, groupId, "error", e.message)
             }

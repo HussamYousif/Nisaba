@@ -17,6 +17,8 @@ import org.junit.runner.RunWith
 /**
  * Notebook persistence round-trips (docs/05 §4): create → mutate → save →
  * reload must be lossless, and deletion must remove the directory.
+ * save() writes on the store's executor (audit P1-3), so load-after-save
+ * assertions poll for the write to land.
  */
 @RunWith(AndroidJUnit4::class)
 class NotebookStoreTest {
@@ -26,6 +28,15 @@ class NotebookStoreTest {
     @Before
     fun setUp() {
         store = NotebookStore(ApplicationProvider.getApplicationContext())
+    }
+
+    private fun waitFor(condition: () -> Boolean, timeoutMs: Long): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (condition()) return true
+            Thread.sleep(50)
+        }
+        return condition()
     }
 
     @Test
@@ -43,16 +54,46 @@ class NotebookStoreTest {
         )
         nb.pages = nb.pages + NotebookPage(index = 1)
         nb.lastOpenedPage = 1
-        store.save(nb)
+        store.save(nb) // async write — poll for it below
 
-        val loaded = store.load(nb.id)
-        assertTrue(loaded.title.isNotBlank()) // auto title; exact number depends on shelf state
+        val loaded = waitFor(
+            { store.load(nb.id).pages.size == 2 },
+            10_000,
+        ).let { if (it) store.load(nb.id) else null }
+        assertTrue("save never landed", loaded != null)
+        assertTrue(loaded!!.title.isNotBlank()) // auto title; exact number depends on shelf state
         assertEquals(2, loaded.pages.size)
         assertEquals(1, loaded.pages[0].strokes.size)
         assertEquals(2, loaded.pages[0].strokes[0].points.size)
         assertEquals(0.8f, loaded.pages[0].strokes[0].points[1].p)
         assertEquals(1, loaded.lastOpenedPage)
         assertTrue(store.thumbnailFile(nb.id).exists())
+    }
+
+    @Test
+    fun debouncedSave_skipsThumbnail_explicitSaveRewritesIt() {
+        // Audit P1-3: the 800 ms autosave must not decode/encode a bitmap per
+        // pause; only explicit saves (saveNow) rewrite thumb.png.
+        val nb = store.createBlank()
+        val thumb = store.thumbnailFile(nb.id)
+        assertTrue(thumb.exists())
+        val mtime = thumb.lastModified()
+        val oldUpdated = nb.updatedAt // createBlank's timestamp (save() mutates it)
+
+        // Debounced autosave (thumbnail = false): json lands, thumb untouched.
+        store.save(nb)
+        val landed = waitFor(
+            { store.load(nb.id).updatedAt != oldUpdated },
+            10_000,
+        )
+        assertTrue("autosave never landed", landed)
+        Thread.sleep(150) // give any (buggy) thumbnail write time to appear
+        assertEquals("debounced save must not rewrite thumb.png", mtime, thumb.lastModified())
+
+        // Explicit save (thumbnail = true): thumb.png is rewritten.
+        Thread.sleep(20) // ensure lastModified granularity
+        store.saveNow(nb)
+        assertTrue("explicit save must rewrite thumb.png", thumb.lastModified() > mtime)
     }
 
     @Test
@@ -83,7 +124,7 @@ class NotebookStoreTest {
         // must recover it instead of failing.
         val nb = store.createBlank()
         nb.title = "Recovered"
-        store.save(nb)
+        store.saveNow(nb) // synchronous — the crash window is deterministic
 
         val dir = store.dirOf(nb.id)
         val json = java.io.File(dir, "notebook.json")
@@ -104,7 +145,7 @@ class NotebookStoreTest {
         // notebook entirely. A failed save must throw and leave the last
         // known-good file untouched.
         val nb = store.createBlank()
-        store.save(nb)
+        store.saveNow(nb)
         val dir = store.dirOf(nb.id)
         val json = java.io.File(dir, "notebook.json")
         val good = json.readText()
@@ -116,7 +157,7 @@ class NotebookStoreTest {
         tmp.mkdirs()
 
         try {
-            store.save(nb)
+            store.saveNow(nb)
             // On filesystems where this somehow succeeds, the good file must
             // still be present and parseable below.
         } catch (_: Exception) {

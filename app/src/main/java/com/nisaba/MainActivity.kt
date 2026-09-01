@@ -55,6 +55,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        // Without this, killing the activity with a notebook open leaves the
+        // screen scopes, the in-flight HTTP call, the nisaba-bg executor and
+        // the whole Notebook retained (audit P1-2). onClose() is idempotent.
+        notebookScreen?.onClose()
+        notebookScreen = null
+        settingsScreen?.onClose()
+        settingsScreen = null
         super.onDestroy()
         importScope.cancel()
     }
@@ -119,8 +126,12 @@ class MainActivity : AppCompatActivity() {
         dialog.show()
 
         importScope.launch {
+            var importError: Exception? = null
             val result = withContext(Dispatchers.IO) {
-                runCatching {
+                // Explicit try/catch, not runCatching: a cancelled import must
+                // propagate (audit P1-11), or the code below keeps running
+                // against a destroyed activity.
+                try {
                     val stream = contentResolver.openInputStream(uri)
                         ?: throw IOException("cannot open picked PDF")
                     try {
@@ -137,16 +148,19 @@ class MainActivity : AppCompatActivity() {
                     } finally {
                         stream.close()
                     }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    importError = e
+                    null
                 }
             }
             dialog.dismiss()
-            result
-                .onSuccess { r -> openNotebook(r.notebook.id) }
-                .onFailure { e ->
-                    if (e !is PdfImporter.ImportCancelled) {
-                        Toast.makeText(this@MainActivity, R.string.tome_import_failed, Toast.LENGTH_LONG).show()
-                    }
-                }
+            if (result != null) {
+                openNotebook(result.notebook.id)
+            } else if (importError !is PdfImporter.ImportCancelled) {
+                Toast.makeText(this@MainActivity, R.string.tome_import_failed, Toast.LENGTH_LONG).show()
+            }
         }
     }
 
@@ -170,7 +184,7 @@ class MainActivity : AppCompatActivity() {
                 onBack = {
                     showShelf()
                 },
-                onSave = { nb -> store.save(nb) },
+                onSave = { nb, thumbnail -> store.save(nb, thumbnail = thumbnail) },
             )
         }
         notebookScreen = screen

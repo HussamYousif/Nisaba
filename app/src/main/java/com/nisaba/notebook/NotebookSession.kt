@@ -21,7 +21,7 @@ import java.util.ArrayDeque
 class NotebookSession(
     val notebook: Notebook,
     private val scheduler: SaveScheduler,
-    private val onSave: (Notebook) -> Unit,
+    private val onSave: (Notebook, thumbnail: Boolean) -> Unit,
 ) {
 
     enum class Reason { STROKES, PAGE, STRUCTURE, ANSWERS }
@@ -53,7 +53,8 @@ class NotebookSession(
     private val undoStack = ArrayDeque<Mutation>()
     private val redoStack = ArrayDeque<Mutation>()
 
-    private val autosave = Runnable { onSave(notebook) }
+    // The 800 ms debounce must stay cheap: no thumbnail work per pause (P1-3).
+    private val autosave = Runnable { onSave(notebook, false) }
 
     // ------------------------------------------------------------ pages
 
@@ -177,7 +178,7 @@ class NotebookSession(
     fun saveNow() {
         scheduler.cancel(autosave)
         notebook.lastOpenedPage = pageIndex
-        onSave(notebook)
+        onSave(notebook, true) // explicit save → fresh thumb.png
     }
 
     /** Flushes state and detaches (screen close / app pause). */

@@ -384,6 +384,24 @@ open class InkSurfaceView @JvmOverloads constructor(
         rebuildBgLayer()
     }
 
+    /**
+     * The view is going away: stop every self-reposting ticker, or a summon
+     * interrupted mid-flight would keep the main looper busy and leak this
+     * view (→ NotebookScreen → Activity) for the life of the process, plus
+     * the ~5-15 MB bgLayer bitmap (audit P1-1).
+     */
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        inkHandler.removeCallbacks(inkTick)
+        answerHandler.removeCallbacks(answerTick)
+        flushHandler.removeCallbacks(flushRunnable)
+        flushHandler.removeCallbacks(cleanRunnable)
+        inkPhase = InkPhase.IDLE
+        threadPath = null
+        bgLayer?.recycle()
+        bgLayer = null
+    }
+
     /** Fit-width: the page plus any answer ink below it. */
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val w = MeasureSpec.getSize(widthMeasureSpec)
@@ -556,6 +574,9 @@ open class InkSurfaceView @JvmOverloads constructor(
                     current.cancel()
                     flushNow()
                     Oec.setRefreshMode(Oec.MODE_NORMAL)
+                    // Same lift-the-fast-mode guarantee as finishStroke (P1-9).
+                    flushHandler.removeCallbacks(cleanRunnable)
+                    flushHandler.postDelayed(cleanRunnable, CLEAN_PASS_MS)
                     invalidate()
                 }
             }
@@ -572,12 +593,14 @@ open class InkSurfaceView @JvmOverloads constructor(
         drawing = false
         flushNow()
         Oec.setRefreshMode(Oec.MODE_NORMAL)
+        // Ghosting clean pass, debounced — scheduled BEFORE the commit
+        // check: fast mode was enabled on DOWN and must always be lifted,
+        // even for a dot too short to commit (audit P1-9).
+        flushHandler.removeCallbacks(cleanRunnable)
+        flushHandler.postDelayed(cleanRunnable, CLEAN_PASS_MS)
         val stroke = current.build() ?: return
         onStrokeComplete?.invoke(stroke)
         invalidate()
-        // Ghosting clean pass, debounced — repeated quick strokes share one.
-        flushHandler.removeCallbacks(cleanRunnable)
-        flushHandler.postDelayed(cleanRunnable, CLEAN_PASS_MS)
     }
 
     /** Coalesces the new ink segment into the pending dirty rect (docs/04 §3). */

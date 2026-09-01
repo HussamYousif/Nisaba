@@ -38,9 +38,12 @@ class StrokeBuilder {
 
     /** Consumes the stroke: returns it and resets. Null when too short. */
     fun build(): Stroke? {
-        val s = buildPreview() ?: return null
+        val s = buildPreview()
+        // Reset even on the too-short path — a discarded dot must not leave
+        // the builder half-started with a stale point (audit P1-9).
         started = false
         pts.clear()
+        if (s == null) return null
         // buildPreview() is shared with onDraw, where the id is irrelevant;
         // a committed stroke needs a unique id — undo/redo and erasing match
         // strokes by id, and "s-preview" for every stroke made undo drop the

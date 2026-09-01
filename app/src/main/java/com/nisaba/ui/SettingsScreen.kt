@@ -178,7 +178,11 @@ class SettingsScreen @JvmOverloads constructor(
         }
         testResult.text = "The ink stirs…"
         scope.launch {
-            val result = runCatching {
+            // Explicit try/catch, not runCatching: runCatching swallows the
+            // CancellationException from onClose(), and the coroutine then
+            // writes to a detached view (audit P1-11).
+            var error: Exception? = null
+            val reply = try {
                 DeepSeekClient(s).chat(
                     ChatContract.ChatRequest(
                         model = s.model,
@@ -188,11 +192,16 @@ class SettingsScreen @JvmOverloads constructor(
                         ),
                     )
                 )
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                error = e
+                null
             }
-            testResult.text = if (result.isSuccess) {
-                "The scribe answers: \"${result.getOrNull().orEmpty().take(60)}\""
+            testResult.text = if (reply != null) {
+                "The scribe answers: \"${reply.take(60)}\""
             } else {
-                "No answer — ${result.exceptionOrNull()?.message?.take(80)}"
+                "No answer — ${error?.message?.take(80)}"
             }
         }
     }

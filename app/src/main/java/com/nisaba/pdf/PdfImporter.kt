@@ -1,8 +1,6 @@
 package com.nisaba.pdf
 
 import android.graphics.Bitmap
-import android.graphics.pdf.PdfRenderer
-import android.os.ParcelFileDescriptor
 import com.nisaba.notebook.NotebookStore
 import com.nisaba.notebook.model.Notebook
 import com.nisaba.notebook.model.NotebookPage
@@ -47,36 +45,30 @@ class PdfImporter(private val store: NotebookStore) {
             val pdfFile = File(dir, IMPORT_PDF)
             FileOutputStream(pdfFile).use { out -> stream.copyTo(out, BUFFER) }
 
-            // 2. Render each page to a background PNG.
-            val pageCount = renderAll(pdfFile, dir, id, progress, cancelled)
-            if (pageCount == 0) throw IllegalArgumentException("empty PDF")
+            // 2. Render each page to a background PNG (one engine session for
+            //    the whole document — audit P1-8) and collect page geometry.
+            val pages = renderAll(pdfFile, dir, progress, cancelled)
+            if (pages.isEmpty()) throw IllegalArgumentException("empty PDF")
 
             // 3. Build the notebook and persist it.
             val now = Instant.now().toString()
-            val pages = (0 until pageCount).map { i ->
-                val (w, h) = pageSpaceOf(pdfFile, i)
-                NotebookPage(
-                    index = i,
-                    width = w,
-                    height = h,
-                    background = "backgrounds/$BACKGROUND_PREFIX$i.png",
-                )
-            }
             val nb = Notebook(
                 id = id,
-                title = titleOf(displayName, pageCount),
+                title = titleOf(displayName, pages.size),
                 createdAt = now,
                 updatedAt = now,
                 source = NotebookSource(
                     type = "pdf",
                     file = IMPORT_PDF,
-                    pageCount = pageCount,
+                    pageCount = pages.size,
                     importedAt = now,
                 ),
                 pages = pages,
             )
-            store.save(nb)
-            return Result(nb, pageCount)
+            // Synchronous: the caller opens the notebook (loads from disk)
+            // the moment importFrom returns (audit P1-3).
+            store.saveNow(nb)
+            return Result(nb, pages.size)
         } catch (e: ImportCancelled) {
             dir.deleteRecursively()
             throw e
@@ -91,52 +83,38 @@ class PdfImporter(private val store: NotebookStore) {
     private fun renderAll(
         pdfFile: File,
         dir: File,
-        notebookId: String,
         progress: (Int, Int) -> Unit,
         cancelled: () -> Boolean,
-    ): Int {
-        val fd = ParcelFileDescriptor.open(pdfFile, ParcelFileDescriptor.MODE_READ_ONLY)
-        val renderer = PdfRenderer(fd)
-        try {
-            val count = renderer.pageCount
+    ): List<NotebookPage> {
+        PdfPageRenderer.Session(pdfFile).use { session ->
+            val count = session.pageCount
             val bgDir = File(dir, "backgrounds")
             bgDir.mkdirs()
+            val s = PAGE_SPACE_DPI / 72f
+            val pages = ArrayList<NotebookPage>(count)
             for (i in 0 until count) {
                 if (cancelled()) throw ImportCancelled()
                 progress(i, count)
-                renderPage(pdfFile, i, File(bgDir, "$BACKGROUND_PREFIX$i.png"))
+                val bmp = session.render(i, RENDER_DPI)
+                    ?: throw IllegalStateException("page $i could not be rendered")
+                FileOutputStream(File(bgDir, "$BACKGROUND_PREFIX$i.png")).use { fos ->
+                    bmp.compress(Bitmap.CompressFormat.PNG, 90, fos)
+                }
+                bmp.recycle()
+                // The logical page box at 300 dpi (strokes live here) — read
+                // from the already-open session, no third open (audit P1-8).
+                val (w, h) = session.pageBox(i)
+                pages.add(
+                    NotebookPage(
+                        index = i,
+                        width = (w * s).roundToInt(),
+                        height = (h * s).roundToInt(),
+                        background = "backgrounds/$BACKGROUND_PREFIX$i.png",
+                    )
+                )
             }
             progress(count, count)
-            return count
-        } finally {
-            renderer.close()
-            fd.close()
-        }
-    }
-
-    private fun renderPage(pdfFile: File, index: Int, out: File) {
-        // The seam picks the working engine (framework vs bundled PdfBox —
-        // Android 15's framework renderer is black on some devices, R9).
-        val bmp = PdfPageRenderer.render(pdfFile, index, RENDER_DPI)
-            ?: throw IllegalStateException("page $index could not be rendered")
-        FileOutputStream(out).use { fos ->
-            bmp.compress(Bitmap.CompressFormat.PNG, 90, fos)
-        }
-        bmp.recycle()
-    }
-
-    /** The logical page box at 300 dpi (strokes live here). */
-    private fun pageSpaceOf(pdfFile: File, index: Int): Pair<Int, Int> {
-        val fd = ParcelFileDescriptor.open(pdfFile, ParcelFileDescriptor.MODE_READ_ONLY)
-        val renderer = PdfRenderer(fd)
-        try {
-            renderer.openPage(index).use { page ->
-                val s = PAGE_SPACE_DPI / 72f
-                return (page.width * s).roundToInt() to (page.height * s).roundToInt()
-            }
-        } finally {
-            renderer.close()
-            fd.close()
+            return pages
         }
     }
 
