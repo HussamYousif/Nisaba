@@ -14,6 +14,7 @@ import android.os.Handler
 import android.os.Looper
 import com.nisaba.epd.Epd
 import com.nisaba.epd.Oec
+import com.nisaba.magic.InkStir
 import com.nisaba.magic.MagicTheme
 import com.nisaba.notebook.model.NotebookPage
 import com.nisaba.notebook.model.Stroke
@@ -90,6 +91,52 @@ open class InkSurfaceView @JvmOverloads constructor(
     private val cleanRunnable = Runnable {
         Epd.disableFastMode(this)
         Epd.cleanRefresh(this)
+    }
+
+    // The summon's ink-stirring locus, drawn ON the page (docs/09 §3).
+    private var stirActive = false
+    private var stirStep = 0
+    private var stirX = 0f
+    private var stirY = 0f
+    private val stirHandler = Handler(Looper.getMainLooper())
+    private val stirTick: Runnable = object : Runnable {
+        override fun run() {
+            stirStep++
+            if (stirStep > STIR_CYCLE) stirStep = 0
+            invalidate()
+            if (stirActive) stirHandler.postDelayed(this, STIR_MS)
+        }
+    }
+
+    val isStirring: Boolean get() = stirActive
+
+    /** The ink gathers and stirs at the spot where the answer will write itself. */
+    fun beginStir(pageX: Float, pageY: Float) {
+        stirX = pageX
+        stirY = pageY
+        stirActive = true
+        stirStep = 1
+        stirHandler.removeCallbacks(stirTick)
+        stirHandler.postDelayed(stirTick, STIR_MS)
+        invalidate()
+    }
+
+    /**
+     * The answer arrived (or the summon ended): freeze the full-stir pose.
+     * [keep] true — the answer ink reveals over the pool; false — the pool
+     * clears itself after a beat.
+     */
+    fun endStir(keep: Boolean) {
+        stirActive = false
+        stirHandler.removeCallbacks(stirTick)
+        stirStep = STIR_CYCLE
+        invalidate()
+        if (!keep) {
+            stirHandler.postDelayed({
+                stirStep = 0
+                invalidate()
+            }, 900L)
+        }
     }
 
     private val inkPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -231,6 +278,9 @@ open class InkSurfaceView @JvmOverloads constructor(
         inkPaint.color = inkColor
         for (s in p.strokes) StrokeRenderer.draw(canvas, s, inkPaint)
         current.buildPreview()?.let { StrokeRenderer.draw(canvas, it, inkPaint) }
+        if (stirStep > 0) {
+            InkStir.draw(canvas, stirX, stirY, STIR_RADIUS, stirStep, STIR_CYCLE)
+        }
         drawAnswerInk(canvas)
         canvas.restore()
     }
@@ -424,5 +474,8 @@ open class InkSurfaceView @JvmOverloads constructor(
         private const val FLUSH_MS = 16L
         private const val CLEAN_PASS_MS = 400L
         private const val ANSWER_STEP_MS = 110L
+        private const val STIR_MS = 380L
+        private const val STIR_CYCLE = 12
+        private const val STIR_RADIUS = 54f
     }
 }

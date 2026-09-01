@@ -24,11 +24,8 @@
     <string name="nb_prev_page">Previous page</string>
     <string name="nb_next_page">Next page</string>
     <string name="nb_quill">Summon the answer</string>
-    <string name="stir_thinking">The ink stirs…</string>
-    <string name="stir_scribes">The scribe turns the page…</string>
     <string name="summon_error">The ink smudged — the spirit world was unreachable.</string>
     <string name="summon_error_retry">(tap the quill to write it again)</string>
-    <string name="summon_as_you_were">…as you were.</string>
     <string name="summon_no_key">The quill has no ink — set your DeepSeek key in Settings first.</string>
     <string name="shelf_settings">Settings</string>
     <string name="epd_hint">Tip: for the smoothest writing, set Nisaba\'s refresh mode to Fast in Boox Settings → App Optimization.</string>

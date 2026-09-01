@@ -19,7 +19,6 @@ import com.nisaba.llm.DeepSeekClient
 import com.nisaba.llm.PageImagePreparer
 import com.nisaba.llm.PromptBuilder
 import com.nisaba.magic.Fonts
-import com.nisaba.magic.InkStirView
 import com.nisaba.magic.MagicTheme
 import com.nisaba.notebook.HandlerSaveScheduler
 import com.nisaba.notebook.NotebookSession
@@ -63,10 +62,7 @@ class NotebookScreen @JvmOverloads constructor(
     private lateinit var eraserBtn: TextView
     private lateinit var undoBtn: TextView
     private lateinit var redoBtn: TextView
-    private lateinit var stirContainer: android.widget.LinearLayout
-    private lateinit var stirIndicator: TextView
-    private lateinit var stirInk: InkStirView
-    private var stirHideGeneration = 0
+
     private var bgCache: PageBackgroundCache? = null
 
     private val handler = Handler(Looper.getMainLooper())
@@ -98,9 +94,7 @@ class NotebookScreen @JvmOverloads constructor(
         eraserBtn = findViewById(R.id.nbEraser)
         undoBtn = findViewById(R.id.nbUndo)
         redoBtn = findViewById(R.id.nbRedo)
-        stirContainer = findViewById(R.id.stirContainer)
-        stirIndicator = findViewById(R.id.stirIndicator)
-        stirInk = findViewById(R.id.stirInk)
+
 
         titleView.text = notebook.title
         titleView.typeface = Fonts.kalamBold
@@ -108,7 +102,6 @@ class NotebookScreen @JvmOverloads constructor(
         eraserBtn.typeface = Fonts.kalam
         undoBtn.typeface = Fonts.kalam
         redoBtn.typeface = Fonts.kalam
-        stirIndicator.typeface = Fonts.kalam
 
         // On Boox firmware without an EPD API, the writing feel depends on the
         // per-app refresh mode — hint once per run (docs/04 §2).
@@ -235,7 +228,10 @@ class NotebookScreen @JvmOverloads constructor(
         // applies to the automatic idle summon (F3.4).
         s.markSummoned()
         pendingSummon = true
-        setStirring(true)
+        // The ink gathers and stirs where the answer will write itself.
+        val locusPage = s.currentPage() ?: return
+        val locusY = contentBottom(locusPage) + 240f
+        inkView.beginStir(190f, locusY)
         summonController.clearPendingRequest()
 
         val generation = summonGeneration
@@ -289,7 +285,7 @@ class NotebookScreen @JvmOverloads constructor(
                     )
                 )
                 pendingSummon = false
-                setStirring(false)
+                inkView.endStir(keep = true)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 if (generation != summonGeneration) return@launch // superseded
                 recordAborted(s, groupId, "cancelled", e.message)
@@ -315,7 +311,7 @@ class NotebookScreen @JvmOverloads constructor(
             )
         }
         pendingSummon = false
-        setStirring(false)
+        inkView.endStir(keep = false)
         if (status == "error") {
             Toast.makeText(context, R.string.summon_error, Toast.LENGTH_LONG).show()
         }
@@ -323,33 +319,9 @@ class NotebookScreen @JvmOverloads constructor(
 
     private fun onSummonCancelled() {
         // The controller already cancelled the job; the coroutine records the
-        // cancelled group. Show a brief "…as you were." before hiding.
+        // cancelled group and settles the pool.
         if (pendingSummon) {
-            stirIndicator.setText(R.string.summon_as_you_were)
-            handler.postDelayed({ if (!pendingSummon) setStirring(false) }, 1200L)
-        }
-    }
-
-    private fun setStirring(active: Boolean) {
-        val gen = ++stirHideGeneration
-        if (active) {
-            stirContainer.visibility = View.VISIBLE
-            stirIndicator.setText(R.string.stir_thinking)
-            stirInk.stir()
-            // The scribe turns the page… after a long wait (docs/09 §4).
-            handler.postDelayed({
-                if (gen == stirHideGeneration && pendingSummon) {
-                    stirIndicator.setText(R.string.stir_scribes)
-                }
-            }, 30_000L)
-        } else {
-            stirInk.settle()
-            handler.postDelayed({
-                if (gen == stirHideGeneration) {
-                    stirContainer.visibility = View.GONE
-                    stirInk.stop()
-                }
-            }, 900L)
+            inkView.endStir(keep = false)
         }
     }
 
