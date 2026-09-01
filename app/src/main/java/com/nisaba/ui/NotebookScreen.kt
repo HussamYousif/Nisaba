@@ -73,6 +73,12 @@ class NotebookScreen @JvmOverloads constructor(
     private var summonGeneration = 0
     private var revealNextAnswer = false
 
+    /**
+     * An answer that is saved but must not draw yet: the reached-out ink is
+     * still being drunk, and the answer writes into a clean page (docs/09 §3).
+     */
+    private var holdRevealFor: String? = null
+
     private lateinit var summonController: SummonController
     private val client: DeepSeekClient by lazy { DeepSeekClient(settings!!) }
 
@@ -167,6 +173,13 @@ class NotebookScreen @JvmOverloads constructor(
         }
         inkView.onStrokeComplete = ::onStrokeFinished
         inkView.onEraserButton = { held -> updateEraserVisual(held) }
+        // The thread has been drunk and the page is clean: now the answer writes.
+        inkView.onSummonInkDrained = {
+            if (holdRevealFor != null) {
+                holdRevealFor = null
+                renderAnswerInk(animateLast = true)
+            }
+        }
 
         findViewById<TextView>(R.id.nbBack).apply {
             typeface = Fonts.kalam
@@ -218,6 +231,12 @@ class NotebookScreen @JvmOverloads constructor(
             Toast.makeText(context, R.string.summon_no_key, Toast.LENGTH_LONG).show()
             return
         }
+        // An answer still waiting on a drain must not be lost when a new summon
+        // interrupts it: the drain callback will never fire, so draw it now.
+        if (holdRevealFor != null) {
+            holdRevealFor = null
+            renderAnswerInk(animateLast = false)
+        }
         // Restart semantics: a summon while one is pending replaces it.
         if (pendingSummon) {
             summonJob?.cancel()
@@ -231,9 +250,9 @@ class NotebookScreen @JvmOverloads constructor(
         // The ink reaches out: a thread flows from the last stroke's tail to
         // the spot where the answer will write itself (docs/09 §3).
         val locusPage = s.currentPage() ?: return
-        val (tailX, tailY) = lastStrokeTail(locusPage, locusPage.width.toFloat(), locusPage.height.toFloat())
+        val tail = lastStrokeTail(locusPage, locusPage.width.toFloat(), locusPage.height.toFloat())
         val locusY = contentBottom(locusPage) + 190f
-        inkView.beginSummonInk(tailX, tailY, 190f, locusY)
+        inkView.beginSummonInk(tail.x, tail.y, 190f, locusY, tail.dx, tail.dy)
         summonController.clearPendingRequest()
 
         val generation = summonGeneration
@@ -278,7 +297,10 @@ class NotebookScreen @JvmOverloads constructor(
                     status = "complete",
                     blocks = blocks,
                 )
+                // Persist immediately — a Boox will kill us — but hold the
+                // reveal until the thread has been drunk.
                 revealNextAnswer = true
+                holdRevealFor = groupId
                 s.appendAnswer(group)
                 s.appendTranscript(
                     listOf(
@@ -313,6 +335,7 @@ class NotebookScreen @JvmOverloads constructor(
             )
         }
         pendingSummon = false
+        holdRevealFor = null
         inkView.endSummonInk(keep = false)
         if (status == "error") {
             Toast.makeText(context, R.string.summon_error, Toast.LENGTH_LONG).show()
@@ -323,6 +346,7 @@ class NotebookScreen @JvmOverloads constructor(
         // The controller already cancelled the job; the coroutine records the
         // cancelled group and the thread draws back into the stroke.
         if (pendingSummon) {
+            holdRevealFor = null
             inkView.endSummonInk(keep = false)
         }
     }
@@ -332,7 +356,8 @@ class NotebookScreen @JvmOverloads constructor(
     /** Lays all complete answers out as canvas ink below the last content. */
     private fun renderAnswerInk(animateLast: Boolean) {
         val page = session?.currentPage() ?: return
-        val groups = page.answers.filter { it.status == "complete" }
+        val held = holdRevealFor
+        val groups = page.answers.filter { it.status == "complete" && it.id != held }
         if (groups.isEmpty()) return
         var y = contentBottom(page) + 140f
         val layouts = ArrayList<AnswerInk.Layout>(groups.size)
@@ -345,14 +370,22 @@ class NotebookScreen @JvmOverloads constructor(
     }
 
     /** The end of the last pen stroke — where the ink reaches out from. */
-    private fun lastStrokeTail(page: NotebookPage, pageW: Float, pageH: Float): Pair<Float, Float> {
+    /** Where the last stroke ended, and which way the pen was still going. */
+    private class Tail(val x: Float, val y: Float, val dx: Float, val dy: Float)
+
+    private fun lastStrokeTail(page: NotebookPage, pageW: Float, pageH: Float): Tail {
         for (stroke in page.strokes.asReversed()) {
             if (stroke.tool != "pen") continue
-            val last = stroke.points.lastOrNull()
-            if (last != null) return last.x to last.y
+            val pts = stroke.points
+            val last = pts.lastOrNull() ?: continue
+            // The exit tangent: the pen's direction over the last few samples.
+            val prev = pts.getOrNull(pts.size - 1 - EXIT_TANGENT_SAMPLES) ?: pts.firstOrNull()
+            val dx = if (prev != null) last.x - prev.x else 0f
+            val dy = if (prev != null) last.y - prev.y else 0f
+            return Tail(last.x, last.y, dx, dy)
         }
-        // No strokes yet (blank summon): reach from the upper page area.
-        return pageW / 2f to 160f
+        // No strokes yet (blank summon): reach from the upper page area, downward.
+        return Tail(pageW / 2f, 160f, 0f, 1f)
     }
 
     private fun contentBottom(page: NotebookPage): Float {
@@ -419,6 +452,8 @@ class NotebookScreen @JvmOverloads constructor(
     }
 
     companion object {
+        /** How far back to look for the pen's exit direction at a stroke's tail. */
+        private const val EXIT_TANGENT_SAMPLES = 3
         private var epdHintShown = false
     }
 }

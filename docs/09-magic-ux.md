@@ -33,9 +33,21 @@ E-ink cannot do smooth motion — so the magic is **discrete and deliberate**:
 
 1. **Ink reveals** (08 §5): the answer *writes itself* in 6–14 discrete steps. This is the signature moment; it reads as "the notebook is drawing" even though it's stepped.
 2. **Ink settling**: 400 ms after pen-up, a single subtle *settle* pass (the ghost-cleaning Regal refresh) — framed as the ink "drying".
-3. **The stirring indicator** (waiting state): not a spinner. An ink-blot that slowly *fills* (10 discrete steps, ~6 s) beside the words *"The ink stirs…"* — progress that looks like a spell in progress, not a progress bar.
+3. **The ink creeps out** (waiting state): not a spinner, and no text. Several tips of ink set out from the tail of the user's last stroke; most wander a little way and simply stop, while one channel keeps going — sprouting finer branches as it advances — until it reaches the spot where the answer will write itself and gathers into an irregular blot that *breathes* (~6 s cycle), fed by travelling beads until the answer arrives. Ink that explores and fails is what makes the one that succeeds look alive. The user's writing is never consumed and never drawn over. Five phases on one 100 ms clock:
+
+   | Phase | Steps | What happens |
+   |---|---|---|
+   | `REACH` | 26 · 2.6 s | The system creeps: three false starts die near the word, ~11 branches sprout along the channel as the front passes, and the channel curls into the locus |
+   | `GATHER` | until the answer | The blot breathes, beads feed down the thread, ripples bloom |
+   | `DRINK` | 14 · 1.4 s | The system drains *tail-first* into the blot; each branch is reclaimed whole the moment the front passes where it hangs off, so nothing is left floating; the blot deflates to nothing |
+   | settle | 1 pass | `Epd.cleanRefresh` clears the ghosting of ~40 partial updates |
+   | answer | — | Only now does the answer ink reveal, into a clean page |
+
+   **It seeks; it does not route.** The channel leaves along the direction the pen was actually travelling (two knots on that ray, so the departure survives a long reach, with a whisker of drift so it is not a ruled line), meanders through four uneven waypoints at 0.10–0.22·dist, hesitates at three steps as ink wicking into fibres does, and curls back into the locus rather than arriving at it. Around it, ~26 branches creep: three false starts at 13–25% along the channel — never from the tail point itself, which is the last glyph of the user's word — and eleven branches along it, the longer runners forking again. Every quantity comes from a deterministic sin-hash seeded off the two endpoints, and the whole system is generated once at `beginSummonInk` and revealed by growth order, so it costs **no extra screen refreshes** and cannot jitter between frames.
+
+   **The answer is written with the ink that reached out.** `DRINK` is why the trail disappears, and it is a different gesture from `RECEDE`: consumed (drained tail-first into the blot) versus undone (retracted tip-first back into the stroke). The drain is skippable — a touch finishes it at once.
 4. **Page turns**: instant swap + single clear refresh (04 §2.3). No slide.
-5. **Summon-cancel feedback**: when writing resumes and the summon cancels, the blot *un-fills* quickly (4 steps) — the notebook "steps back".
+5. **Summon-cancel feedback**: when writing resumes and the summon cancels, the thread retracts tip-first back into the stroke and the blot goes with it — the notebook "steps back". Deliberately not the same motion as `DRINK`.
 6. **Smudge-away delete** (08 §7): the answer streaks into gray smudges (5 steps), then vanishes with a clean pass.
 
 Rule: **every animation is steps, not frames; every step is a partial refresh; every animation completes in ≤ 8 s and is skippable by tap.**
@@ -51,6 +63,9 @@ Rule: **every animation is steps, not frames; every step is a partial refresh; e
         ├── yes → cancel request, blot un-fills, timer re-arms (silent, no toast)
         └── no  → page image prepared → request sent (indicator: "the ink stirs…")
                  │ network 10–60 s
+                 ▼
+[thread is drunk]  drain (1.4 s) → one clean pass → the page is empty again
+                 │
                  ▼
 [answer reveals below]  flourish ✦ → blocks draw in → end flourish ✧
 ```

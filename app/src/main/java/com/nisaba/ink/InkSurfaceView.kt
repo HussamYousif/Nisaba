@@ -21,6 +21,7 @@ import com.nisaba.notebook.model.Stroke
 import com.nisaba.render.AnswerInk
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sin
 
 /**
  * The writing surface (docs/03 §2, docs/04 §3–5).
@@ -93,25 +94,30 @@ open class InkSurfaceView @JvmOverloads constructor(
         Epd.cleanRefresh(this)
     }
 
-    // The summon's organic ink narrative (docs/09 §3): a thread of ink flows
-    // from the last stroke's tail to the answer locus, gathers into a blot,
-    // and is gently fed by travelling ink beads while the scribe thinks.
-    private enum class InkPhase { IDLE, THREAD, FLOW, SETTLED, RECEDE }
+    // The summon's organic ink narrative (docs/09 §3): a thread of ink wanders
+    // from the last stroke's tail to the answer locus, gathers into a blot fed
+    // by travelling beads while the scribe thinks, and is then drunk — drained
+    // tail-first into the blot so the answer writes into a clean page.
+    private enum class InkPhase { IDLE, REACH, GATHER, DRINK, RECEDE }
 
     private var inkPhase = InkPhase.IDLE
     private var threadPath: Path? = null
+    private var roots: List<SummonInk.Tendril> = emptyList()
     private var threadLen = 0f
     private var threadProgress = 0f
+    private var reachStep = 0
+    private var drainProgress = 0f
     private var beadProgress = 0f
     private var rippleT = 0f
     private var flowPause = 0
+    private var breathStep = 0
     private var blotX = 0f
     private var blotY = 0f
     private val inkHandler = Handler(Looper.getMainLooper())
     private val inkTick: Runnable = object : Runnable {
         override fun run() {
             advanceInk()
-            if (inkPhase != InkPhase.IDLE && inkPhase != InkPhase.SETTLED) {
+            if (inkPhase != InkPhase.IDLE) {
                 inkHandler.postDelayed(this, INK_STEP_MS)
             }
             invalidate()
@@ -120,37 +126,60 @@ open class InkSurfaceView @JvmOverloads constructor(
 
     val isSummonInkActive: Boolean get() = inkPhase != InkPhase.IDLE
 
+    /** Fired once the reached-out ink has been drunk — the page is clean. */
+    var onSummonInkDrained: (() -> Unit)? = null
+
     /**
-     * The ink reaches out: a thread draws from the last stroke's tail to the
+     * The ink reaches out: a thread wanders from the last stroke's tail to the
      * answer locus ([blotX],[blotY]), then beads flow while waiting.
+     * [exitDx],[exitDy] is the direction the pen was travelling as the stroke
+     * ended — the thread leaves along it before turning toward the locus.
      */
-    fun beginSummonInk(tailX: Float, tailY: Float, blotX: Float, blotY: Float) {
+    @JvmOverloads
+    fun beginSummonInk(
+        tailX: Float,
+        tailY: Float,
+        blotX: Float,
+        blotY: Float,
+        exitDx: Float = 0f,
+        exitDy: Float = 0f,
+    ) {
         this.blotX = blotX
         this.blotY = blotY
-        threadPath = SummonInk.buildThread(tailX, tailY, blotX, blotY)
-        threadLen = SummonInk.threadLength(threadPath!!)
+        val path = SummonInk.buildThread(tailX, tailY, blotX, blotY, exitDx, exitDy)
+        threadPath = path
+        threadLen = SummonInk.threadLength(path)
+        roots = SummonInk.buildRoots(path, threadLen, tailX, tailY, blotX, blotY, exitDx, exitDy)
         threadProgress = 0f
+        reachStep = 0
+        drainProgress = 0f
         beadProgress = 0f
         rippleT = 0f
         flowPause = 0
-        inkPhase = InkPhase.THREAD
+        breathStep = 0
+        inkPhase = InkPhase.REACH
         inkHandler.removeCallbacks(inkTick)
         inkHandler.postDelayed(inkTick, INK_STEP_MS)
         invalidate()
     }
 
     /**
-     * The answer arrived (or the summon ended). [keep] true — the thread and
-     * blot stay while the answer ink reveals over them; false — the thread
-     * draws back into the stroke and everything clears.
+     * The answer arrived (or the summon ended). [keep] true — the answer drinks
+     * the thread: it drains tail-first into the blot, which deflates away, and
+     * [onSummonInkDrained] fires on a clean page. False — the thread draws back
+     * into the stroke tip-first and everything clears (reaching-out undone,
+     * which is deliberately a different gesture from being consumed).
      */
     fun endSummonInk(keep: Boolean) {
         if (inkPhase == InkPhase.IDLE) return
         if (keep) {
-            inkPhase = InkPhase.SETTLED
-            inkHandler.removeCallbacks(inkTick)
+            inkPhase = InkPhase.DRINK
             threadProgress = 1f
+            drainProgress = 0f
             beadProgress = 0f
+            breathStep = 0
+            inkHandler.removeCallbacks(inkTick)
+            inkHandler.postDelayed(inkTick, INK_STEP_MS)
             invalidate()
         } else {
             inkPhase = InkPhase.RECEDE
@@ -158,17 +187,25 @@ open class InkSurfaceView @JvmOverloads constructor(
         }
     }
 
+    /** Tap-to-skip the drain (docs/09 §2: every animation is skippable). */
+    private fun skipDrainIfDrinking() {
+        if (inkPhase == InkPhase.DRINK) drainProgress = 1f
+    }
+
     private fun advanceInk() {
         when (inkPhase) {
-            InkPhase.THREAD -> {
-                threadProgress += 1f / THREAD_STEPS
-                if (threadProgress >= 1f) {
+            InkPhase.REACH -> {
+                // Hesitating advance: ink wicks in bursts, not at a constant rate.
+                threadProgress += SummonInk.threadStepDeltas[reachStep]
+                reachStep++
+                if (reachStep >= SummonInk.THREAD_STEPS) {
                     threadProgress = 1f
-                    inkPhase = InkPhase.FLOW
+                    inkPhase = InkPhase.GATHER
                     flowPause = FLOW_PAUSE_STEPS
                 }
             }
-            InkPhase.FLOW -> {
+            InkPhase.GATHER -> {
+                breathStep = (breathStep + 1) % BREATH_STEPS
                 if (flowPause > 0) {
                     flowPause--
                 } else {
@@ -181,30 +218,53 @@ open class InkSurfaceView @JvmOverloads constructor(
                 }
                 if (rippleT > 0f) rippleT -= RIPPLE_STEP
             }
+            InkPhase.DRINK -> {
+                drainProgress += 1f / DRINK_STEPS
+                if (drainProgress >= 1f) {
+                    drainProgress = 1f
+                    clearSummonInk()
+                    // One clean pass over the ~40 partial updates we just made.
+                    Epd.cleanRefresh(this)
+                    onSummonInkDrained?.invoke()
+                }
+            }
             InkPhase.RECEDE -> {
                 threadProgress -= 1f / RECEDE_STEPS
                 if (threadProgress <= 0f) {
                     threadProgress = 0f
-                    inkPhase = InkPhase.IDLE
-                    threadPath = null
-                    threadLen = 0f
+                    clearSummonInk()
                 }
             }
             else -> Unit
         }
     }
 
+    private fun clearSummonInk() {
+        inkPhase = InkPhase.IDLE
+        threadPath = null
+        roots = emptyList()
+        threadLen = 0f
+    }
+
     private fun drawSummonInk(canvas: Canvas) {
         if (inkPhase == InkPhase.IDLE) return
         val path = threadPath
-        if (path != null && threadLen > 0f && threadProgress > 0f) {
-            SummonInk.drawThread(canvas, path, threadLen, threadProgress)
-            if (inkPhase == InkPhase.FLOW) {
-                SummonInk.drawBead(canvas, path, threadLen, beadProgress)
+        if (path != null && threadLen > 0f) {
+            if (inkPhase == InkPhase.DRINK) {
+                SummonInk.drawThreadDraining(canvas, path, threadLen, drainProgress)
+                SummonInk.drawRoots(canvas, roots, 1f, drainProgress)
+            } else if (threadProgress > 0f) {
+                SummonInk.drawThread(canvas, path, threadLen, threadProgress)
+                SummonInk.drawRoots(canvas, roots, threadProgress, 0f)
+                if (inkPhase == InkPhase.GATHER) {
+                    SummonInk.drawBead(canvas, path, threadLen, beadProgress)
+                }
             }
         }
-        if (threadProgress >= 1f || inkPhase == InkPhase.SETTLED || inkPhase == InkPhase.RECEDE) {
-            SummonInk.drawBlot(canvas, blotX, blotY, BLOT_RADIUS)
+        if (threadProgress >= 1f || inkPhase == InkPhase.RECEDE) {
+            val breath = sin(breathStep * 2f * Math.PI.toFloat() / BREATH_STEPS)
+            val deflate = if (inkPhase == InkPhase.DRINK) 1f - drainProgress else 1f
+            SummonInk.drawBlot(canvas, blotX, blotY, BLOT_RADIUS, breath, deflate)
             if (rippleT > 0f) SummonInk.drawRipple(canvas, blotX, blotY, BLOT_RADIUS, rippleT)
         }
     }
@@ -415,6 +475,10 @@ open class InkSurfaceView @JvmOverloads constructor(
     override fun onTouchEvent(event: MotionEvent): Boolean {
         val isStylus = isStylusEvent(event)
 
+        // A touch during the drain finishes it now — never consumed here, so
+        // pen input carries on untouched (docs/09 §2).
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) skipDrainIfDrinking()
+
         // Pen side-button state must be tracked on EVERY event — the button is
         // pressed while drawing, so move events matter as much as hovers.
         val btn = event.isButtonPressed(MotionEvent.BUTTON_STYLUS_PRIMARY) ||
@@ -542,11 +606,12 @@ open class InkSurfaceView @JvmOverloads constructor(
         private const val FLUSH_MS = 16L
         private const val CLEAN_PASS_MS = 400L
         private const val ANSWER_STEP_MS = 110L
-        private const val INK_STEP_MS = 160L
-        private const val THREAD_STEPS = 14
-        private const val BEAD_STEPS = 8
-        private const val FLOW_PAUSE_STEPS = 16
-        private const val RECEDE_STEPS = 6
+        private const val INK_STEP_MS = 100L
+        private const val DRINK_STEPS = 14
+        private const val BEAD_STEPS = 12
+        private const val FLOW_PAUSE_STEPS = 22
+        private const val RECEDE_STEPS = 8
+        private const val BREATH_STEPS = 60 // ~6 s breathing cycle at INK_STEP_MS
         private const val RIPPLE_STEP = 0.18f
         private const val BLOT_RADIUS = 24f
     }
