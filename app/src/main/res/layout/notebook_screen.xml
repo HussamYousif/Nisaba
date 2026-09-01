@@ -135,19 +135,33 @@
             </LinearLayout>
         </com.nisaba.ui.InkScrollView>
 
-        <TextView
-            android:id="@+id/stirIndicator"
+        <LinearLayout
+            android:id="@+id/stirContainer"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="bottom|start"
             android:layout_margin="20dp"
             android:background="@drawable/stir_bg"
-            android:paddingHorizontal="14dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="12dp"
             android:paddingVertical="8dp"
-            android:text="@string/stir_thinking"
-            android:textColor="@color/ink"
-            android:textSize="15sp"
-            android:visibility="gone" />
+            android:visibility="gone">
+
+            <com.nisaba.magic.InkStirView
+                android:id="@+id/stirInk"
+                android:layout_width="52dp"
+                android:layout_height="52dp" />
+
+            <TextView
+                android:id="@+id/stirIndicator"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="@string/stir_thinking"
+                android:textColor="@color/ink"
+                android:textSize="15sp" />
+        </LinearLayout>
 
         <ImageButton
             android:id="@+id/quillButton"

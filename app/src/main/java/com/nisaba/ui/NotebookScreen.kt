@@ -19,6 +19,7 @@ import com.nisaba.llm.DeepSeekClient
 import com.nisaba.llm.PageImagePreparer
 import com.nisaba.llm.PromptBuilder
 import com.nisaba.magic.Fonts
+import com.nisaba.magic.InkStirView
 import com.nisaba.magic.MagicTheme
 import com.nisaba.notebook.HandlerSaveScheduler
 import com.nisaba.notebook.NotebookSession
@@ -62,7 +63,10 @@ class NotebookScreen @JvmOverloads constructor(
     private lateinit var eraserBtn: TextView
     private lateinit var undoBtn: TextView
     private lateinit var redoBtn: TextView
+    private lateinit var stirContainer: android.widget.LinearLayout
     private lateinit var stirIndicator: TextView
+    private lateinit var stirInk: InkStirView
+    private var stirHideGeneration = 0
     private var bgCache: PageBackgroundCache? = null
 
     private val handler = Handler(Looper.getMainLooper())
@@ -94,7 +98,9 @@ class NotebookScreen @JvmOverloads constructor(
         eraserBtn = findViewById(R.id.nbEraser)
         undoBtn = findViewById(R.id.nbUndo)
         redoBtn = findViewById(R.id.nbRedo)
+        stirContainer = findViewById(R.id.stirContainer)
         stirIndicator = findViewById(R.id.stirIndicator)
+        stirInk = findViewById(R.id.stirInk)
 
         titleView.text = notebook.title
         titleView.typeface = Fonts.kalamBold
@@ -325,8 +331,26 @@ class NotebookScreen @JvmOverloads constructor(
     }
 
     private fun setStirring(active: Boolean) {
-        stirIndicator.visibility = if (active) View.VISIBLE else View.GONE
-        if (active) stirIndicator.setText(R.string.stir_thinking)
+        val gen = ++stirHideGeneration
+        if (active) {
+            stirContainer.visibility = View.VISIBLE
+            stirIndicator.setText(R.string.stir_thinking)
+            stirInk.stir()
+            // The scribe turns the page… after a long wait (docs/09 §4).
+            handler.postDelayed({
+                if (gen == stirHideGeneration && pendingSummon) {
+                    stirIndicator.setText(R.string.stir_scribes)
+                }
+            }, 30_000L)
+        } else {
+            stirInk.settle()
+            handler.postDelayed({
+                if (gen == stirHideGeneration) {
+                    stirContainer.visibility = View.GONE
+                    stirInk.stop()
+                }
+            }, 900L)
+        }
     }
 
     // ------------------------------------------------------------ answers
