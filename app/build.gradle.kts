@@ -25,6 +25,21 @@ val dotEnv = loadDotEnv(rootProject.file(".env"))
 val deepseekApiKey = (dotEnv["DEEPSEEK_API_KEY"] ?: System.getenv("DEEPSEEK_API_KEY") ?: "")
     .replace("\\", "\\\\").replace("\"", "\\\"")
 
+/** Release signing secrets (docs/10 §3); null when keystore.properties is absent. */
+fun loadKeystoreProperties(): Map<String, String>? {
+    val f = rootProject.file("keystore.properties")
+    if (!f.exists()) return null
+    return f.readLines().mapNotNull { line ->
+        val t = line.trim()
+        if (t.isEmpty() || t.startsWith("#")) return@mapNotNull null
+        val idx = t.indexOf('=')
+        if (idx <= 0) return@mapNotNull null
+        t.substring(0, idx).trim() to t.substring(idx + 1).trim()
+    }.toMap()
+}
+
+val keystoreProps = loadKeystoreProperties()
+
 android {
     namespace = "com.nisaba"
     compileSdk = 35
@@ -46,6 +61,20 @@ android {
         buildConfig = true
     }
 
+    signingConfigs {
+        create("release") {
+            // docs/10 §3: keystore.properties is gitignored; without it the
+            // release build fails at signing time rather than falling back to
+            // the public debug key (audit P2-2).
+            if (keystoreProps != null) {
+                storeFile = file(keystoreProps["storeFile"]!!)
+                storePassword = keystoreProps["storePassword"]
+                keyAlias = keystoreProps["keyAlias"]
+                keyPassword = keystoreProps["keyPassword"]
+            }
+        }
+    }
+
     buildTypes {
         debug {
             // Dev key from .env — embedded in DEBUG builds only, so the app
@@ -54,9 +83,10 @@ android {
         }
         release {
             buildConfigField("String", "DEEPSEEK_API_KEY", "\"\"")
-            // Proper signing + minification land in M6; debug-signed for device iteration.
-            isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("debug")
+            // M6 / audit P2-2: real signing + minification (keep rules in
+            // proguard-rules.pro cover kotlinx.serialization and PdfBox).
+            isMinifyEnabled = true
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }

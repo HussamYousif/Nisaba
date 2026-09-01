@@ -27,7 +27,7 @@ Status: **Draft v0.1** · Ordered by risk-first (the scary unknowns get disprove
 **Scope:** transcript context (F5), regenerate/smudge-away (long-press), per-answer controls, settings screen (F7) incl. encrypted key + connection test + temperature/max-tokens/ink-colour, rename (F1.5), PNG export via share sheet (F8), onboarding screen, the >30 s thinking line, anti-magic audit (09 §9). **Remaining:** sounds (optional — nothing plays them yet) and the on-device pass.
 **Done when:** a 10-exchange conversation in one notebook stays coherent; everything from S1–S14 passes on-device.
 
-### M6 — Release
+### M6 — Release ✅ (keystore + minify done; full on-device checklist pending)
 **Scope:** lint, signing, fresh-install/upgrade tests, full 04 §8 checklist, version 1.0.0 APK on the Boox (10 §7).
 **Done when:** a signed `nisaba-1.0.0.apk` is installed and the user has used it for a full real session (journal/study) without touching a keyboard.
 

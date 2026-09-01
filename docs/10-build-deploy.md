@@ -1,6 +1,6 @@
 # 10 — Build & Deploy (getting the APK onto the Boox)
 
-Status: **Draft v0.1** · Everything here is executed in M1 for a first on-device build.
+Status: **Implemented (M6, 2026-09-01)** · Debug builds iterate on the Boox; the release APK is signed with the private keystore and minified.
 
 ## 1. Prerequisites (dev machine)
 
@@ -31,7 +31,7 @@ nisaba/
 └── docs/
 ```
 
-**`app/build.gradle.kts` essentials:**
+**`app/build.gradle.kts` essentials (as built):**
 
 ```kotlin
 android {
@@ -113,11 +113,13 @@ keyPassword=…
 
 ## 7. Release checklist
 
-- [ ] `lint` clean (or all warnings triaged)
-- [ ] `assembleRelease` with the keystore; install over Wi-Fi; verify signing (`apksigner verify`)
+- [x] `lint` clean (or all warnings triaged) — gate with baseline since P2-3
+- [x] `assembleRelease` with the keystore; signing verified (`apksigner verify` → CN=Nisaba)
+- [x] Release is key-clean: `strings classes*.dex | grep sk-` finds nothing (debug embeds the .env key — see README "Development secrets")
+- [x] Minification on (R8); keep-rules cover kotlinx.serialization + PdfBox; release smoke-tested on the emulator (create → list → open → render)
 - [ ] Full 04 §8 device checklist pass
 - [ ] Fresh-install test (no data) + upgrade test (data preserved)
-- [ ] Version bump in `libs.versions.toml`/`versionName`
+- [ ] Version bump in `libs.versions.toml`/`versionName` (first release: 1 / 0.1.0)
 
 ## 8. CI (v2, optional)
 

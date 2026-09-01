@@ -71,10 +71,12 @@ class MainActivity : AppCompatActivity() {
 
     /** First-run onboarding (docs/09 §6, M5): one parchment, three words. */
     private fun showOnboarding() {
-        val screen = android.widget.LinearLayout(this).apply {
+        // Scrollable: small/landscape screens must still reach Begin.
+        val content = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.VERTICAL
             setBackgroundColor(com.nisaba.magic.MagicTheme.PARCHMENT)
-            setPadding(90, 160, 90, 90)
+            setPadding(90, 140, 90, 90)
+            gravity = android.view.Gravity.CENTER_HORIZONTAL
             addView(android.widget.TextView(context).apply {
                 text = getString(R.string.onboarding_title)
                 typeface = com.nisaba.magic.Fonts.dancingScript
@@ -122,7 +124,10 @@ class MainActivity : AppCompatActivity() {
                 }
             })
         }
-        container.addView(screen)
+        val scroll = android.widget.ScrollView(this).apply {
+            addView(content)
+        }
+        container.addView(scroll)
     }
 
     override fun onDestroy() {
