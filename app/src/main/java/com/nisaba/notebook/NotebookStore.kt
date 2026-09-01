@@ -96,16 +96,28 @@ class NotebookStore(private val context: Context) {
     }
 
     private fun parse(file: File): Notebook {
-        if (!file.exists()) {
+        val nb = if (!file.exists()) {
             // Recovery (docs/05:120, audit P0-6): a crash between fsync and
             // rename leaves a complete tmp while notebook.json is missing —
             // read it rather than losing the notebook.
             val tmp = File(file.parentFile, "notebook.json.tmp")
             if (tmp.exists()) {
-                return json.decodeFromString(Notebook.serializer(), tmp.readText())
+                json.decodeFromString(Notebook.serializer(), tmp.readText())
+            } else {
+                json.decodeFromString(Notebook.serializer(), file.readText())
             }
+        } else {
+            json.decodeFromString(Notebook.serializer(), file.readText())
         }
-        return json.decodeFromString(Notebook.serializer(), file.readText())
+        // A newer app version may write a schema this build cannot read —
+        // refuse loudly instead of mangling data (docs/05:137, audit P2-5).
+        if (nb.schemaVersion > Notebook.CURRENT_SCHEMA_VERSION) {
+            throw UnsupportedSchemaException(
+                "notebook schema ${nb.schemaVersion} is newer than supported " +
+                    Notebook.CURRENT_SCHEMA_VERSION
+            )
+        }
+        return nb
     }
 
     private fun headFrom(file: File): NotebookHead {
@@ -220,6 +232,9 @@ data class NotebookSummary(
     val updatedAt: String,
     val lastOpenedPage: Int,
 )
+
+/** The notebook on disk is from a newer schema than this build supports. */
+class UnsupportedSchemaException(message: String) : Exception(message)
 
 /** The shelf's view of a notebook — summary fields only (audit P1-4). */
 @kotlinx.serialization.Serializable

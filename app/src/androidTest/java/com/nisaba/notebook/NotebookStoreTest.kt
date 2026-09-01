@@ -139,6 +139,30 @@ class NotebookStoreTest {
     }
 
     @Test
+    fun newerSchema_notebookRefusesToOpen() {
+        // Audit P2-5: a notebook written by a newer app version must refuse
+        // to open with a typed error — never mangle data silently.
+        val nb = store.createBlank()
+        store.saveNow(nb)
+        val dir = store.dirOf(nb.id)
+        val json = java.io.File(dir, "notebook.json")
+        val updated = json.readText().replace("\"schemaVersion\": 1", "\"schemaVersion\": 999")
+        assertTrue("schemaVersion marker not found in saved JSON", updated != json.readText())
+        json.writeText(updated)
+
+        var thrown: UnsupportedSchemaException? = null
+        try {
+            store.load(nb.id)
+        } catch (e: UnsupportedSchemaException) {
+            thrown = e
+        }
+        assertNotNull("newer schema must refuse to open (audit P2-5)", thrown)
+
+        // Listing stays harmless: the shelf shows the tome, opening toasts.
+        assertTrue(store.list().any { it.id == nb.id })
+    }
+
+    @Test
     fun save_failureLeavesTheGoodCopyIntact() {
         // Audit P0-6: the old rename fallback deleted notebook.json to retry
         // a rename that just failed — a second failure would lose the

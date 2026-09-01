@@ -102,3 +102,7 @@ DEEPSEEK_API_KEY=sk-your-key-here
   type on the Boox. A key you enter in Settings always wins.
 - `.env` is gitignored; release builds never embed it.
 - The Settings screen shows *"Dev key from .env is active"* when it's in use.
+- ⚠️ The debug APK's `BuildConfig` string is recoverable (`strings app-debug.apk
+  | grep sk-`) because minification is off — treat any distributed debug APK
+  as key-exposing (audit P2-1). Release builds are clean, and release refuses
+  non-`https` base URLs outright.

@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Debug-only manifest: hosts the instrumented-test activity in the app
-     process and permits cleartext HTTP to local mock servers (10.0.2.2).
-     Release builds keep the secure default (cleartext blocked). -->
+     process and permits cleartext HTTP only to local mock servers (see
+     res/xml/network_security_config.xml, audit P2-1). Release builds keep
+     the secure default (cleartext blocked). -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application
-        android:usesCleartextTraffic="true">
+        android:networkSecurityConfig="@xml/network_security_config">
         <activity
             android:name="com.nisaba.ink.TestActivity"
             android:exported="false"

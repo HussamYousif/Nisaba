@@ -85,4 +85,9 @@ data class Notebook(
     var pages: List<NotebookPage> = mutableListOf(NotebookPage(index = 0)),
     var transcript: List<TranscriptEntry> = emptyList(),
     var lastOpenedPage: Int = 0,
-)
+) {
+    companion object {
+        /** Bump when the JSON shape changes incompatibly (audit P2-5). */
+        const val CURRENT_SCHEMA_VERSION = 1
+    }
+}

@@ -64,6 +64,14 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    lint {
+        // "lint clean" is part of Done (AGENTS.md): new issues fail the
+        // build. The baseline pins today's known warnings; regenerate it
+        // deliberately (audit P2-3).
+        abortOnError = true
+        baseline = file("lint-baseline.xml")
+    }
 }
 
 dependencies {

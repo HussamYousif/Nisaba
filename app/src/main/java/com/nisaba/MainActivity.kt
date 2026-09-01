@@ -176,7 +176,14 @@ class MainActivity : AppCompatActivity() {
     private fun openNotebook(id: String) {
         settingsScreen?.onClose()
         settingsScreen = null
-        val notebook = store.load(id)
+        val notebook = try {
+            store.load(id)
+        } catch (e: Exception) {
+            // Corrupt file or a newer schema — never crash the app on open
+            // (audit P2-5); the user stays on the shelf with a clear word.
+            Toast.makeText(this, R.string.tome_open_failed, Toast.LENGTH_LONG).show()
+            return
+        }
         val screen = NotebookScreen(this).apply {
             bind(
                 notebook = notebook,

@@ -3,7 +3,7 @@ package com.nisaba.llm
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKeys
+import androidx.security.crypto.MasterKey
 
 /**
  * App settings (docs/02 F7, docs/03 §7): the DeepSeek API key lives in
@@ -11,18 +11,38 @@ import androidx.security.crypto.MasterKeys
  */
 class AppSettings(context: Context) {
 
+    private val contextRef = context.applicationContext
+
+    /**
+     * Keystore-backed prefs. A lock-screen change can invalidate the master
+     * key, after which create() throws on first access — without recovery the
+     * app is bricked until data is cleared (audit P2-4). Wipe and rebuild once
+     * instead: losing the stored key beats losing the app.
+     */
     private val secure: SharedPreferences by lazy {
-        EncryptedSharedPreferences.create(
-            "nisaba_secure",
-            MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC),
+        try {
+            createSecure(contextRef)
+        } catch (e: Exception) {
+            contextRef.deleteSharedPreferences("nisaba_secure")
+            createSecure(contextRef)
+        }
+    }
+
+    private fun createSecure(context: Context): SharedPreferences {
+        val masterKey = MasterKey.Builder(context)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build()
+        return EncryptedSharedPreferences.create(
             context,
+            "nisaba_secure",
+            masterKey,
             EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
         )
     }
 
     private val plain: SharedPreferences =
-        context.getSharedPreferences("nisaba_prefs", Context.MODE_PRIVATE)
+        contextRef.getSharedPreferences("nisaba_prefs", Context.MODE_PRIVATE)
 
     var apiKey: String
         get() = secure.getString(KEY_API_KEY, "") ?: ""
@@ -64,7 +84,16 @@ class AppSettings(context: Context) {
         set(value) = plain.edit().putBoolean(KEY_SOUNDS, value).apply()
 
     /** Normalized chat-completions URL for the configured base. */
-    fun chatCompletionsUrl(): String = "$baseUrl/chat/completions"
+    fun chatCompletionsUrl(): String {
+        val url = "$baseUrl/chat/completions"
+        // Release refuses cleartext outright: a typo'd http:// base would
+        // send Authorization: Bearer sk-… in plaintext (audit P2-1). Debug
+        // keeps http for the instrumented-test mock servers.
+        if (!com.nisaba.BuildConfig.DEBUG && url.startsWith("http://")) {
+            throw IllegalArgumentException("cleartext base URL is not allowed in release builds")
+        }
+        return url
+    }
 
     companion object {
         const val DEFAULT_BASE_URL = "https://api.deepseek.com"
