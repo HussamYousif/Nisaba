@@ -1,11 +1,10 @@
 package com.nisaba.epd
 
-import android.app.Activity
 import android.view.View
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.nisaba.ink.TestActivity
-import org.junit.Assert.assertTrue
+import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -26,8 +25,12 @@ class EpdTest {
                 Epd.disableFastMode(view)
                 Epd.cleanRefresh(view)
                 Epd.disableFullScreenUpdate(activity)
-                // No crash above is the assertion; availability is informational.
-                assertTrue(true)
+                // The calls above are the assertion — no crash on any device.
+                // Availability must also be a stable observation across calls
+                // (audit P3-4: this used to assert true == true).
+                val before = Epd.available
+                Epd.enableFastMode(view)
+                assertEquals(before, Epd.available)
             }
         }
     }

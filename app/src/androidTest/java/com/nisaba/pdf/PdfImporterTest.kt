@@ -133,9 +133,29 @@ class PdfImporterTest {
         assertEquals("orphaned notebook dirs: ${orphans.map { it.name }}", 0, orphans.size)
     }
 
+    /** Notebook dirs present before a rollback test runs. */
+    private fun existingNotebookDirs(): Set<String> =
+        store.dirOf("").parentFile!!.listFiles()
+            ?.filter { it.isDirectory }
+            ?.map { it.name }
+            .orEmpty()
+            .toSet()
+
+    /**
+     * Assert the rollback created no NEW notebook dirs. Scoped to what this
+     * test could have created — the earlier tests in this class leave real
+     * notebooks behind, so a global "zero orphans" assertion only passes by
+     * method-ordering luck (audit P3-5).
+     */
+    private fun assertNoNewNotebookDirs(before: Set<String>) {
+        val now = existingNotebookDirs()
+        assertEquals("half-created dirs left behind: ${now - before}", before, now)
+    }
+
     @Test
     fun import_failureRollsBackCleanly() {
         val pdf = createPdf("boom.pdf", 5)
+        val before = existingNotebookDirs()
         // A stream that dies after 100 bytes simulates a corrupt/cut source.
         val broken = object : InputStream() {
             private val inner = FileInputStream(pdf)
@@ -152,12 +172,13 @@ class PdfImporterTest {
             threw = true
         }
         assertTrue("import should have thrown", threw)
-        assertNoOrphanedNotebooks() // transactional: nothing half-created remains
+        assertNoNewNotebookDirs(before) // transactional: nothing half-created remains
     }
 
     @Test
     fun import_cancelLeavesNothingBehind() {
         val pdf = createPdf("cancel.pdf", 4)
+        val before = existingNotebookDirs()
         var cancelled = false
         try {
             PdfImporter(store).importFrom(
@@ -168,7 +189,7 @@ class PdfImporterTest {
             cancelled = true
         }
         assertTrue("import should have been cancelled", cancelled)
-        assertNoOrphanedNotebooks()
+        assertNoNewNotebookDirs(before)
     }
 
     private fun decodeSync(cache: PageBackgroundCache, index: Int): android.graphics.Bitmap? {

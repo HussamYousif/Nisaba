@@ -1,8 +1,6 @@
 package com.nisaba.ui
 
 import android.content.Context
-import android.os.Handler
-import android.os.Looper
 import android.util.AttributeSet
 import android.view.LayoutInflater
 import android.view.View
@@ -65,7 +63,6 @@ class NotebookScreen @JvmOverloads constructor(
 
     private var bgCache: PageBackgroundCache? = null
 
-    private val handler = Handler(Looper.getMainLooper())
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var summonJob: Job? = null
 
@@ -153,7 +150,7 @@ class NotebookScreen @JvmOverloads constructor(
         // Summon detection: 3 s idle → auto-send; writing cancels a pending
         // request (F3.1/F3.2, docs/09 §3).
         summonController = SummonController(
-            handler = handler,
+            scheduler = HandlerSaveScheduler(),
             idleTimeoutSeconds = { settings.idlePauseSeconds },
             autoSummonEnabled = { settings.autoSummonEnabled },
         ).apply {

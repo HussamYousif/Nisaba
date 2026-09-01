@@ -66,7 +66,20 @@ class SummonInkTest {
     fun theWanderIsStableBetweenFrames() {
         val a = SummonInk.buildThread(60f, 300f, 300f, 100f, 0.9f, -0.4f)
         val b = SummonInk.buildThread(60f, 300f, 300f, 100f, 0.9f, -0.4f)
-        assertEquals(SummonInk.threadLength(a), SummonInk.threadLength(b), 0.001f)
+        val ma = android.graphics.PathMeasure(a, false)
+        val mb = android.graphics.PathMeasure(b, false)
+        assertEquals(ma.length, mb.length, 0.001f)
+        // Geometry, not just length: every sampled point must be identical
+        // between frames (audit P3-4).
+        val pa = FloatArray(2)
+        val pb = FloatArray(2)
+        for (i in 0..20) {
+            val t = ma.length * i / 20f
+            ma.getPosTan(t, pa, null)
+            mb.getPosTan(t, pb, null)
+            assertEquals("frame $i x", pa[0], pb[0], 1e-3f)
+            assertEquals("frame $i y", pa[1], pb[1], 1e-3f)
+        }
     }
 
     /**
@@ -102,8 +115,11 @@ class SummonInkTest {
         val path = SummonInk.buildThread(60f, 300f, 300f, 100f)
         val bounds = android.graphics.RectF()
         path.computeBounds(bounds, true)
-        assertTrue(bounds.contains(60f, 300f) || bounds.width() > 0f)
-        assertTrue(bounds.right >= 290f) // reaches toward the locus
+        // The wander must actually arrive: the bounding box reaches the
+        // locus's x, and its top climbs to the locus's y (the curl overshoots
+        // past it slightly — audit P3-4: this used to assert a tautology).
+        assertTrue("path never neared the locus: $bounds", bounds.right >= 290f)
+        assertTrue("path never climbed to the locus: $bounds", bounds.top <= 120f)
     }
 
     /**

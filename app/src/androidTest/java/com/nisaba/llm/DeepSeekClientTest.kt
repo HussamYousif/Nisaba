@@ -31,13 +31,27 @@ class DeepSeekClientTest {
         server = MockWebServer()
         server.start()
         settings = AppSettings(ApplicationProvider.getApplicationContext<Context>())
+        // Snapshot for @After restore — the tests write into the REAL app
+        // prefs (audit P3-5).
+        saved = listOf(settings.apiKey, settings.baseUrl, settings.model, settings.idlePauseSeconds, settings.autoSummonEnabled)
         settings.baseUrl = server.url("/").toString().trimEnd('/')
         settings.apiKey = "test-key-123"
     }
 
+    private var saved: List<Any> = emptyList()
+
     @After
     fun tearDown() {
         server.shutdown()
+        // Restore the real settings (audit P3-5): the app must not be left
+        // pointing at a dead localhost mock with a bogus key.
+        if (saved.size == 5) {
+            settings.apiKey = saved[0] as String
+            settings.baseUrl = saved[1] as String
+            settings.model = saved[2] as String
+            settings.idlePauseSeconds = saved[3] as Int
+            settings.autoSummonEnabled = saved[4] as Boolean
+        }
     }
 
     private fun completionJson(content: String) =

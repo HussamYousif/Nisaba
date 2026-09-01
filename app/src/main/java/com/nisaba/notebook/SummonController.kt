@@ -1,15 +1,16 @@
 package com.nisaba.notebook
 
-import android.os.Handler
-
 /**
  * The summon detection (docs/02 F3, docs/09 §3): fires on 3 s of writing
  * silence (only when there is new content), cancels the in-flight request the
  * moment the user writes again (cancel-on-resume), and supports the manual
  * quill summon. Pure detection: the notebook screen owns the actual request.
+ *
+ * Depends on [SaveScheduler], not android.os, so the whole state machine is
+ * JVM-testable (audit P3-1).
  */
 class SummonController(
-    private val handler: Handler,
+    private val scheduler: SaveScheduler,
     private val idleTimeoutSeconds: () -> Int,
     private val autoSummonEnabled: () -> Boolean,
 ) {
@@ -46,15 +47,15 @@ class SummonController(
             canceller()
             listener?.onRequestCancelledByWriting()
         }
-        handler.removeCallbacks(idleRunnable)
-        handler.postDelayed(idleRunnable, idleTimeoutSeconds().toLong() * 1000L)
+        scheduler.cancel(idleRunnable)
+        scheduler.schedule(idleRunnable, idleTimeoutSeconds().toLong() * 1000L)
     }
 
     /** Manual summon: cancels anything pending and fires immediately. */
     fun manualSummon() {
         cancelPending?.invoke()
         cancelPending = null
-        handler.removeCallbacks(idleRunnable)
+        scheduler.cancel(idleRunnable)
         listener?.onManualSummon()
     }
 
@@ -62,7 +63,7 @@ class SummonController(
     fun cancelAll() {
         cancelPending?.invoke()
         cancelPending = null
-        handler.removeCallbacks(idleRunnable)
+        scheduler.cancel(idleRunnable)
     }
 
     /** Registers the in-flight request so writing cancels it (F3.2). */
@@ -75,7 +76,7 @@ class SummonController(
     }
 
     fun shutdown() {
-        handler.removeCallbacks(idleRunnable)
+        scheduler.cancel(idleRunnable)
         cancelPending = null
     }
 }

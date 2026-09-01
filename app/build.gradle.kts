@@ -36,6 +36,10 @@ android {
         versionCode = 1
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // P3-5: instrumented tests write into the real app data (prefs,
+        // notebooks). Wipe it per run so a re-run starts clean instead of
+        // corrupting the previous state.
+        testInstrumentationRunnerArguments["clearPackageData"] = "true"
     }
 
     buildFeatures {

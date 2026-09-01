@@ -11,8 +11,13 @@ import org.junit.runner.RunWith
  * Second OEC probe: transaction-code constants, and a live sweep of
  * setAppScopeRefreshMode(int, boolean) values with read-back, so the app can
  * pick the fastest writing waveform (docs/04 §2).
+ *
+ * Probe, not a test (audit P3-4): it writes refresh modes into the live
+ * system service and asserts nothing. Kept @Ignore'd for on-device runs; the
+ * suite's green count must not include it.
  */
 @RunWith(AndroidJUnit4::class)
+@org.junit.Ignore("device probe — needs the Onyx OEC service; writes live system state")
 class OecProbeTest {
 
     private fun service(): Any {

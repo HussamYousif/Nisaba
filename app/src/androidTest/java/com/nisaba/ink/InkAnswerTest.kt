@@ -10,7 +10,6 @@ import com.nisaba.notebook.model.AnswerGroup
 import com.nisaba.notebook.model.NotebookPage
 import com.nisaba.render.AnswerInk
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -83,7 +82,10 @@ class InkAnswerTest {
         val v = view()
         v.setAnswers(emptyList(), 0f, animateLast = true)
         assertEquals(0, v.answerItemCount)
-        assertFalse(v.skipAnswerReveal().let { false }) // no-op path
+        // Skipping a reveal that isn't playing must be a no-op, not a crash
+        // (audit P3-4: this used to assert false == false).
+        v.skipAnswerReveal()
+        assertEquals(0, v.answerItemCount)
     }
 
     /**
