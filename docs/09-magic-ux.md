@@ -117,4 +117,9 @@ Every error keeps the notebook state intact and reads like the book apologizing,
 
 ## 9. Anti-magic list (what we will NOT do)
 
-- ❌ Glowing/neon/parallax effects · ❌ Chat bubbles or typing UI · ❌ Popup keyboards · ❌ "AI" branding or robot iconography (the book is a *scribal spirit*, not a chatbot) · ❌ Skeuomorphic leather that dithers badly · ❌ Animations longer than 8 s · ❌ Toasts interrupting writing.
+- ❌ Glowing/neon/parallax effects · ❌ Chat bubbles or typing UI · ❌ Popup keyboards in the writing flow · ❌ "AI" branding or robot iconography (the book is a *scribal spirit*, not a chatbot) · ❌ Skeuomorphic leather that dithers badly · ❌ Decorative animations longer than 8 s · ❌ Toasts interrupting writing.
+
+**Audit (M5, 2026-09-01):** all clear against the current build, with three documented exceptions:
+1. The **breathing blot** runs for as long as the request is in flight (can exceed 8 s) — it is the waiting indicator, not decoration: slow e-ink-safe breathing (6 s cycle), skippable by tapping, and the ink is drained the moment the answer lands.
+2. Settings needs a **keyboard** for the API key/base URL (the Boox has a virtual keyboard) — the rule is about the writing flow; the notebook page itself never opens one.
+3. Rare informational **toasts** (EPD hint on non-Boox only, 30 s thinking line, summon errors, clipboard confirmation) — never during active writing, all short-lived.

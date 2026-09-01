@@ -95,6 +95,8 @@ keyPassword=…
 1. Copy the APK to the tablet (Send to Boox, Google Drive, or a USB cable).
 2. Open the APK in the file manager → allow "install unknown apps" for it → install.
 
+**Boox quirk — stale Wi-Fi lease (found 2026-09-01):** after a long sleep the tablet can hold an IPv6-only link with `IP: null` in `cmd wifi status` — DNS then fails for IPv4-only endpoints (api.deepseek.com has no AAAA). Fix: `adb shell svc wifi disable && svc wifi enable`, or toggle Wi-Fi in Settings; DHCPv4 re-leases and the connection test passes.
+
 **Boox quirk — disabled after install:** Boox firmware marks freshly installed/sideloaded packages `DISABLED_USER` (`enabled=3`); the activity then "does not exist". After every `adb install` (including test-run reinstalls) run `adb shell pm enable com.nisaba` (or open the app once from the launcher). Also enable USB debugging + "USB debugging (Security settings)" in Developer Options.
 
 **Boox OS settings for Nisaba** (critical for feel, 04 §2):

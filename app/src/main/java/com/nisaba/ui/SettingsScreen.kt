@@ -63,7 +63,7 @@ class SettingsScreen @JvmOverloads constructor(
             setPadding(0, 0, 0, dp(16))
         }
         header.addView(TextView(context).apply {
-            text = "←"
+            text = context.getString(R.string.settings_back)
             textSize = 26f
             setTextColor(MagicTheme.INK)
             setPadding(0, 0, dp(16), 0)
@@ -76,7 +76,7 @@ class SettingsScreen @JvmOverloads constructor(
             }
         })
         header.addView(TextView(context).apply {
-            text = "Settings"
+            text = context.getString(R.string.settings_title)
             typeface = Fonts.dancingScript
             textSize = 30f
             setTextColor(MagicTheme.INK)
@@ -84,7 +84,7 @@ class SettingsScreen @JvmOverloads constructor(
         root.addView(header)
 
         // API key
-        root.addView(label(context, "DeepSeek API key"))
+        root.addView(label(context, context.getString(R.string.settings_api_key)))
         keyField = EditText(context).apply {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
             setText(settings.apiKey)
@@ -94,7 +94,7 @@ class SettingsScreen @JvmOverloads constructor(
         root.addView(keyField)
 
         // Base URL
-        root.addView(label(context, "Base URL"))
+        root.addView(label(context, context.getString(R.string.settings_base_url)))
         baseField = EditText(context).apply {
             setText(settings.baseUrl)
             setTextColor(MagicTheme.INK)
@@ -102,7 +102,7 @@ class SettingsScreen @JvmOverloads constructor(
         root.addView(baseField)
 
         // Model
-        root.addView(label(context, "Model"))
+        root.addView(label(context, context.getString(R.string.settings_model)))
         modelField = EditText(context).apply {
             setText(settings.model)
             setTextColor(MagicTheme.INK)
@@ -112,14 +112,14 @@ class SettingsScreen @JvmOverloads constructor(
         // Auto-summon
         autoSwitch = SwitchCompat(context).apply {
             isChecked = settings.autoSummonEnabled
-            text = "Answer when I pause (auto-summon)"
+            text = context.getString(R.string.settings_auto_summon)
             setTextColor(MagicTheme.INK)
             setPadding(0, dp(10), 0, dp(4))
         }
         root.addView(autoSwitch)
 
         // Idle seconds
-        root.addView(label(context, "Pause before answering (seconds)"))
+        root.addView(label(context, context.getString(R.string.settings_idle_seconds)))
         idleField = EditText(context).apply {
             inputType = InputType.TYPE_CLASS_NUMBER
             setText(settings.idlePauseSeconds.toString())
@@ -128,7 +128,7 @@ class SettingsScreen @JvmOverloads constructor(
         root.addView(idleField)
 
         // Temperature (F7.3, M5)
-        root.addView(label(context, "Temperature (0–2)"))
+        root.addView(label(context, context.getString(R.string.settings_temperature)))
         tempField = EditText(context).apply {
             inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
             setText(settings.temperature.toString())
@@ -137,7 +137,7 @@ class SettingsScreen @JvmOverloads constructor(
         root.addView(tempField)
 
         // Max tokens (F7.3, M5)
-        root.addView(label(context, "Max tokens"))
+        root.addView(label(context, context.getString(R.string.settings_max_tokens)))
         tokensField = EditText(context).apply {
             inputType = InputType.TYPE_CLASS_NUMBER
             setText(settings.maxTokens.toString())
@@ -146,7 +146,7 @@ class SettingsScreen @JvmOverloads constructor(
         root.addView(tokensField)
 
         // Ink color (F2.5, M5): the palette from docs/04 §6.
-        root.addView(label(context, "Ink colour"))
+        root.addView(label(context, context.getString(R.string.settings_ink_colour)))
         val inkRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(0, 0, 0, dp(6))
@@ -187,7 +187,7 @@ class SettingsScreen @JvmOverloads constructor(
 
         // Test connection
         root.addView(TextView(context).apply {
-            text = "🖋 Test the connection"
+            text = context.getString(R.string.settings_test_connection)
             typeface = Fonts.kalamBold
             textSize = 16f
             setTextColor(MagicTheme.ACCENT_RED)
@@ -205,7 +205,7 @@ class SettingsScreen @JvmOverloads constructor(
         // Dev-key hint: a key from .env makes summoning work without typing.
         if (settings.apiKey.isBlank() && settings.devApiKey.isNotBlank()) {
             root.addView(TextView(context).apply {
-                text = "✦ Dev key from .env is active — the quill already has ink."
+                text = context.getString(R.string.settings_dev_key_hint)
                 typeface = Fonts.kalam
                 textSize = 13f
                 setTextColor(MagicTheme.ACCENT_RED)
@@ -238,10 +238,10 @@ class SettingsScreen @JvmOverloads constructor(
         val s = settings ?: return
         persist()
         if (s.effectiveApiKey().isBlank()) {
-            testResult.text = "The quill has no ink — enter your API key first."
+            testResult.text = context.getString(R.string.settings_no_key)
             return
         }
-        testResult.text = "The ink stirs…"
+        testResult.text = context.getString(R.string.settings_stirring)
         scope.launch {
             // Explicit try/catch, not runCatching: runCatching swallows the
             // CancellationException from onClose(), and the coroutine then
@@ -251,9 +251,14 @@ class SettingsScreen @JvmOverloads constructor(
                 DeepSeekClient(s).chat(
                     ChatContract.ChatRequest(
                         model = s.model,
-                        max_tokens = 8,
+                        // json_object replies need more than a handful of
+                        // tokens (a bare "ping" with max_tokens=8 came back
+                        // empty).
+                        max_tokens = 64,
                         messages = listOf(
-                            ChatContract.textMessage("user", "ping")
+                            // response_format=json_object requires the word
+                            // "json" in the prompt (the API rejects "ping").
+                            ChatContract.textMessage("user", "Reply with a JSON object like {\"ok\": true}")
                         ),
                     )
                 )
@@ -264,9 +269,9 @@ class SettingsScreen @JvmOverloads constructor(
                 null
             }
             testResult.text = if (reply != null) {
-                "The scribe answers: \"${reply.take(60)}\""
+                context.getString(R.string.settings_scribes_answer, reply.take(60))
             } else {
-                "No answer — ${error?.message?.take(80)}"
+                context.getString(R.string.settings_no_answer, error?.message?.take(80).orEmpty())
             }
         }
     }
