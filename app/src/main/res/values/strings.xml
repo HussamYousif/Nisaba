@@ -3,8 +3,11 @@
     <string name="app_name">Nisaba</string>
 
     <string name="shelf_title">Nisaba</string>
-    <string name="shelf_blank">✦ A Blank Parchment</string>
-    <string name="shelf_tome">❧ Open a Tome</string>
+    <string name="shelf_tagline">write · pause — the book answers</string>
+    <string name="shelf_blank">A Blank Parchment</string>
+    <string name="shelf_blank_desc">Begin with a fresh page</string>
+    <string name="shelf_tome">Open a Tome</string>
+    <string name="shelf_tome_desc">Import a PDF to write over</string>
     <string name="shelf_empty">The shelf awaits its first tome.\n\nWrite, pause — and the book answers.</string>
 
     <string name="tome_import_title">Opening the tome…</string>

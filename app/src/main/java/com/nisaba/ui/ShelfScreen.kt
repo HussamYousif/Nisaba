@@ -69,14 +69,15 @@ class ShelfScreen @JvmOverloads constructor(
             setOnClickListener { listener(ShelfAction.OpenSettings) }
         }
 
-        findViewById<TextView>(R.id.blankTome).apply {
-            typeface = Fonts.kalam
-            setOnClickListener { listener(ShelfAction.OpenBlank) }
-        }
-        findViewById<TextView>(R.id.pdfTome).apply {
-            typeface = Fonts.kalam
-            setOnClickListener { listener(ShelfAction.OpenTome) }
-        }
+        findViewById<TextView>(R.id.shelfTagline).apply { typeface = Fonts.kalam }
+        findViewById<TextView>(R.id.blankGlyph).apply { typeface = Fonts.greatVibes }
+        findViewById<TextView>(R.id.blankTitle).apply { typeface = Fonts.kalamBold }
+        findViewById<TextView>(R.id.blankDesc).apply { typeface = Fonts.kalam }
+        findViewById<TextView>(R.id.pdfGlyph).apply { typeface = Fonts.greatVibes }
+        findViewById<TextView>(R.id.pdfTitle).apply { typeface = Fonts.kalamBold }
+        findViewById<TextView>(R.id.pdfDesc).apply { typeface = Fonts.kalam }
+        findViewById<View>(R.id.blankTome).setOnClickListener { listener(ShelfAction.OpenBlank) }
+        findViewById<View>(R.id.pdfTome).setOnClickListener { listener(ShelfAction.OpenTome) }
 
         listView = findViewById(R.id.shelfList)
         emptyView = findViewById(R.id.shelfEmpty)
@@ -140,7 +141,7 @@ class ShelfScreen @JvmOverloads constructor(
                         cornerRadius = 8f
                     }
                 )
-                holder.thumb.background = ColorDrawable(MagicTheme.PARCHMENT_DEEP)
+                holder.thumb.background = ColorDrawable(MagicTheme.PARCHMENT)
             }
 
             holder.itemView.setOnClickListener { onOpen(ShelfAction.Open(item.id)) }
