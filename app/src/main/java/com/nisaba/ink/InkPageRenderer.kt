@@ -46,6 +46,7 @@ object InkPageRenderer {
         background: Bitmap? = null,
         backgroundColor: Int = MagicTheme.PARCHMENT,
         grayscale: Boolean = false,
+        strokeWidthMultiplier: Float = 1f,
     ): Bitmap {
         val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bmp)
@@ -83,7 +84,7 @@ object InkPageRenderer {
             for (i in 1 until pts.size) {
                 val a = pts[i - 1]
                 val b = pts[i]
-                inkPaint.strokeWidth = widthAt(stroke.width, (a.p + b.p) / 2f)
+                inkPaint.strokeWidth = widthAt(stroke.width, (a.p + b.p) / 2f) * strokeWidthMultiplier
                 canvas.drawLine(a.x, a.y, b.x, b.y, inkPaint)
             }
         }

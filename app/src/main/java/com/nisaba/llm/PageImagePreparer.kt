@@ -18,7 +18,8 @@ import java.util.Base64
  */
 object PageImagePreparer {
 
-    const val MAX_LONG_EDGE = 1600
+    const val MAX_LONG_EDGE = 2000
+    const val STROKE_WIDTH_MULTIPLIER = 1.6f
 
     fun prepare(page: NotebookPage, background: Bitmap?): String {
         val scale = minOf(1f, MAX_LONG_EDGE.toFloat() / maxOf(page.width, page.height))
@@ -32,6 +33,7 @@ object PageImagePreparer {
             background = background,
             backgroundColor = android.graphics.Color.WHITE,
             grayscale = true,
+            strokeWidthMultiplier = STROKE_WIDTH_MULTIPLIER,
         )
 
         val out = ByteArrayOutputStream()

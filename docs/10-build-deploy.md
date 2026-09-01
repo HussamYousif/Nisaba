@@ -98,7 +98,7 @@ keyPassword=…
 **Boox quirk — disabled after install:** Boox firmware marks freshly installed/sideloaded packages `DISABLED_USER` (`enabled=3`); the activity then "does not exist". After every `adb install` (including test-run reinstalls) run `adb shell pm enable com.nisaba` (or open the app once from the launcher). Also enable USB debugging + "USB debugging (Security settings)" in Developer Options.
 
 **Boox OS settings for Nisaba** (critical for feel, 04 §2):
-- **App Optimization** (Boox settings → Apps → Nisaba): refresh mode **Regal** (or Fast/Ultra-Fast if offered); enable "Disable animation" if the OS has it.
+- **App Optimization** (Boox settings → Apps → Nisaba): refresh mode **Fast** (critical — the Android 15 firmware exposes no EPD API to apps, so this per-app setting is the only way to get responsive writing; see docs/04 §2). Enable "Disable animation" if offered.
 - **Battery optimization**: exclude Nisaba (prevents background kills mid-summon).
 - **Doze**: keep default; our save-on-stop covers it.
 - If the Boox system offers per-app "Refresh mode" presets (A2/Regal), test writing comfort in each; document the winner in this doc after M1.

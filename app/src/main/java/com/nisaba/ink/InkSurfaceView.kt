@@ -6,9 +6,14 @@ import android.graphics.Paint
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
+import com.nisaba.epd.Epd
 import com.nisaba.magic.MagicTheme
 import com.nisaba.notebook.model.NotebookPage
 import com.nisaba.notebook.model.Stroke
+import android.os.Handler
+import android.os.Looper
+import kotlin.math.max
+import kotlin.math.min
 
 /**
  * The writing surface (docs/03 §2, docs/04 §3–5).
@@ -58,6 +63,27 @@ open class InkSurfaceView @JvmOverloads constructor(
     private var drawing = false
     private var eraserButtonHeld = false
 
+    // Invalidation throttling: coalesce dirty rects and flush at ~40 Hz so a
+    // slow e-ink refresh cycle never blocks input (docs/04 §3).
+    private val flushHandler = Handler(Looper.getMainLooper())
+    private var dirtyLeft = Int.MAX_VALUE
+    private var dirtyTop = Int.MAX_VALUE
+    private var dirtyRight = Int.MIN_VALUE
+    private var dirtyBottom = Int.MIN_VALUE
+    private var flushScheduled = false
+    private val flushRunnable = Runnable {
+        flushScheduled = false
+        if (dirtyRight >= dirtyLeft) {
+            invalidate(dirtyLeft, dirtyTop, dirtyRight, dirtyBottom)
+            resetDirty()
+        }
+    }
+    // Debounced EPD clean pass after the pen lifts (ghosting removal).
+    private val cleanRunnable = Runnable {
+        Epd.disableFastMode(this)
+        Epd.cleanRefresh(this)
+    }
+
     private val inkPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
@@ -66,6 +92,11 @@ open class InkSurfaceView @JvmOverloads constructor(
 
     private val bgPaint = Paint().apply {
         isFilterBitmap = true // smooth 200dpi → 300dpi upscale
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        (context as? android.app.Activity)?.let { Epd.disableFullScreenUpdate(it) }
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
@@ -151,6 +182,9 @@ open class InkSurfaceView @JvmOverloads constructor(
                     erasing,
                 )
                 drawing = true
+                flushHandler.removeCallbacks(flushRunnable)
+                flushScheduled = false
+                Epd.enableFastMode(this)
                 onStrokePoint?.invoke()
                 invalidate()
                 return true
@@ -163,7 +197,7 @@ open class InkSurfaceView @JvmOverloads constructor(
                     val pageY = transform.toPageY(event.y)
                     current.append(pageX, pageY, event.pressure, event.eventTime)
                     onStrokePoint?.invoke()
-                    invalidateDirty(pageX, pageY)
+                    accumulateDirty(pageX, pageY)
                 }
                 return true
             }
@@ -180,6 +214,7 @@ open class InkSurfaceView @JvmOverloads constructor(
                 if (drawing) {
                     drawing = false
                     current.cancel()
+                    flushNow()
                     invalidate()
                 }
             }
@@ -194,21 +229,51 @@ open class InkSurfaceView @JvmOverloads constructor(
 
     private fun finishStroke() {
         drawing = false
+        flushNow()
         val stroke = current.build() ?: return
         onStrokeComplete?.invoke(stroke)
         invalidate()
+        // Ghosting clean pass, debounced — repeated quick strokes share one.
+        flushHandler.removeCallbacks(cleanRunnable)
+        flushHandler.postDelayed(cleanRunnable, CLEAN_PASS_MS)
     }
 
-    private fun invalidateDirty(pageX: Float, pageY: Float) {
+    /** Coalesces the new ink segment into the pending dirty rect (docs/04 §3). */
+    private fun accumulateDirty(pageX: Float, pageY: Float) {
         val vx = transform.toViewX(pageX)
         val vy = transform.toViewY(pageY)
         val pad = (24 * transform.scale).toInt() + 8
-        invalidate(
-            (vx - pad).toInt(), (vy - pad).toInt(),
-            (vx + pad).toInt(), (vy + pad).toInt(),
-        )
+        dirtyLeft = min(dirtyLeft, vx.toInt() - pad)
+        dirtyTop = min(dirtyTop, vy.toInt() - pad)
+        dirtyRight = max(dirtyRight, vx.toInt() + pad)
+        dirtyBottom = max(dirtyBottom, vy.toInt() + pad)
+        if (!flushScheduled) {
+            flushScheduled = true
+            flushHandler.postDelayed(flushRunnable, FLUSH_MS)
+        }
+    }
+
+    private fun resetDirty() {
+        dirtyLeft = Int.MAX_VALUE
+        dirtyTop = Int.MAX_VALUE
+        dirtyRight = Int.MIN_VALUE
+        dirtyBottom = Int.MIN_VALUE
+    }
+
+    private fun flushNow() {
+        flushHandler.removeCallbacks(flushRunnable)
+        if (dirtyRight >= dirtyLeft) {
+            invalidate(dirtyLeft, dirtyTop, dirtyRight, dirtyBottom)
+        }
+        resetDirty()
+        flushScheduled = false
     }
 
     /** True when the stylus is currently drawing a stroke. */
     val isDrawing: Boolean get() = drawing
+
+    companion object {
+        private const val FLUSH_MS = 24L
+        private const val CLEAN_PASS_MS = 400L
+    }
 }

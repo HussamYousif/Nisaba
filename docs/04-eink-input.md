@@ -29,6 +29,19 @@ E-ink refreshes are the #1 UX risk. Rules that shape everything:
 3. **Full-screen "clear" flashes:** allowed only for page turns, notebook open/close, and PDF import page changes. Never during writing or answer reveal.
 4. **Animations (answer reveal, ink stirring):** never rely on alpha fades or smooth interpolation. Use **discrete steps** (e.g. 6–12 visible frames per reveal, each an EPD-friendly partial update) — see 08 §5 and `InkReveal` design.
 5. **No animated page transitions** (no sliding). Page turns = instant swap + clear refresh.
+
+> **On-device finding (Boox Note Air 5c, Android 15, 2026-09):** the classic
+> `com.onyx.android.sdk.api.device.epd.EPDController` class does **not** exist
+> on this firmware (absent from boot classpath, services.jar and all Onyx
+> system apps — EPD is native-only). The `epd/Epd` reflection wrapper is kept
+> as a no-op for other firmware; the working lever for writing feel is the
+> **per-app refresh mode** in Boox Settings → App Optimization (set Nisaba to
+> *Fast*). Writing-lag diagnosis: hardware acceleration is on and frame times
+> are healthy (~21 ms p50) — the bottleneck is the e-ink panel refresh mode.
+> While the panel updates slowly, stylus input points are starved (observed
+> ~12 points/stroke instead of 50–300), which also makes handwriting hard for
+> the vision model to read — the throttled-invalidation change (docs/04 §3)
+> and the faster refresh mode mitigate both.
 6. **Frontlight/brightness:** we never touch it; we design for both lit and unlit reading (high contrast palette, 09 §3).
 
 **Boox "App Optimization" guidance for the user (also in 10 §5):** set Nisaba to *Regal* (best text) or *Fast* mode if offered, disable "animations", and exempt from battery optimization.

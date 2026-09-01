@@ -106,6 +106,13 @@ class NotebookScreen @JvmOverloads constructor(
         redoBtn.typeface = Fonts.kalam
         stirIndicator.typeface = Fonts.kalam
 
+        // On Boox firmware without an EPD API, the writing feel depends on the
+        // per-app refresh mode — hint once per run (docs/04 §2).
+        if (!com.nisaba.epd.Epd.available && !epdHintShown) {
+            epdHintShown = true
+            Toast.makeText(context, R.string.epd_hint, Toast.LENGTH_LONG).show()
+        }
+
         // PDF notebooks load page backgrounds through the LRU cache.
         val nbDir = File(context.filesDir, "notebooks/${notebook.id}")
         val pdf = notebook.source?.file?.let { File(nbDir, it) }
@@ -401,5 +408,9 @@ class NotebookScreen @JvmOverloads constructor(
         findViewById<TextView>(R.id.nbNext).alpha = if (s.pageIndex < s.notebook.pages.lastIndex) 1f else 0.3f
         undoBtn.alpha = if (s.canUndo()) 1f else 0.3f
         redoBtn.alpha = if (s.canRedo()) 1f else 0.3f
+    }
+
+    companion object {
+        private var epdHintShown = false
     }
 }
