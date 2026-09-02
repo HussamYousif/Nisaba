@@ -75,7 +75,7 @@ object Scribe {
     /** Baseline-to-baseline line pitch. */
     private const val LINE_PITCH = 248f
     /** Pen width at a mid-pressure horizontal stroke (% of x-height). */
-    private const val BASE_WIDTH = 7.2f
+    private const val BASE_WIDTH = 8.2f
 
     private val FALLBACK_KNOTS = floatArrayOf(0f, 26f, 7f, 34f, 14f, 27f, 21f, 33f, 28f, 26f)
 
@@ -310,7 +310,7 @@ object Scribe {
             }
             if (n < 8) {
                 // a stab: short, heavy, no direction modulation
-                for (i in 0 until n) widths[i] = BASE_WIDTH * 1.15f
+                for (i in 0 until n) widths[i] = BASE_WIDTH * 1.1f
             } else if (!options.pressure) {
                 for (i in 0 until n) widths[i] = BASE_WIDTH
             } else {
@@ -324,7 +324,7 @@ object Scribe {
                     val dx = bx - ax
                     val d = hypot(dx, dy).coerceAtLeast(0.001f)
                     val v = dy / d // -1 upstroke … +1 downstroke
-                    val press = if (v >= 0f) 1f + 0.52f * v else 1f + 0.3f * v
+                    val press = if (v >= 0f) 1f + 0.5f * v else 1f + 0.26f * v
                     widths[i] = BASE_WIDTH * press
                 }
                 // stroke-end ramps: the pen lands thin and lifts thin

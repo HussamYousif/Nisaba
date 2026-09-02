@@ -260,12 +260,12 @@ object Glyphs {
             p(52, 8), p(66, 28), p(72, 60), p(78, 90), p(81, 96), p(83, 97), // bowl up the right side
             p(86, 70), p(90, 30), p(94, 8), p(97, 4),                       // final stem down to the exit
         )))
-        // v — rise and long fall
+        // v — rise and a single long fall (no exit hump: the pen bounces into
+        // the next letter straight from the bottom)
         register('v', 94f, listOf(s(
             p(0, 0), p(7, 35), p(14, 70), p(20, 90), p(25, 96), p(28, 97), // rise to the crest
             p(32, 80), p(40, 45), p(50, 14), p(58, 4),                     // the long fall
-            p(66, 30), p(76, 60), p(84, 80), p(90, 90),                    // exit tail up
-            p(93, 92), p(94, 80), p(92, 55), p(88, 30), p(86, 8),          // ... over and down
+            p(62, 2),
         )))
         // w — three crests with two deep bowls (like u + v)
         register('w', 146f, listOf(s(
