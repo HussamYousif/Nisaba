@@ -31,7 +31,7 @@ Shelf titles: Kalam 16 · Notebook page headers: hidden until scrolled (paper!) 
 
 E-ink cannot do smooth motion — so the magic is **discrete and deliberate**:
 
-1. **Ink reveals** (08 §5): the answer *writes itself* in 6–14 discrete steps. This is the signature moment; it reads as "the notebook is drawing" even though it's stepped.
+1. **Ink reveals** (08 §5): the answer *writes itself* — each word is one pen stroke revealed front-to-back, so the scribe's hand visibly moves across the page. This is the signature moment; it reads as "the notebook is drawing" even though it's stepped.
 2. **Ink settling**: 400 ms after pen-up, a single subtle *settle* pass (the ghost-cleaning Regal refresh) — framed as the ink "drying".
 3. **The ink creeps out** (waiting state): not a spinner, and no text. Several tips of ink set out from the tail of the user's last stroke; most wander a little way and simply stop, while one channel keeps going — sprouting finer branches as it advances — until it reaches the spot where the answer will write itself and gathers into an irregular blot that *breathes* (~6 s cycle), fed by travelling beads until the answer arrives. Ink that explores and fails is what makes the one that succeeds look alive. The user's writing is never consumed and never drawn over. Five phases on one 100 ms clock:
 

@@ -74,6 +74,7 @@ ui ──────────────► core ────────�
 | `notebook` | notebook model, persistence, summon detection | `NotebookStore`, `SummonController`, `model.*` |
 | `llm` | DeepSeek client, prompt building, answer parsing, settings | `DeepSeekClient`, `AnswerParser`, `AppSettings`, `ChatContract` |
 | `pdf` | PDF import + background cache | `PdfImporter`, `PageBackgroundCache` |
+| `hand` | the scribe's hand — pure pen-stroke handwriting synthesis (alphabet, word/line engine) | `Scribe` (public engine), `Glyphs` |
 | `render` | answer-block rendering (text, drawing, table) | `AnswerInk` (layout object), `SvgInkRenderer`, `SvgPathParser`, `PageThumbnail` |
 | `magic` | parchment theme + bundled fonts (shared leaves) | `MagicTheme`, `Fonts` |
 | `ui` | shell screens (shelf, settings) + notebook screen | — (composition layer) |

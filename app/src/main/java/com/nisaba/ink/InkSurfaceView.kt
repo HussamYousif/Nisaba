@@ -19,6 +19,7 @@ import com.nisaba.magic.SummonInk
 import com.nisaba.notebook.model.NotebookPage
 import com.nisaba.notebook.model.Stroke
 import com.nisaba.render.AnswerInk
+import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
@@ -564,9 +565,62 @@ open class InkSurfaceView @JvmOverloads constructor(
                             }
                         }
                     }
+                    is AnswerInk.Layout.Item.Stroke -> {
+                        drawStrokeItem(canvas, item, 0f, local, null)
+                    }
                 }
                 itemStart += ticks
             }
+        }
+    }
+
+    /** Draws a synthesized pen stroke (width-modulated polyline) up to [fraction] of its arc. */
+    private fun drawStrokeItem(
+        canvas: Canvas,
+        item: AnswerInk.Layout.Item.Stroke,
+        dx: Float,
+        fraction: Float,
+        paint: Paint?,
+    ) {
+        if (fraction <= 0f || item.pointCount < 2) return
+        val p = paint ?: answerStrokePaint
+        val target = item.length * fraction
+        val xys = item.xys
+        val widths = item.widths
+        var cum = 0f
+        val n = item.pointCount
+        var i = 0
+        while (i < n - 1) {
+            val x0 = xys[i * 2] + dx
+            val y0 = xys[i * 2 + 1]
+            val x1 = xys[(i + 1) * 2] + dx
+            val y1 = xys[(i + 1) * 2 + 1]
+            val dxs = x1 - x0
+            val dys = y1 - y0
+            val segLen = hypot(dxs, dys)
+            if (segLen <= 0.001f) {
+                i++
+                continue
+            }
+            p.strokeWidth = (widths[i] + widths[i + 1]) * 0.5f
+            if (cum + segLen <= target) {
+                canvas.drawLine(x0, y0, x1, y1, p)
+            } else {
+                val t = (target - cum) / segLen
+                canvas.drawLine(x0, y0, x0 + dxs * t, y0 + dys * t, p)
+                break
+            }
+            cum += segLen
+            i++
+        }
+    }
+
+    private val answerStrokePaint: Paint by lazy {
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+            color = MagicTheme.INK
         }
     }
 
@@ -598,6 +652,16 @@ open class InkSurfaceView @JvmOverloads constructor(
                         canvas.translate(dx, 0f)
                         canvas.drawPath(item.path, p)
                         canvas.restore()
+                    }
+                    is AnswerInk.Layout.Item.Stroke -> {
+                        val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                            style = Paint.Style.STROKE
+                            strokeCap = Paint.Cap.ROUND
+                            strokeJoin = Paint.Join.ROUND
+                            color = MagicTheme.INK
+                            alpha = fade
+                        }
+                        drawStrokeItem(canvas, item, dx, 1f, p)
                     }
                 }
             }

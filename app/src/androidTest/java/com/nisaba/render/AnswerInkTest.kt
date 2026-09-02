@@ -82,9 +82,59 @@ class AnswerInkTest {
         assertEquals("Hello world", AnswerInk.plain("**Hello** *world*"))
     }
 
+
+    @Test
+    fun textBlock_writesAsPenStrokes() {
+        // docs/08 §3: prose is scribed as pen strokes, not font glyphs.
+        val g = group(AnswerBlock(type = "text", markdown = "**The ink answers.** Well met."))
+        val layout = AnswerInk.layout(g, 2480f, 500f, ctx)
+        val strokes = layout.items.filterIsInstance<AnswerInk.Layout.Item.Stroke>()
+        assertTrue("strokes: " + strokes.size, strokes.size >= 5)
+        // no font-rendered words remain (flourish glyphs are single chars)
+        assertTrue(layout.items.none { it is AnswerInk.Layout.Item.Line && it.text.length > 1 })
+        for (s in strokes) {
+            assertTrue("reveal ticks", s.revealTicks in 1..20)
+            assertTrue("polyline", s.pointCount >= 2)
+            assertTrue("arc", s.length > 0f)
+            for (i in 0 until s.pointCount) {
+                val x = s.xys[i * 2]
+                val y = s.xys[i * 2 + 1]
+                assertTrue("x in page", x in 60f..2420f)
+                assertTrue("y below start", y >= 500f - 5f)
+                assertTrue("width sane", s.widths[i] in 0.5f..30f)
+            }
+        }
+    }
+
+    @Test
+    fun longText_wrapsIntoMultipleStrokeLines() {
+        val g = group(AnswerBlock(type = "text", markdown = "word ".repeat(80)))
+        val layout = AnswerInk.layout(g, 2480f, 500f, ctx)
+        val strokes = layout.items.filterIsInstance<AnswerInk.Layout.Item.Stroke>()
+        // 80 words cannot sit on one line; heights must grow accordingly
+        assertTrue("many strokes: " + strokes.size, strokes.size > 40)
+        assertTrue(layout.heightPx > 300f)
+    }
+
+    @Test
+    fun sameGroupId_scribesIdentically() {
+        // A saved answer must re-ink identically on reopen.
+        val md = "The quick brown fox jumps over the lazy dog."
+        val a = AnswerInk.layout(group(AnswerBlock(type = "text", markdown = md)), 2480f, 500f, ctx)
+        val b = AnswerInk.layout(group(AnswerBlock(type = "text", markdown = md)), 2480f, 500f, ctx)
+        val sa = a.items.filterIsInstance<AnswerInk.Layout.Item.Stroke>()
+        val sb = b.items.filterIsInstance<AnswerInk.Layout.Item.Stroke>()
+        assertEquals(sa.size, sb.size)
+        for (i in sa.indices) {
+            assertTrue(sa[i].xys.contentEquals(sb[i].xys))
+            assertTrue(sa[i].widths.contentEquals(sb[i].widths))
+        }
+    }
+
     private fun AnswerInk.Layout.Item.baselineOrY(): Float = when (this) {
         is AnswerInk.Layout.Item.Line -> baselineY
         is AnswerInk.Layout.Item.Path -> Float.MAX_VALUE
         is AnswerInk.Layout.Item.Rule -> y1
+        is AnswerInk.Layout.Item.Stroke -> xys[1]
     }
 }

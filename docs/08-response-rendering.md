@@ -27,32 +27,55 @@ Each summon appends one **AnswerGroup** to the page, rendered as **ink on the ca
 
 | Type | Renderer | Notes |
 |---|---|---|
-| `text` | `AnswerInk` (Line items) | Markdown subset → cursive spans |
+| `text` | `AnswerInk` + `hand.Scribe` (Stroke items) | Text → synthesized pen strokes (§3) |
 | `drawing` | `SvgInkRenderer` | SVG subset → ink paths, draw-on animation |
 | `table` | `AnswerInk` (Rule items) | Ruled ledger, calligraphic headers |
 
-## 3. Typography — cursive but legible (N11)
+## 3. Typography — the scribe's hand (no fonts for prose)
 
-User decision: English answers → Latin cursive fonts. Bundled (OFL, offline):
+The answer text is not typeset: it is **written**. The `hand` domain
+(`com.nisaba.hand.Scribe`, pure geometry, JVM-tested) synthesizes pen strokes
+from plain text — the same kind of ink the user writes with. Glyphs are
+authored as *pen knots* (the points a hand passes through), spline-fitted
+into smooth strokes; every letter ends at the baseline so consecutive letters
+share the point (the connected wave — the pen bounces at the baseline and
+never lifts inside a word).
 
-| Role | Font | Sizes (sp) | Why |
-|---|---|---|---|
-| Body text | **Dancing Script** (Medium 500) | 20 (min 18) | Flowing script, unusually legible; variable weight; reads well at arm's length |
-| Headings (`##`) | **Great Vibes** | 26 (min 24) | Decorative calligraphy for the few headings; short lines only |
-| Table headers | **Great Vibes** | 16 (min 14) | Ornamental but short strings |
-| Table cells | **Kalam** (Regular) | 15 (min 14) | Handwritten look with near-print legibility; dense text must stay readable |
-| Small labels / UI ink | **Kalam** | 12–14 | "The ink stirs…", controls |
+Writing model:
 
-Legibility rules:
-- Body line-height 1.6, letterspacing +0.02em (script fonts need air).
-- Never render script below 14 sp; never set body *italic* + script (fake italics forbidden — we only use true font weights).
-- Color: sepia ink `#3A2E25` on parchment `#F3EAD8` (≥ 7:1 contrast, N11).
-- Slight per-line baseline jitter (±0.5 px) for handwriting feel — never per-glyph rotation on body text (kills legibility).
-- Justification: left-aligned, ragged right (script fonts justify badly).
-- Paragraph spacing: 1.2em. `**bold**` → Dancing Script **Bold 700**; `*italics*` → Dancing Script 500 (no fake slant); headers → Great Vibes.
+- **Alphabet** (`Glyphs`): lowercase a–z, capitals, digits, punctuation, in
+  one shared hand. Proportions (hump pitch ≈ 0.5×x-height, ring widths,
+  ascender 1.6×x-height) are tuned against the bundled cursive fonts, which
+  are kept only for ornaments and table cells.
+- **Determinism**: everything derives from the group id; a saved answer
+  re-inks itself identically on reopen (pinned by tests).
+- **Human variation** (seeded, per instance): per-letter scale/slant/rotation
+  and vertical bob, per-word x-height and spacing, whole-line baseline
+  wander and slope drift. `Options.variation = 0` is the perfect-schoolbook
+  render used while authoring glyphs.
+- **Pen feel**: stroke width is modulated along the path — thick downstrokes,
+  thin upstrokes, ramps where the pen lands and lifts — and short strokes
+  (i-dots, commas, full stops) are heavy stabs, not sweeps.
+- **Pen-lift marks**: i/j dots and t-crossings are drawn after their word;
+  capitals, digits and punctuation lift the pen (the next letter starts past
+  the glyph's rightmost ink).
+- **Typography mapping**: `##` headings are scribed larger; `-` bullets get a
+  hand-drawn dash with hanging indent; `**bold**`/`*italics*` markers are
+  stripped (the hand has one weight); typographic quotes/dashes/ellipses map
+  to their plain forms; characters outside the alphabet become a small
+  visible scratch rather than being dropped.
 
-Markdown subset (per system prompt): `##`, `**bold**`, `*italics*`, `-` bullets, `1.` numbered, blank-line paragraphs. Rendered via `StaticLayout` + custom spans. **No** links/code/tables-in-markdown (tables are their own block).
+Legibility is verified the same way the scribe is read back on-device: the
+app's own vision model must transcribe the synthesized pangram (and answer
+pages) word for word — a hard gate that ran during glyph authoring.
 
+Sizes are page-space px: body x-height 44, headings 56; sepia ink
+`#3A2E25` on parchment `#F3EAD8`. Left-aligned, ragged right; a line fits
+the block width or a lone overlong word is squeezed to fit. Table cells and
+the ✦/✧ flourishes remain font-rendered (dense small text must stay
+readable; ornaments are single glyphs).
+
+## 4. SVG subset spec
 ## 4. SVG subset spec (the drawing block)
 
 Normalized canvas: `viewBox="0 0 1000 1000"` (aspect-agnostic; renderer letterboxes into the block width, height ≤ 420 dp).
@@ -72,7 +95,7 @@ Normalized canvas: `viewBox="0 0 1000 1000"` (aspect-agnostic; renderer letterbo
 
 The magical "a quill is drawing this" effect, e-ink-safe (N9):
 
-- **Text**: render as static spans but reveal by *ink opacity ramp* in discrete steps — 6 steps × 2 frames per line (whole lines appear in order; not per-glyph — per-glyph typing is illegible and wasteful on e-ink).
+- **Text**: every word is one continuous pen stroke, revealed front-to-back by arc length — the pen visibly writes word by word (dots and crossings follow their word); each stroke takes ~2–14 discrete steps depending on length.
 - **Drawings**: `PathMeasure.getSegment()` ink-draw: path revealed front-to-back in 8–14 discrete steps; each step = one partial-refresh `invalidate` (A2), final step triggers one Regal clean pass. Total 2–5 s for a full drawing.
 - **Tables**: ruled lines stroke in left→right (each line ~2 steps), then cells' text appears row by row.
 - Engine: `InkReveal` — a single Choreographer loop, discrete *steps* (never per-frame 60 fps), no alpha fades (e-ink can't do them), no motion blur, no scaling animations.
