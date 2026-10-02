@@ -1,10 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Nisaba" parent="Theme.AppCompat.Light.NoActionBar">
-        <item name="android:windowBackground">@color/parchment</item>
-        <item name="android:statusBarColor">@color/parchment_deep</item>
-        <item name="android:navigationBarColor">@color/parchment_deep</item>
-        <item name="colorAccent">@color/accent_red</item>
-        <item name="android:windowNoTitle">true</item>
+    <style name="Theme.Nisaba" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/paper</item>
+        <item name="android:statusBarColor">@color/paper</item>
+        <item name="android:navigationBarColor">@color/paper</item>
+    </style>
+
+    <!-- The launch screen: the mark on paper, no animation (e-ink). Switches to Theme.Nisaba once the app is up. -->
+    <style name="Theme.Nisaba.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/paper</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="postSplashScreenTheme">@style/Theme.Nisaba</item>
     </style>
 </resources>

@@ -1,11 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Parchment world palette (docs/09 §1) -->
-    <color name="parchment">#F3EAD8</color>
-    <color name="parchment_deep">#E9DCC3</color>
-    <color name="wood">#241F18</color>
-    <color name="ink">#3A2E25</color>
-    <color name="ink_soft">#6B5A45</color>
-    <color name="accent_red">#7A2E1D</color>
-    <color name="blue_ink">#2C3E66</color>
+    <color name="paper">#F6F2EA</color>
+    <color name="ink">#111111</color>
+    <color name="lapis">#27407A</color>
 </resources>

@@ -1,0 +1,43 @@
+package com.nisaba.device
+
+import android.graphics.Rect
+import android.view.MotionEvent
+import android.view.View
+import com.nisaba.domain.ink.InkPoints
+import com.nisaba.domain.shared.PagePoint
+import kotlinx.coroutines.flow.SharedFlow
+
+enum class PenTool { Pen, StrokeEraser, AreaEraser }
+
+/** Coordinates are VIEW pixels; the ViewModel maps them to page units. */
+sealed interface PenEvent {
+    data class PenDown(val x: Float, val y: Float) : PenEvent
+    data class StrokeDone(val points: InkPoints) : PenEvent
+    data class EraseDone(val path: List<PagePoint>) : PenEvent
+}
+
+/** Source of stylus strokes. Implementations: Onyx raw drawing (Boox) and plain MotionEvents (fallback). */
+interface PenDevice {
+    val events: SharedFlow<PenEvent>
+
+    /** Points of the stroke being drawn RIGHT NOW by the app itself (0 when the device draws its own live ink). */
+    val liveCount: Int
+
+    /** View-pixel points [from, to) of the live stroke. */
+    fun liveSlice(from: Int, to: Int): InkPoints?
+
+    /** The view sets this; called whenever [liveCount] changes (including back to 0 when the stroke ends). */
+    var onLiveChanged: () -> Unit
+
+    fun attach(view: View, drawArea: Rect, exclude: List<Rect>)
+    fun setExclusions(exclude: List<Rect>)
+
+    /** Ref-counted: while suspended the app may refresh/animate the panel without the raw layer interfering. */
+    fun suspendRawInk()
+    fun resumeRawInk()
+    fun setTool(tool: PenTool)
+    fun detach()
+
+    /** Called from the view's onTouchEvent. Returns true if the event was consumed as pen input. */
+    fun handleTouch(e: MotionEvent): Boolean
+}

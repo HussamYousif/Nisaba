@@ -1,14 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Debug-only manifest: hosts the instrumented-test activity in the app
-     process and permits cleartext HTTP only to local mock servers (see
-     res/xml/network_security_config.xml, audit P2-1). Release builds keep
-     the secure default (cleartext blocked). -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <application
-        android:networkSecurityConfig="@xml/network_security_config">
+    <application>
         <activity
-            android:name="com.nisaba.ink.TestActivity"
-            android:exported="false"
-            android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
+            android:name="com.nisaba.spike.SpikeActivity"
+            android:exported="true"
+            android:screenOrientation="portrait" />
     </application>
 </manifest>
