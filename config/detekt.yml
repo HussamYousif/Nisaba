@@ -1,0 +1,30 @@
+build:
+  maxIssues: 0
+style:
+  MagicNumber:
+    active: false
+  MaxLineLength:
+    maxLineLength: 140
+  WildcardImport:
+    active: false
+  ReturnCount:
+    active: false
+  ForbiddenImport:
+    active: true
+    imports: ['android.util.Log']
+    excludes: ['**/infra/log/**', '**/app/**']
+complexity:
+  LongParameterList:
+    functionThreshold: 10
+    constructorThreshold: 14
+  TooManyFunctions:
+    active: false
+  LongMethod:
+    threshold: 80
+  CyclomaticComplexMethod:
+    threshold: 20
+naming:
+  MatchingDeclarationName:
+    active: false # role-suffixed files hold several declarations (DESIGN §3.3)
+  FunctionNaming:
+    ignoreAnnotated: ['Composable']

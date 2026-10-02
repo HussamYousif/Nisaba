@@ -42,3 +42,8 @@ google-services.json
 
 # macOS
 .DS_Store
+captures/
+
+# Python
+__pycache__/
+.tools/venv/
