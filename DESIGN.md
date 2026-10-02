@@ -1,0 +1,506 @@
+# Nisaba — Design
+
+> A notebook for the Boox Note Air 5C that answers you in ink.
+> You write. You pause. A hand you can't see writes back, beneath your words, one letter at a time.
+
+Status: **v1 design, 2026-09-29** · Fresh start (prior attempt lives in git history at `08de353`, reference only).
+
+---
+
+## 0. Decisions made for you (veto any)
+
+| # | Decision | Why |
+|---|---|---|
+| D1 | Name **Nisaba** (Sumerian goddess of writing & scribes) | Fits the concept; brand below builds on it |
+| D2 | **Paged** notebook, not infinite canvas. Pages = screen aspect (portrait). Long answers spill onto a fresh page inserted after the current one | Scrolling on e-ink smears and ghosts; page turns are instant and clean |
+| D3 | Trigger = **3.5 s pen-idle** (setting: 2–6 s). Pen-down at any point before the answer starts cancels the request silently | Your spec |
+| D4 | Pen-down **while the answer is being written** stops the hand; what's written stays; a small "…" mark lets you tap to finish the rest | You're never blocked, nothing vanishes |
+| D5 | **The model decides if you're talking to it.** Plain notes → it replies `<silent/>` and nothing happens. Plus a *Listening* toggle in the toolbar to mute it entirely | Every pause triggers a request; notes must not get answered |
+| D6 | Model **`deepseek-flash`** (DeepSeek V4.1 Flash, native image input). `deepseek-v4-pro` selectable. Thinking **off** by default (latency) | Verified in API docs 2026-09 |
+| D7 | The AI **reads your handwriting from an image** of the page (no OCR step), and returns a transcription of what it read, which becomes the notebook's text memory | One model, sees layout/arrows/doodles too |
+| D8 | Memory is **per notebook**: all prior exchanges (text) + the entire attached PDF (text) + current page (image) | Your spec |
+| D9 | Answers are **true pen strokes** from a single-line handwriting font, humanized, drawn along the pen path. Tables, math and diagrams are drawn by the same hand | Your spec; nothing is a pasted font render |
+| D10 | After it's written, an answer is **ordinary ink**: erasable, undoable, same as yours | Your spec |
+| D11 | Answer ink = **lapis blue** (`#27407A`), your ink = black. Falls back to black if lapis reads poorly on Kaleido (device test T5) | Tells voices apart at a glance; lapis = Mesopotamian |
+| D12 | Kotlin; **Compose** for library/settings chrome; a custom **View** for the page (Onyx TouchHelper needs a View) | Compose Canvas can't host the Onyx raw-drawing layer |
+| D13 | Manual constructor DI via one composition root (`AppGraph`). No Hilt/Koin | Explicit, fast builds, nothing magic |
+| D14 | Bring-your-own API key (entered in Settings, stored Keystore-encrypted). Debug builds may read `.env` | Required for Play Store; no key ever ships in a release |
+| D15 | PDF only. No export, no sync, no backup in v1 | Your spec |
+
+---
+
+## 1. Experience
+
+### 1.1 Flow
+
+```
+Library ──tap──▶ Notebook (page view) ──write…pause──▶ ink stirs ──▶ the hand writes the answer
+   │                                         ▲
+   └─ "New notebook" / "New from PDF"        └─ keep writing below; it remembers
+```
+
+### 1.2 The ask loop (the heart)
+
+States (pure state machine, §4.4):
+
+| State | What you see | Exit |
+|---|---|---|
+| **Idle** | Nothing | pen-down → Writing |
+| **Writing** | Your ink, instantly | pen-up → Pausing |
+| **Pausing** (3.5 s) | Nothing. (Optional: faint 3-dot "breath" in the margin at 1 s, 2 s, 3 s — off by default) | pen-down → Writing (same utterance). Timer → Thinking |
+| **Thinking** | The **inkwell**: a drop of lapis ink forms at the spot where the answer will start, swells, ripples (6 discrete e-ink frames, ~3 fps) | pen-down → **cancel request**, back to Writing (utterance keeps growing). First answer tokens → Scribing. `<silent/>` → Idle (drop dries and vanishes) |
+| **Scribing** | The hand writes, letter by letter (no nib; ink just appears) | pen-down → Interrupted. Done → Idle |
+| **Interrupted** | Partial answer + "…" mark at its end | tap "…" → Scribing resumes. Anything else → the answer stays partial |
+| **Failed** | Drop turns into a small hand-written "?" with one line: "the ink wouldn't flow — tap to retry" | tap → Thinking. Pen-down → Writing |
+
+**Utterance** = every stroke you've written on this page since the last exchange. Written 2 s, paused, wrote more → one utterance. Pen-down during Thinking → the request is cancelled and later resent with the extra strokes.
+
+### 1.3 Where the answer goes
+
+1. Anchor = the utterance's bounding box. The answer starts one line-gap below its lowest stroke, left-aligned to the utterance's left edge (clamped to the page margin). Width runs to the right margin.
+2. The layout **flows around existing ink** and, on PDF pages, around printed content (occupancy map of the rendered background). It never writes over anything.
+3. Doesn't fit → continues on a **fresh blank page inserted right after**, with a small hand-drawn "↳" at the break on both pages. The page turns automatically when the hand reaches it.
+4. **Hand size follows yours**: x-height is estimated from your utterance's strokes and the answer matches it (clamped to 28–60 page units), so it reads like the same notebook.
+
+### 1.4 The hand (how it writes)
+
+- **Speed:** starts at ~14 chars/s (fast human ≈ 6) and ramps to ~30 chars/s after the first ~150 chars, so short answers feel written and long ones don't drag. Setting: Slow / Natural / Swift.
+- **Rhythm:** each stroke eases in and out (slow at pen-down and lift, fast mid-stroke); pen-lifts pause ~40 ms, word gaps ~90 ms, line breaks ~200 ms; i-dots and t-bars come after their word.
+- **Humanity (seeded, deterministic):** slight per-letter scale, slant and rotation jitter, baseline wander, variable spacing, width varying with direction (thicker downstrokes).
+- **Nib:** removed after user feedback (2026-09-30). Ink appears with no floating pen. Default hand is joined print (`joinLetters`); full cursive is the second style.
+- **Blocks:**
+  - *Paragraphs / lists:* bullets are hand-drawn dashes; hanging indent.
+  - *Headings:* 1.3× size, underlined with one quick stroke.
+  - *Bold:* higher pressure (thicker), same hand.
+  - *Math:* in-house layout (§5.4): fractions, super/subscripts, roots, Σ ∫ ∏, Greek, matrices. Written left-to-right, bars before denominators.
+  - *Tables:* the hand rules the lines (slightly imperfect), then fills cells row by row in a smaller hand.
+  - *Diagrams:* SVG subset from the model → paths → gently wobbled → drawn in stroke order.
+- **Skip:** a finger tap on the answer finishes it instantly.
+
+### 1.5 Pen, eraser, gestures
+
+| Input | Action |
+|---|---|
+| Stylus tip | Write (Onyx raw drawing, pressure) |
+| Stylus button held / eraser end | Stroke eraser (whole stroke). Toolbar toggle → area eraser (splits strokes) |
+| Finger swipe ←/→ | Turn page (instant swap) |
+| Finger two-tap / three-tap | Undo / redo |
+| Finger tap on answer being written | Finish instantly |
+| Palm | Ignored (only stylus draws, ever) |
+
+### 1.6 Screens
+
+1. **Splash (≤ 900 ms):** paper background; the hand writes "Nisaba" in lapis, then the wedge-star mark stamps in. Cold-start work runs in parallel; the splash never waits past readiness plus the end of the stroke in progress.
+2. **Library:** a grid of notebook "tomes" on paper. Each cover is **generated from the notebook name** (seeded cuneiform-wedge pattern + name in the hand), so every notebook looks unique without you picking art. Actions: *New notebook*, *New from PDF*, long-press → rename / delete. Header: wordmark + settings glyph.
+3. **Notebook:** the page, edge to edge. A thin top bar that auto-hides after 3 s of writing: ‹ back · title · page n/m · pen / eraser · undo / redo · **Listening** (quill; filled = on) · **Ask now** (manual send, e.g. when Listening is off).
+4. **Settings:** API key (masked, "test key" button) · model · thinking on/off · pause length · hand speed · hand style (2 hands) · answer ink (lapis / black) · about / privacy.
+
+### 1.7 Brand
+
+- **Mark:** three cuneiform wedges arranged as an eight-point star (Nisaba's star), one wedge elongated into a reed-pen nib that drips a single drop. Monoline, works at 16 px and on e-ink.
+- **Wordmark:** "Nisaba" written by the app's own hand (generated once, frozen as a vector).
+- **Palette** (tokens in `ui/theme/NisabaColors.kt`):
+
+  | Token | Hex | Use |
+  |---|---|---|
+  | `paper` | `#F6F2EA` | Page & app background (warm; near-white on e-ink) |
+  | `ink` | `#111111` | Your strokes, primary text |
+  | `lapis` | `#27407A` | Answer ink, the drop, accents |
+  | `ochre` | `#B7892F` | Rare accent (the star on the splash, the Listening fill) |
+  | `faint` | `#8C877E` | Secondary text, rules |
+
+- **Type:** chrome text in *EB Garamond* (OFL) for titles and *Inter* for small UI labels. No Compose animations beyond discrete e-ink-safe steps.
+- **App icon:** the mark in lapis on paper (adaptive icon + 512 px Play asset).
+
+### 1.8 E-ink rules (non-negotiable)
+
+1. No alpha fades, no smooth motion, no scrolling. Animations are **discrete frames** (≤ 20 fps for the hand, ~3 fps for the inkwell).
+2. While writing or scribing: **fast waveform**, dirty rect only. When the ink goes idle: one **clean pass** (regal/GC) over the changed region.
+3. Full-screen flash only on page turn (every 5th turn, or when ghosting is detected), notebook open, and PDF page change.
+4. Contrast first: everything must read with the frontlight off.
+
+---
+
+## 2. Targets
+
+| Metric | Target |
+|---|---|
+| Pen-to-ink latency | ≤ 20 ms (Onyx raw drawing) |
+| Pause end → inkwell visible | ≤ 100 ms |
+| Pause end → first answer stroke | ≤ 2.5 s (flash, thinking off) |
+| Hand frame budget | ≤ 8 ms CPU per frame (stroke planning is precomputed) |
+| Page turn | ≤ 150 ms to ink |
+| Cold start → library | ≤ 900 ms |
+| Save | Stroke durable ≤ 1 s after pen-up; kill-safe (atomic writes) |
+
+---
+
+## 3. Architecture
+
+### 3.1 Principles
+
+- **Dependency rule:** `app → infra → domain`, `app → scribe → domain`. `domain` and `scribe` are **pure Kotlin/JVM** (no Android imports), which Gradle enforces because they're JVM modules.
+- **Ports & adapters:** the domain declares interfaces (`*Ports.kt`); infra implements them. Swapping DeepSeek for another model = one new `*Client.kt`, zero domain changes (**Open/Closed**).
+- **Registries over `when`:** new document types, answer block kinds and pen tools are added by registering an implementation, not by editing a switch (**OCP**).
+- **One reason to change per file (SRP),** and the file's suffix says what that reason is (§3.3).
+- **Pure core, imperative shell:** business decisions are pure functions `(state, event) → (state, effects)`; use cases and sessions execute the effects.
+- **Immutable models.** Mutation only in stores and the canvas's render caches.
+- **Coroutines + Flow** everywhere async; structured concurrency; cancellation is how "pen-down cancels the request" works.
+
+### 3.2 Gradle modules
+
+| Module | Kind | Contains | Depends on |
+|---|---|---|---|
+| `:domain` | Kotlin/JVM | Models, rules, ports, use cases, sessions, per bounded context | coroutines-core, serialization |
+| `:scribe` | Kotlin/JVM | Handwriting synthesis: answer document → timed pen strokes | `:domain` |
+| `:infra` | Android lib | Room, ink files, DeepSeek client, PDF, secrets, page snapshots | `:domain`, `:scribe` (for snapshot render) |
+| `:app` | Android app | UI, canvas view, Onyx device adapters, composition root | all |
+| `:tools` | Kotlin/JVM | `scribe-preview` CLI: markup → SVG/PNG for tuning the hand on a laptop | `:scribe` |
+
+### 3.3 File-role convention (the "where is X" rule)
+
+Every bounded context is one package, and **every file ends with one of these suffixes**. The suffix tells you the role, the layer and what the file may import. If a file passes ~300 lines, split it with a qualifier (`ConversationRules.kt` → `ConversationTriggerRules.kt` + `ConversationContextRules.kt`), never with a new suffix.
+
+| Suffix | Role | Module | May depend on |
+|---|---|---|---|
+| `*Model.kt` | Entities, value objects, sealed states. Immutable data only. No logic beyond trivial derived properties | domain | other `*Model` |
+| `*Rules.kt` | **Business logic**: pure top-level functions. No I/O, no clock, no randomness (seed passed in) | domain, scribe (infra only for provider-specific pure logic) | `*Model` |
+| `*Ports.kt` | Interfaces the context needs from the outside world | domain | `*Model` |
+| `*UseCase.kt` | One application action: `suspend operator fun invoke(...)`. Orchestrates rules + ports. Stateless | domain | `*Model`, `*Rules`, `*Ports` |
+| `*Session.kt` | Stateful, long-lived orchestrator with a lifecycle (`start/stop`) that drives a `*Rules` state machine and runs its effects | domain | same as UseCase |
+| `*Parser.kt` | Text → model (incremental where needed). Pure | domain | `*Model` |
+| `*Client.kt` | Adapter to an external service; implements a port | infra | domain, `*Dto`, `*Mapper` |
+| `*Store.kt` | Persistence adapter; implements a port | infra | domain, `*Dto`, `*Mapper` |
+| `*Dto.kt` | Wire / DB shapes (`@Serializable`, `@Entity`) | infra | — |
+| `*Mapper.kt` | `Dto ↔ Model` conversion functions | infra | `*Dto`, `*Model` |
+| `*Renderer.kt` | Draws a model onto an `android.graphics.Canvas` | app, infra | domain, scribe |
+| `*ViewModel.kt` | UI state holder, exposes `StateFlow<*UiState>` | app | domain |
+| `*UiState.kt` | UI state data | app | — |
+| `*Screen.kt` | Compose screen (stateless; takes UiState + callbacks) | app | `*UiState`, theme |
+| `*Component.kt` | Reusable stateless Composables that aren't whole screens | app | theme |
+| `*View.kt` | Custom Android `View` | app | `*Renderer` |
+| `*Device.kt` | Hardware adapter (pen, e-ink) behind an app-level interface | app | Onyx SDK |
+| `*Registry.kt` | Maps a kind/key → strategy implementation (the OCP seam) | any | the strategy interface |
+| `*Animator.kt` | Frame loop that plays a precomputed plan | app | `*Renderer` |
+| `*Cache.kt` | Owns rebuildable derived data (bitmaps, rasters) | app, infra | `*Renderer` |
+| `*Database.kt` | Room database declaration | infra | `*Dto` |
+| `*Colors.kt` `*Type.kt` `*Theme.kt` | Design tokens and theme wiring (Compose) | app | — |
+
+Entry points are the only exempt files: `NisabaApp.kt`, `MainActivity.kt`, `AppGraph.kt`, `Navigation.kt` (all in `com.nisaba.app`) and `ToolsMain.kt` (`:tools`). A Gradle check (`verifyFileRoles`) fails the build on any other file without an allowed suffix.
+
+Test files mirror their subject: `ConversationRulesTest.kt`.
+
+### 3.4 Package tree
+
+```
+:domain  com.nisaba.domain
+├── shared/            SharedModel.kt (Id, PagePoint, PageRect, Size)  SharedRules.kt (geometry)  SharedPorts.kt (Clock, IdGen)
+├── notebook/          NotebookModel.kt   NotebookRules.kt   NotebookPorts.kt (NotebookStore)
+│                      CreateNotebookUseCase.kt  RenameNotebookUseCase.kt  DeleteNotebookUseCase.kt
+│                      InsertPageUseCase.kt  ListNotebooksUseCase.kt
+├── ink/               InkModel.kt (Stroke, InkPoint, StrokeOrigin, PageInk, InkCommand)
+│                      InkRules.kt (hit-test, erase/split, bounds, x-height estimate)
+│                      InkHistoryRules.kt (undo/redo stack — command pattern)
+│                      InkPorts.kt (InkStore)
+│                      CommitStrokeUseCase.kt  EraseUseCase.kt  UndoUseCase.kt  RedoUseCase.kt
+├── document/          DocumentModel.kt (SourceDocument, DocumentText, PageRaster)
+│                      DocumentPorts.kt (DocumentReader, DocumentReaderRegistry, DocumentStore)
+│                      ImportDocumentUseCase.kt
+├── answer/            AnswerModel.kt (AnswerDocument, Block, Inline, MathNode, Table, Diagram)
+│                      AnswerParser.kt (streaming markup → blocks, §5.2)
+│                      MathParser.kt (LaTeX subset → MathNode)  DiagramParser.kt (SVG subset → paths)
+├── conversation/      ConversationModel.kt (Utterance, Exchange, ConversationState, Event, Effect)
+│                      ConversationRules.kt (state machine reducer, §4.4)
+│                      ConversationContextRules.kt (what goes in the request, token budgeting)
+│                      ConversationPromptRules.kt (system prompt + markup contract text — provider-agnostic)
+│                      ConversationPorts.kt (Oracle, PageSnapshotter, ExchangeStore)
+│                      ConversationSession.kt (runs the state machine per open page)
+│                      RecordExchangeUseCase.kt
+└── settings/          SettingsModel.kt  SettingsPorts.kt (SettingsStore, SecretStore)
+
+:scribe  com.nisaba.scribe
+├── hand/              HandModel.kt (Glyph, GlyphStroke, HandStyle)  HandRules.kt (humanize, pressure profile)
+│                      GlyphSetParser.kt (bundled single-line font → Glyphs)  GlyphCompositionRules.kt (diacritics)
+├── layout/            LayoutModel.kt (Region, Occupancy, LaidLine, PlacedGlyph)
+│                      TextLayoutRules.kt (line breaking, flow-around, page spill)
+│                      MathLayoutRules.kt  TableLayoutRules.kt  DiagramLayoutRules.kt
+│                      BlockLayoutRegistry.kt (Block kind → layouter, OCP)
+└── motion/            MotionModel.kt (TimedStroke, ScribePlan)  MotionRules.kt (speed ramp, easing, pauses)
+                       ScribePlanUseCase.kt (AnswerDocument + region + seed → ScribePlan, incremental per block)
+
+:infra   com.nisaba.infra
+├── db/                NisabaDatabase.kt  NotebookDto.kt  NotebookMapper.kt  NotebookStore.kt (Room)
+│                      ExchangeDto.kt  ExchangeMapper.kt  ExchangeStore.kt
+├── inkfile/           InkFileDto.kt  InkFileMapper.kt  InkFileStore.kt (per-page binary, atomic)
+├── deepseek/          DeepSeekDto.kt  DeepSeekMapper.kt (OracleRequest → wire)  DeepSeekClient.kt (implements Oracle, SSE)
+├── pdf/               PdfDocumentReader.kt (PdfRenderer raster, PdfBox fallback + text extraction)
+│                      DocumentFileStore.kt (copies source into app storage)
+├── render/            InkRenderer.kt (variable-width strokes; outline math = scribe HandRules.strokeOutline)  BackgroundRenderer.kt
+├── snapshot/          PageSnapshotRenderer.kt (implements PageSnapshotter: page → JPEG for the model)
+├── document/          DocumentReaderRegistry.kt
+├── log/               LogClient.kt (implements Logger)
+├── settings/          SettingsStore.kt (DataStore)  SecretStore.kt (Keystore AES-GCM)
+└── http/              HttpClient.kt (OkHttp singleton, timeouts)  SseParser.kt
+
+:app     com.nisaba
+├── app/               NisabaApp.kt  AppGraph.kt (composition root)  MainActivity.kt  Navigation.kt
+├── ui/theme/          NisabaColors.kt  NisabaType.kt  NisabaTheme.kt  NisabaComponent.kt
+├── ui/brand/          MarkRenderer.kt  SplashScreen.kt  InkwellRenderer.kt
+├── library/           LibraryScreen.kt  LibraryViewModel.kt  LibraryUiState.kt  CoverRenderer.kt
+├── notebook/          NotebookScreen.kt  NotebookViewModel.kt  NotebookUiState.kt  ToolbarScreen.kt
+├── canvas/            PageView.kt  ScribeRenderer.kt (nib, "…" mark)
+│                      ScribeAnimator.kt (Choreographer loop, plays a ScribePlan)
+│                      PageLayerCache.kt (background + committed-ink bitmaps)
+├── device/            PenDevice.kt (interface)  OnyxPenDevice.kt  MotionEventPenDevice.kt (emulator fallback)
+│                      EinkDevice.kt (interface)  OnyxEinkDevice.kt  NoopEinkDevice.kt
+└── settings/          SettingsScreen.kt  SettingsViewModel.kt  SettingsUiState.kt
+```
+
+### 3.5 Patterns used, and where
+
+| Pattern | Where | Purpose |
+|---|---|---|
+| Ports & Adapters (Hexagonal) | `*Ports.kt` ↔ `*Client/*Store` | Domain is testable without Android; providers swappable |
+| State machine / reducer | `ConversationRules.reduce` | Timing/cancel logic is pure and exhaustively unit-tested |
+| Command | `InkCommand` + `InkHistoryRules` | Undo/redo, including "undo an entire answer" |
+| Strategy + Registry | `DocumentReaderRegistry`, `BlockLayoutRegistry`, `PenDevice`/`EinkDevice` | Add types without editing callers (OCP) |
+| Observer (Flow) | Stores expose `Flow`, ViewModels `StateFlow` | Reactive UI |
+| Builder (incremental) | `AnswerParser`, `ScribePlanUseCase` | Start writing before the model finishes |
+| Composition root | `AppGraph` | One place wires everything (DIP) |
+| Null Object | `NoopEinkDevice`, `MotionEventPenDevice` | Runs on the emulator; no `if (isBoox)` scattered around |
+
+---
+
+## 4. Domain
+
+### 4.1 Model (core types)
+
+```kotlin
+// notebook
+data class Notebook(val id: NotebookId, val name: String, val createdAt: Instant,
+                    val updatedAt: Instant, val documentId: DocumentId?, val pageIds: List<PageId>,
+                    val listening: Boolean)
+data class Page(val id: PageId, val notebookId: NotebookId, val size: PageSize,
+                val background: PageBackground)
+sealed interface PageBackground { data object Blank; data class DocumentPage(val documentId: DocumentId, val index: Int) }
+
+// ink — page units: portrait page is 1860 × 2480 (= Air 5C panel px); PDF pages fit width, height by aspect
+data class InkPoint(val x: Float, val y: Float, val pressure: Float, val tMillis: Int)
+data class Stroke(val id: StrokeId, val points: List<InkPoint>, val width: Float,
+                  val color: InkColor, val origin: StrokeOrigin)
+sealed interface StrokeOrigin { data object User; data class Oracle(val exchangeId: ExchangeId) }
+
+// conversation
+data class Utterance(val pageId: PageId, val strokeIds: Set<StrokeId>, val bounds: PageRect)
+data class Exchange(val id: ExchangeId, val notebookId: NotebookId, val pageId: PageId,
+                    val heard: String, val answerMarkup: String, val status: ExchangeStatus,
+                    val createdAt: Instant)
+enum class ExchangeStatus { Complete, Interrupted, Silent, Failed }
+```
+
+### 4.2 Storage
+
+- **Room** (`nisaba.db`): notebooks, pages, documents, exchanges, settings-free metadata. Real migrations from v1 on (Play Store).
+- **Ink files**: `files/ink/<pageId>.ink`, one per page. Versioned binary (`kotlinx.serialization` ProtoBuf over `InkFileDto`). Written atomically (temp + rename), debounced 500 ms after pen-up, flushed on `onPause`.
+- **Documents**: the imported PDF is copied to `files/docs/<documentId>.pdf`; extracted text is cached in `files/docs/<documentId>.txt`; page rasters are cached in `cache/raster/<documentId>/<index>.webp` (can be rebuilt).
+
+### 4.3 Conversation context (what the model gets)
+
+The request order is chosen so DeepSeek's **prefix cache** hits (stable parts first):
+
+1. System prompt (§5.1) (static)
+2. Document text: the entire PDF text, page-tagged `[p.12] …` (static per notebook). Scanned or no-text PDFs send nothing here; the current page image still carries it.
+3. Prior exchanges, oldest first, as alternating `user: <heard>` / `assistant: <answerMarkup>` text messages (append-only). `ConversationContextRules` drops the oldest once the budget passes ~120k tokens. With 1M context, that's rarely hit.
+4. Current turn (user message): the text instruction plus two images:
+   - **page**: the whole current page (background + all ink incl. prior answers), grayscale JPEG, ~1600 px long edge, `detail: auto`
+   - **focus**: a crop of the utterance bounds + 10 % margin, `detail: high`
+
+### 4.4 The state machine (`ConversationRules`)
+
+```kotlin
+sealed interface ConvState { Idle; Writing(utt); Pausing(utt, deadline); Thinking(utt, reqId);
+                             Scribing(exId, plan, progress); Interrupted(exId, remaining); Failed(utt, error) }
+sealed interface ConvEvent { PenDown; PenUp(stroke); Tick(now); AnswerStarted(reqId); AnswerChunk(reqId, blocks);
+                             Silent(reqId); AnswerDone(reqId, heard); AnswerFailed(reqId, e);
+                             ScribeFinished; TapContinue; TapSkip; ListeningToggled(on); AskNow }
+sealed interface ConvEffect { StartTimer(at); CancelTimer; SendRequest(utt, reqId); CancelRequest(reqId);
+                              ShowInkwell(anchor); HideInkwell; PlanBlocks(blocks); StopScribe; SaveExchange(...) }
+
+fun reduce(state: ConvState, event: ConvEvent, settings: ConvSettings): Pair<ConvState, List<ConvEffect>>
+```
+
+Invariants (each is a unit test):
+- A PenDown in `Pausing` or `Thinking` never produces a visible answer for the old request.
+- `reqId` is monotonic. Chunks from a stale `reqId` are dropped.
+- Every `Thinking` ends in exactly one of: Scribing, Idle (silent), Failed, Writing (cancelled).
+- With Listening off, only `AskNow` leaves `Pausing` for `Thinking`.
+
+`ConversationSession` owns one page's session: it feeds pen/stream/timer events into `reduce` and executes effects (starting/cancelling a coroutine job for the request, which cancels the OkHttp call).
+
+---
+
+## 5. AI integration (DeepSeek)
+
+### 5.1 Endpoint
+
+| | |
+|---|---|
+| URL | `POST https://api.deepseek.com/chat/completions` (OpenAI-compatible) |
+| Auth | `Authorization: Bearer <key>` |
+| Model | `deepseek-flash` (default) · `deepseek-v4-pro` |
+| Images | `{"type":"image_url","image_url":{"url":"data:image/jpeg;base64,…","detail":"high"}}`, **user messages only**, ≤ 8192 px/side, ~1024 tokens/image cap |
+| Stream | `"stream": true` (SSE). We parse `choices[0].delta.content` and ignore `reasoning_content` |
+| Thinking | Off by default. Setting on → `"thinking":{"type":"enabled"}`, `"reasoning_effort":"high"`. The inkwell keeps stirring while it reasons |
+| Timeouts | connect 10 s, read 90 s, no retry on the user's behalf (Failed state → tap to retry) |
+
+### 5.2 Response markup (streamable; JSON is not)
+
+The model must reply with exactly one of:
+
+```
+<silent/><heard>…verbatim transcription…</heard>
+```
+```
+<answer>
+…markdown subset…
+</answer>
+<heard>…verbatim transcription of the new writing…</heard>
+```
+
+The markdown subset inside `<answer>`:
+- paragraphs, `#`/`##` headings, `-` and `1.` lists, `**bold**`
+- inline math `$…$` and display math `$$…$$` (LaTeX subset, §5.4)
+- GFM pipe tables (≤ 6 cols, ≤ 12 rows, short cells)
+- diagrams as a fenced block ` ```diagram ` containing `<svg viewBox="0 0 1000 1000">` with only `path` (M L Q C Z), `line`, `polyline`, `circle`, `ellipse`, `rect`, and **no** `<text>`. Labels go in a `labels` list beneath: `A @ 120,340`, which the hand writes at those points
+
+`AnswerParser` is incremental: it emits a `Block` as soon as the block closes (blank line, closing fence or table end), so the hand starts writing the first paragraph while the rest is still streaming. Unknown constructs degrade to plain handwritten text, never to an error.
+
+### 5.2a Why `<heard>` comes last
+It costs latency if it comes first. Coming last, it still arrives in the same response, and it becomes the `user` turn text in future context (§4.3).
+
+### 5.3 System prompt (v1 draft)
+
+```
+You are Nisaba, the spirit of this notebook. The person writes by hand; you see
+the page as images and answer in ink, beneath their writing.
+
+Decide first: is the NEW writing (the focus image) addressed to you: a question,
+a request, a "?" or anything that expects a reply? If it is just notes, a
+drawing, or a crossed-out mistake, reply exactly <silent/> followed by <heard>.
+
+When you answer:
+- Be brief and exact; it will be handwritten. Default ≤ 120 words unless asked
+  for more. Prefer a short table, formula or small diagram over long prose.
+- Answer in the language they wrote in.
+- Use only the markup described below. No links, no code blocks, no emoji.
+- The attached document text and earlier exchanges are context; cite pages
+  as (p. 12) when you use the document.
+- If the writing is illegible, say so in one line and ask them to rewrite it.
+<markup spec from §5.2>
+```
+
+### 5.4 Math subset (`MathParser` → `MathNode`)
+`\frac \sqrt[n]{} ^ _ \sum \prod \int \lim \infty \pm \cdot \times \le \ge \ne \approx \to`, Greek letters, `\left( \right)`, `\begin{pmatrix}`, `\text{}`. Unsupported commands are written literally in the hand (a graceful fallback, never a crash).
+
+### 5.5 Privacy (Play Store)
+The page images, the PDF text and the transcriptions go to DeepSeek. First-run notice + privacy policy. Nothing else leaves the device. No analytics in v1.
+
+---
+
+## 6. Scribe (handwriting synthesis) — `:scribe`
+
+Pipeline, pure and deterministic (seed = exchangeId hash):
+
+```
+AnswerDocument blocks ──(BlockLayoutRegistry)──▶ laid glyphs in page space, flowing around Occupancy,
+                                                 spilling to next page
+                     ──(HandRules.humanize)───▶ jittered glyph strokes, pressure profile
+                     ──(MotionRules)──────────▶ ScribePlan: TimedStroke[] (points with t offsets)
+```
+
+- **Glyph source:** a bundled **single-line (stroke) font**, Hershey-derived, e.g. *EMS Casual Hand* / *EMS Delight* from the Hershey Text project (SIL OFL, OK for the Play Store; confirm the license in M3). Hershey symbol sets cover Greek and math operators. Two hands ship: *Casual* (default) and *Formal*. Letters the font lacks (æ ø å é ü ñ …) are **composed** from base glyph + diacritic mark (`GlyphCompositionRules`), so Norwegian and other Latin languages write correctly.
+- **Legibility gate** (automated): render sample answers with `:tools` → send to `deepseek-flash` → it must transcribe them word for word. It runs in CI on demand when glyphs or the humanizer change.
+- **Incremental:** `ScribePlanUseCase` plans block by block as blocks stream in. The animator plays block N while block N+1 is planned.
+- **Output ink:** when a plan completes (or is interrupted), its strokes are committed through `CommitStrokeUseCase` with `origin = Oracle(exchangeId)` as one undoable `InkCommand`.
+
+---
+
+## 7. Device layer (Onyx) — `:app/device`
+
+- **SDK:** `com.onyx.android.sdk:onyxsdk-pen` (≈ 1.5.4.x; confirm the version in spike S1) from `http://repo.boox.com/repository/maven-public/`. It likely also needs `onyxsdk-device`/`onyxsdk-base` and `org.lsposed.hiddenapibypass` on Android 11+ (verify).
+- **`OnyxPenDevice`:** `TouchHelper.create(pageView, callback)`, `setLimitRect(pageRect, excludeRects = toolbar)`, `openRawDrawing()`, `setRawDrawingEnabled(true)`, `setStrokeStyle(FOUNTAIN)`. On `onRawDrawingTouchPointListReceived` it emits a completed `Stroke`. Eraser callbacks → erase events. Committed strokes are rendered with the same pressure→width curve as the raw layer, so ink doesn't shift at handover.
+- **Raw layer vs our animations:** raw drawing locks screen refresh. Before the hand writes, pause raw drawing (`setRawDrawingRenderEnabled(false)` or `setRawDrawingEnabled(false)`), keep pen-*down detection* alive to interrupt, and restore it after. **This is spike S2, the biggest technical risk.**
+- **`OnyxEinkDevice`:** the per-app refresh waveform via the framework OEC binder (`oec_service` → `IOECService.setAppScopeRefreshMode(mode, false)`). Proven on this device in the prior attempt. Classic `EPDController` is **absent** on the Air 5C Android 15 firmware. Modes: FAST while writing/scribing, NORMAL at idle + clean pass. Everything is reflective and defensive: failure = no-op.
+- **Fallbacks:** `MotionEventPenDevice` + `NoopEinkDevice` for the emulator and non-Boox devices (dev only; the Play listing targets Boox).
+
+---
+
+## 8. Rendering — `:app/canvas`
+
+`PageView` composes three layers:
+1. **Background** (cached bitmap): paper, or PDF page raster (`PdfRenderer`; PdfBox fallback, because the prior attempt saw black renders on Android 15 for some PDFs).
+2. **Committed ink** (cached bitmap, incrementally updated per stroke; full rebuild only on erase/undo).
+3. **Live overlay:** the scribe's current strokes + nib, the inkwell, the eraser trail.
+
+`ScribeAnimator` is a Choreographer loop capped at 20 fps. Each frame it draws the new points since the last frame into layer 2, then invalidates their dirty rect plus the nib rect. No allocations per frame.
+
+`PageSnapshotter` (infra) reuses the renderers off-screen to build the JPEG sent to the model.
+
+---
+
+## 9. PDF
+
+- "New from PDF" → SAF picker → `ImportDocumentUseCase`: copy the file, extract text (PdfBox-Android), count pages, create the notebook with one page per PDF page (`PageBackground.DocumentPage`).
+- Blank pages can be inserted anywhere (toolbar "+ page after"). Answer spill pages are blank pages too.
+- The whole PDF text is context for every question in that notebook (§4.3). PDFs > ~400k tokens of text: send a page-window around the current page (±30 pages) plus the table of contents, if one exists.
+- `DocumentReader` is a port with a registry keyed by MIME type, so EPUB/DOCX later = new reader, no other changes.
+
+---
+
+## 10. Quality
+
+| Layer | Tests |
+|---|---|
+| `:domain` | JVM unit: state machine invariants (§4.4), erase/split, undo/redo, context budgeting, `AnswerParser` (streamed in random chunk sizes → same result), `MathParser` |
+| `:scribe` | JVM unit + golden SVGs: layout, flow-around, spill, deterministic plans; the legibility gate (§6) |
+| `:infra` | MockWebServer: SSE parsing, cancellation aborts the socket, error mapping; Room migration tests; ink file round-trip + corruption safety |
+| `:app` | A few instrumented tests on the device: open notebook, stroke persists, page turn |
+| Manual | Device checklist per milestone (latency, ghosting, lit/unlit contrast) |
+
+Tooling: ktlint + detekt, `verifyFileRoles` (§3.3), lint `abortOnError` (Android imports in `:domain`/`:scribe` can't compile — they're JVM modules), and CI on push (unit tests + assemble). The Android SDK and Gradle live in `.tools/` (gitignored).
+
+**Definition of done** for any change: tests green, lint clean, the file-role convention respected, verified on the device if it touches input/rendering.
+
+---
+
+## 11. Device spikes (do first; they decide details above)
+
+| # | Question | Pass criteria |
+|---|---|---|
+| S1 | Onyx Pen SDK version + deps that work on Air 5C / Android 15 | Raw drawing at ≤ 20 ms latency, pressure works, eraser callbacks fire |
+| S2 | Can we animate our own drawing while TouchHelper is open, and still detect pen-down to interrupt? | The hand writes at ≥ 15 fps; pen-down detected ≤ 50 ms |
+| S3 | OEC refresh modes: which mode values = fast / normal / clean? | Visibly faster refresh during scribing, clean after |
+| S4 | `deepseek-flash` reads real handwriting from our JPEG at 1600 px + a focus crop | ≥ 95 % words correct on 10 sample pages; TTFT measured |
+| S5 | Lapis `#27407A` at 2–4 px stroke on Kaleido 3 | Readable unlit at arm's length, else fall back to black |
+| S6 | Handover: raw-layer stroke → our committed render | No visible shift or weight change |
+
+---
+
+## 12. Milestones
+
+| M | Deliverable | Done when |
+|---|---|---|
+| **M0** | Scaffold: modules, convention checks, CI, theme tokens, spikes S1–S6 | The spikes table is filled in with measurements |
+| **M1** | Ink notebook: library, create/rename/delete, pages, Onyx pen, eraser, undo/redo, persistence | Write 20 pages, kill the app, everything is back; latency ≤ 20 ms |
+| **M2** | The ask loop, text only: state machine, DeepSeek streaming, inkwell, answer rendered as plain (non-animated) strokes | Pause → answer ≤ 2.5 s; pen-down cancels; notes stay silent |
+| **M3** | The hand: glyph set, humanizer, motion, animator, nib, interrupt/continue, hand size matching | Passes the legibility gate; feels written, not printed |
+| **M4** | Rich blocks: tables, math, diagrams; flow-around; page spill | Sample "explain X with a table and a formula" renders beautifully |
+| **M5** | PDF notebooks: import, render, whole-document context, flow around printed text | Ask about p. 40 while on p. 3 and get it right |
+| **M6** | Brand & polish: splash, mark, generated covers, settings, first-run, privacy notice | Screenshots you'd put on a store page |
+| **M7** | Play Store readiness: signing, R8, target SDK, data-safety form, 512 px icon | Internal-testing track upload succeeds |
+
+---
+
+## 13. Out of scope (v1) / later
+
+Export, sync/backup, EPUB/DOCX/TXT, right-to-left hands (Arabic), lasso select/move, zoom, voice, other AI providers (the `Oracle` port is ready), handwriting-to-text search.
