@@ -1,0 +1,68 @@
+package com.nisaba.domain.conversation
+
+import com.nisaba.domain.answer.Block
+import com.nisaba.domain.shared.Clock
+import com.nisaba.domain.shared.DomainError
+import com.nisaba.domain.shared.NotebookId
+import com.nisaba.domain.shared.PageId
+import com.nisaba.domain.shared.PageRect
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.test.TestCoroutineScheduler
+
+/** Wall clock that follows the test scheduler's virtual time. */
+class VirtualClock(private val scheduler: TestCoroutineScheduler) : Clock {
+    override fun nowMillis() = 1_000_000L + scheduler.currentTime
+}
+
+/** Scriptable model: emits [chunks] with [gapMillis] between them, or fails with [failure] before emitting. */
+class FakeOracle(var chunks: List<String> = emptyList(), var gapMillis: Long = 0, var failure: OracleException? = null) : Oracle {
+    val requests = mutableListOf<OracleRequest>()
+    var started = 0
+    var cancelled = 0
+    var completed = 0
+
+    override fun ask(request: OracleRequest): Flow<OracleEvent> = flow {
+        requests += request; started++
+        failure?.let { throw it }
+        for (c in chunks) { delay(gapMillis); emit(OracleEvent.Delta(c)) }
+        emit(OracleEvent.Usage(1500, 40, 1024))
+    }.onCompletion { cause -> if (cause == null) completed++ else cancelled++ }
+}
+
+class FakeSnapshotter : PageSnapshotter {
+    val focuses = mutableListOf<PageRect?>()
+    override suspend fun snapshot(pageId: PageId, focus: PageRect?): PageSnapshot {
+        focuses += focus
+        return PageSnapshot(byteArrayOf(1), byteArrayOf(2))
+    }
+}
+
+class FakeExchangeStore : ExchangeStore {
+    private val all = MutableStateFlow<List<Exchange>>(emptyList())
+    override suspend fun append(exchange: Exchange) { all.value += exchange }
+    override suspend fun listByNotebook(id: NotebookId) = all.value
+    override fun observeByNotebook(id: NotebookId) = all.map { it }
+    val saved: List<Exchange> get() = all.value
+}
+
+class RecordingSurface : ConversationSurface {
+    val log = mutableListOf<String>()
+    val blocks = mutableListOf<Block>()
+    var failure: DomainError? = null
+    override fun showInkwell(utt: Utterance) { log += "ink+" }
+    override fun hideInkwell(dry: Boolean) { log += if (dry) "ink-dry" else "ink-handoff" }
+    override fun planBlock(reqId: Int, block: Block) { log += "plan$reqId"; blocks += block }
+    override fun stopScribe(reqId: Int) { log += "stop$reqId" }
+    override fun resumeScribe(reqId: Int) { log += "resume$reqId" }
+    override fun showFailure(error: DomainError) { log += "fail"; failure = error }
+    override fun clearFailure() { log += "clear"; failure = null }
+}
+
+class FakeContextPorts(var pages: List<String> = emptyList(), override var currentDocumentPage: Int? = null) : ConversationContextPorts {
+    override suspend fun documentPages() = pages
+}
