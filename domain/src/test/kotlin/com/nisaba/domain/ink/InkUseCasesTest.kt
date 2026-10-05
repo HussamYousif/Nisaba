@@ -41,6 +41,20 @@ class InkUseCasesTest {
         assertEquals(listOf(a), s.ink.strokes); assertEquals(listOf(a), store.saved[page])
     }
 
+    @Test fun erasingAnAnswerRemovesAllItsStrokesAsOneStepAndNothingElse() = runTest {
+        val ex = com.nisaba.domain.shared.ExchangeId("x1")
+        val ans1 = lineStroke("o1", 100f, 300f, 900f).copy(origin = StrokeOrigin.Oracle(ex))
+        val ans2 = lineStroke("o2", 100f, 300f, 950f).copy(origin = StrokeOrigin.Oracle(ex))
+        val other = lineStroke("o3", 100f, 300f, 1100f).copy(origin = StrokeOrigin.Oracle(com.nisaba.domain.shared.ExchangeId("x2")))
+        val s = CommitStrokesUseCase(store)(empty, listOf(a, ans1, ans2, other))
+        val erased = EraseAnswerUseCase(store)(s, ex)
+        assertEquals(listOf(a, other), erased.ink.strokes)
+        assertEquals(setOf(a, ans1, ans2, other), UndoUseCase(store)(erased).ink.strokes.toSet())
+        assertSame(erased, EraseAnswerUseCase(store)(erased, ex))
+        assertEquals(ex, answerAt(s.ink.strokes, PagePoint(200f, 955f), 40f))
+        assertEquals(null, answerAt(s.ink.strokes, PagePoint(200f, 500f), 40f)) // the user's own stroke is not an answer
+    }
+
     @Test fun undoOnEmptyHistoryIsNoOp() = runTest {
         assertSame(empty, UndoUseCase(store)(empty))
     }

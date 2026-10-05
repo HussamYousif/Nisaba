@@ -16,10 +16,11 @@ sealed interface Block {
     data class MathBlock(val latex: String) : Block
     data class Table(val header: List<Cell>, val rows: List<List<Cell>>) : Block
     data class Diagram(val svg: String, val labels: List<DiagramLabel>) : Block
+
+    /** A fenced code block, lines verbatim (indentation kept); [language] as the model named it, may be empty. */
+    data class Code(val language: String, val lines: List<String>) : Block
     data object Rule : Block
 }
-
-data class AnswerDocument(val blocks: List<Block>)
 
 /** What the streaming parser reports, in order. */
 sealed interface ParseEvent {

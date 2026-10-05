@@ -29,7 +29,10 @@ class FakeNotebookStore : NotebookStore {
     override fun observeAll(): Flow<List<NotebookSummary>> = books.map { m ->
         m.values.map {
             val n = it.notebook
-            NotebookSummary(n.id, n.name, n.updatedAtMillis, it.pages.size, n.coverSeed, n.documentId != null, it.pages.any { p -> p.size.isEndless })
+            NotebookSummary(
+                n.id, n.name, n.updatedAtMillis, it.pages.size, n.coverSeed, n.documentId != null, it.pages.any { p -> p.size.isEndless },
+                n.teachGoal != null,
+            )
         }
     }
     override fun observe(id: NotebookId) = books.map { it[id] }

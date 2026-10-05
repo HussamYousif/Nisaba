@@ -111,7 +111,12 @@ private class PathWalker {
         lastCtrlX = x2; lastCtrlY = y2
     }
 
-    private fun continues(prev: Char, ctrl: Char) = prev.uppercaseChar() == ctrl.uppercaseChar()
+    /** A smooth curve continues a curve of its kind: S after C or S, T after Q or T. */
+    private fun continues(prev: Char, ctrl: Char) = when (ctrl) {
+        'C' -> prev.uppercaseChar() == 'C' || prev.uppercaseChar() == 'S'
+        'Q' -> prev.uppercaseChar() == 'Q' || prev.uppercaseChar() == 'T'
+        else -> false
+    }
 
     /** Smooth-curve commands mirror the previous control point when the previous command was the same kind of curve. */
     fun reflectX(prev: Char, ctrl: Char) = if (continues(prev, ctrl)) 2 * cx - lastCtrlX else cx

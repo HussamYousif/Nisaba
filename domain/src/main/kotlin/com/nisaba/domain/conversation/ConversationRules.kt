@@ -36,11 +36,12 @@ fun reduce(status: ConvStatus, event: ConvEvent, settings: ConvSettings): Pair<C
         is ConvEvent.PenAborted -> onPenAborted(status, s, event, settings)
         is ConvEvent.Tick -> onTick(status, s, event, settings)
         ConvEvent.AskNow -> onAskNow(status, s)
+        is ConvEvent.Begin -> onBegin(status, s, event, settings)
         is ConvEvent.OracleSilent -> onSilent(status, s, event)
         is ConvEvent.OracleBlock -> onBlock(status, s, event)
         is ConvEvent.OracleDone -> onDone(status, s, event)
         is ConvEvent.OracleFailed -> onFailed(status, s, event)
-        ConvEvent.ScribeFinished -> onScribeFinished(status, s)
+        is ConvEvent.ScribeFinished -> onScribeFinished(status, s, event)
         ConvEvent.TapContinue -> onTapContinue(status, s)
         ConvEvent.TapRetry -> onTapRetry(status, s)
     }
@@ -59,7 +60,7 @@ private fun onPenDown(st: ConvStatus, s: ConvState) = when (s) {
             if (!s.streamDone) add(ConvEffect.CancelRequest(s.reqId))
             add(ConvEffect.Record(s.reqId, ExchangeStatus.Interrupted))
         }
-        st.copy(state = ConvState.Interrupted(s.reqId)) to fx
+        st.copy(state = ConvState.Interrupted(s.reqId, s.blocks)) to fx
     }
     is ConvState.Interrupted -> st.same()
     is ConvState.Failed -> st.to(ConvState.Writing(s.utt), ConvEffect.ClearFailure)
@@ -108,6 +109,16 @@ private fun onAskNow(st: ConvStatus, s: ConvState) = when (s) {
     else -> st.same()
 }
 
+/**
+ * Only from a quiet page (idle, or after a stopped answer). A lesson opening or return waits for Ask now when
+ * listening is off; asking again or tidying was asked for explicitly, so it always goes.
+ */
+private fun onBegin(st: ConvStatus, s: ConvState, e: ConvEvent.Begin, cfg: ConvSettings) = when {
+    s != ConvState.Idle && s !is ConvState.Interrupted -> st.same()
+    cfg.listening || e.utt.purpose is Purpose.Again || e.utt.purpose is Purpose.Tidy -> startRequest(st, e.utt)
+    else -> st.to(ConvState.Held(e.utt))
+}
+
 private fun onSilent(st: ConvStatus, s: ConvState, e: ConvEvent.OracleSilent) =
     if (s is ConvState.Thinking && s.reqId == e.reqId) {
         st.to(ConvState.Idle, ConvEffect.HideInkwell(dry = true), ConvEffect.Record(e.reqId, ExchangeStatus.Silent))
@@ -115,9 +126,9 @@ private fun onSilent(st: ConvStatus, s: ConvState, e: ConvEvent.OracleSilent) =
 
 private fun onBlock(st: ConvStatus, s: ConvState, e: ConvEvent.OracleBlock) = when {
     s is ConvState.Thinking && s.reqId == e.reqId ->
-        st.to(ConvState.Scribing(s.reqId), ConvEffect.HideInkwell(dry = false), ConvEffect.PlanBlock(e.reqId, e.block))
+        st.to(ConvState.Scribing(s.reqId, blocks = 1), ConvEffect.HideInkwell(dry = false), ConvEffect.PlanBlock(e.reqId, e.block))
     s is ConvState.Scribing && s.reqId == e.reqId ->
-        st.to(s.copy(scribeDone = false), ConvEffect.PlanBlock(e.reqId, e.block))
+        st.to(s.copy(scribeDone = false, blocks = s.blocks + 1), ConvEffect.PlanBlock(e.reqId, e.block))
     else -> st.same()
 }
 
@@ -132,8 +143,10 @@ private fun onDone(st: ConvStatus, s: ConvState, e: ConvEvent.OracleDone) = when
     else -> st.same()
 }
 
-private fun onScribeFinished(st: ConvStatus, s: ConvState) =
-    if (s is ConvState.Scribing) finishIfDone(st, s.copy(scribeDone = true)) else st.same()
+/** Only a report covering every block handed out counts: a late one for an earlier block must not end a live answer. */
+private fun onScribeFinished(st: ConvStatus, s: ConvState, e: ConvEvent.ScribeFinished) =
+    if (s is ConvState.Scribing && s.reqId == e.reqId && e.blocksDrawn >= s.blocks) finishIfDone(st, s.copy(scribeDone = true))
+    else st.same()
 
 private fun finishIfDone(st: ConvStatus, s: ConvState.Scribing) =
     if (s.streamDone && s.scribeDone) {
@@ -154,7 +167,9 @@ private fun onFailed(st: ConvStatus, s: ConvState, e: ConvEvent.OracleFailed) = 
 }
 
 private fun onTapContinue(st: ConvStatus, s: ConvState) =
-    if (s is ConvState.Interrupted) st.to(ConvState.Scribing(s.reqId, streamDone = true), ConvEffect.ResumeScribe(s.reqId)) else st.same()
+    if (s is ConvState.Interrupted) {
+        st.to(ConvState.Scribing(s.reqId, streamDone = true, blocks = s.blocks), ConvEffect.ResumeScribe(s.reqId))
+    } else st.same()
 
 private fun onTapRetry(st: ConvStatus, s: ConvState) =
     if (s is ConvState.Failed) startRequest(st, s.utt, ConvEffect.ClearFailure) else st.same()

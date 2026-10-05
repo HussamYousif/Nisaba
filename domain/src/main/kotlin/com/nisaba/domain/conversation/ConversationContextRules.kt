@@ -1,11 +1,14 @@
 package com.nisaba.domain.conversation
 
+import com.nisaba.domain.memory.Fact
+import com.nisaba.domain.memory.formatMemoryContext
 import com.nisaba.domain.settings.Settings
 import kotlin.math.ceil
 
 const val TOKEN_BUDGET = 120_000
 const val IMAGE_TOKENS = 1_024
 private const val DOCUMENT_SHARE = 0.6
+private const val MEMORY_SHARE = 0.25
 private const val CHARS_PER_TOKEN = 3.5
 private const val WINDOW_PAGES = 30
 
@@ -39,7 +42,8 @@ fun historyTurns(exchanges: List<Exchange>): Pair<List<Turn>, List<String>> {
             ExchangeStatus.Failed -> Unit
             ExchangeStatus.Complete, ExchangeStatus.Interrupted -> {
                 if (e.answerMarkup.isBlank()) continue
-                val said = e.heard.ifBlank { "(illegible)" }
+                // an answer cut off mid-stream never got its <heard>: the question was not illegible, just not transcribed
+                val said = e.heard.ifBlank { if (e.status == ExchangeStatus.Interrupted) "(the question on the page)" else "(illegible)" }
                 val user = if (notes.isEmpty()) said else "(notes on the page: ${notes.joinToString("; ")})\n$said"
                 notes.clear()
                 turns += Turn.User(user); turns += Turn.Assistant(e.answerMarkup)
@@ -65,25 +69,44 @@ class ContextInput(
     val exchanges: List<Exchange>,
     val snapshot: PageSnapshot,
     val settings: Settings,
+    val facts: List<Fact> = emptyList(),
+    /** Non-null in a lesson notebook. */
+    val teachGoal: String? = null,
+    /** Why Nisaba writes this time. */
+    val purpose: Purpose = Purpose.Writing,
+    /** Lesson notebooks: what the tutor has recorded (see `formatLessonProgress`). */
+    val lessonProgress: String? = null,
 )
 
 fun buildRequest(input: ContextInput): OracleRequest {
     val doc = formatDocumentContext(input.documentPages, input.currentDocumentPage)
+    val memory = formatMemoryContext(input.facts, (TOKEN_BUDGET * MEMORY_SHARE).toInt())
     val (history, trailingNotes) = historyTurns(input.exchanges)
     val imageTokens = IMAGE_TOKENS * (if (input.snapshot.focus != null) 2 else 1)
-    val room = TOKEN_BUDGET - estimateTokens(SYSTEM_PROMPT) - (doc?.let(::estimateTokens) ?: 0) - imageTokens
+    val system = input.teachGoal?.let { SYSTEM_PROMPT + "\n\n" + teachingPrompt(it) } ?: SYSTEM_PROMPT
+    val room = TOKEN_BUDGET - estimateTokens(system) - (doc?.let(::estimateTokens) ?: 0) -
+        (memory?.let(::estimateTokens) ?: 0) - imageTokens
     val kept = trimHistory(history, room.coerceAtLeast(0))
     val instruction = buildString {
-        append(if (input.snapshot.focus != null) INSTRUCTION_WITH_FOCUS else INSTRUCTION_PAGE_ONLY)
+        append(
+            when (val p = input.purpose) {
+                Purpose.Opening -> INSTRUCTION_BEGIN_LESSON
+                Purpose.Resume -> INSTRUCTION_RESUME_LESSON
+                is Purpose.Tidy -> INSTRUCTION_TIDY
+                is Purpose.Again -> INSTRUCTION_WITH_FOCUS + " " + againInstruction(p.previousAnswer)
+                Purpose.Writing -> if (input.snapshot.focus != null) INSTRUCTION_WITH_FOCUS else INSTRUCTION_PAGE_ONLY
+            },
+        )
         input.currentDocumentPage?.let { append(" They are on p. ${it + 1} of the document.") }
         if (trailingNotes.isNotEmpty()) append(" Notes they wrote earlier without asking: ${trailingNotes.joinToString("; ")}.")
+        input.lessonProgress?.let { append(" ").append(it) }
     }
     val images = buildList {
         add(OracleImage(input.snapshot.page, ImageDetail.Auto))
         input.snapshot.focus?.let { add(OracleImage(it, ImageDetail.High)) }
     }
     return OracleRequest(
-        system = SYSTEM_PROMPT, documentContext = doc, history = kept, instruction = instruction, images = images,
-        options = OracleOptions(input.settings.model, input.settings.thinking),
+        system = system, documentContext = doc, history = kept, instruction = instruction, images = images,
+        options = OracleOptions(input.settings.model, input.settings.thinking), memoryContext = memory,
     )
 }

@@ -8,8 +8,29 @@ import com.nisaba.domain.shared.PageId
 import com.nisaba.domain.shared.PageRect
 import com.nisaba.domain.shared.StrokeId
 
-/** Everything the user wrote on a page since the last exchange (one "utterance", however many pauses it spans). */
-data class Utterance(val pageId: PageId, val strokeIds: Set<StrokeId>, val bounds: PageRect)
+/** Why Nisaba is about to write. Everything but [Writing] happens without new handwriting. */
+sealed interface Purpose {
+    /** The person wrote something: answer it. */
+    data object Writing : Purpose
+
+    /** A fresh lesson notebook: open the lesson. */
+    data object Opening : Purpose
+
+    /** The person came back to a lesson after a while: recap and re-check what was shaky. */
+    data object Resume : Purpose
+
+    /** They erased an answer and asked again: answer the same writing afresh. */
+    data class Again(val previousHeard: String, val previousAnswer: String) : Purpose
+
+    /** Write a clean copy of the notes on [sourcePageId] (on this, new, page). */
+    data class Tidy(val sourcePageId: PageId) : Purpose
+}
+
+/**
+ * Everything the user wrote on a page since the last exchange (one "utterance", however many pauses it spans), or,
+ * for the other [Purpose]s, where Nisaba should write ([bounds]: the answer goes below it).
+ */
+data class Utterance(val pageId: PageId, val strokeIds: Set<StrokeId>, val bounds: PageRect, val purpose: Purpose = Purpose.Writing)
 
 enum class ExchangeStatus { Complete, Interrupted, Silent, Failed }
 
@@ -26,6 +47,10 @@ data class Exchange(
     val latencyMillis: Long,
     val inputTokens: Int,
     val outputTokens: Int,
+    /** Prompt tokens served from the provider's cache (part of [inputTokens]). */
+    val cachedTokens: Int = 0,
+    /** The writing that was answered (page space); null when Nisaba spoke first. Lets "ask again" re-send it. */
+    val focus: PageRect? = null,
 )
 
 sealed interface Turn {
@@ -47,6 +72,8 @@ class OracleRequest(
     val instruction: String,
     val images: List<OracleImage>,
     val options: OracleOptions,
+    /** What Nisaba knows about the person across notebooks (DESIGN §4.5); null when nothing yet. */
+    val memoryContext: String? = null,
 )
 
 sealed interface OracleEvent {
@@ -71,14 +98,16 @@ sealed interface ConvState {
     /** Listening is off: the utterance waits for [ConvEvent.AskNow]. */
     data class Held(val utt: Utterance) : ConvState
     data class Thinking(val utt: Utterance, val reqId: Int) : ConvState
+    /** [blocks] = answer blocks handed to the hand so far; the hand is done once it reports having drawn all of them. */
     data class Scribing(
         val reqId: Int,
         val streamDone: Boolean = false,
         val scribeDone: Boolean = false,
         val streamFailed: Boolean = false,
+        val blocks: Int = 0,
     ) : ConvState
 
-    data class Interrupted(val reqId: Int) : ConvState
+    data class Interrupted(val reqId: Int, val blocks: Int = 0) : ConvState
     data class Failed(val utt: Utterance, val error: DomainError) : ConvState
 }
 
@@ -94,11 +123,15 @@ sealed interface ConvEvent {
     data class PenAborted(val atMillis: Long) : ConvEvent
     data class Tick(val atMillis: Long) : ConvEvent
     data object AskNow : ConvEvent
+
+    /** Nisaba writes without new handwriting ([Utterance.purpose] says why); only from a quiet page. */
+    data class Begin(val utt: Utterance) : ConvEvent
     data class OracleSilent(val reqId: Int) : ConvEvent
     data class OracleBlock(val reqId: Int, val block: Block) : ConvEvent
     data class OracleDone(val reqId: Int) : ConvEvent
     data class OracleFailed(val reqId: Int, val error: DomainError) : ConvEvent
-    data object ScribeFinished : ConvEvent
+    /** The hand drew everything it was given for [reqId], up to and including block number [blocksDrawn]. */
+    data class ScribeFinished(val reqId: Int, val blocksDrawn: Int) : ConvEvent
     data object TapContinue : ConvEvent
     data object TapRetry : ConvEvent
 }

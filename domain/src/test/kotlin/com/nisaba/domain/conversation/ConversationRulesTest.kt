@@ -98,30 +98,42 @@ class ConversationRulesTest {
 
     @Test fun firstBlockHandsInkwellOverToTheHand() {
         val r = toThinking().send(ConvEvent.OracleBlock(1, block))
-        assertEquals(ConvState.Scribing(1), r.state)
+        assertEquals(ConvState.Scribing(1, blocks = 1), r.state)
         assertEquals(ConvEffect.HideInkwell(dry = false), r.effect<ConvEffect.HideInkwell>().last())
         assertEquals(ConvEffect.PlanBlock(1, block), r.effect<ConvEffect.PlanBlock>().single())
     }
 
     @Test fun completionNeedsBothTheStreamAndTheHandToFinish() {
         val r = toThinking().send(ConvEvent.OracleBlock(1, block))
-        r.send(ConvEvent.OracleDone(1)); assertEquals(ConvState.Scribing(1, streamDone = true), r.state)
-        r.send(ConvEvent.ScribeFinished)
+        r.send(ConvEvent.OracleDone(1)); assertEquals(ConvState.Scribing(1, streamDone = true, blocks = 1), r.state)
+        r.send(ConvEvent.ScribeFinished(1, 1))
         assertEquals(ConvState.Idle, r.state)
         assertEquals(ConvEffect.Record(1, ExchangeStatus.Complete), r.effect<ConvEffect.Record>().single())
     }
 
     @Test fun aLateBlockReopensAnAlreadyFinishedHand() {
-        val r = toThinking().send(ConvEvent.OracleBlock(1, block)).send(ConvEvent.ScribeFinished)
-        assertEquals(ConvState.Scribing(1, streamDone = false, scribeDone = true), r.state)
+        val r = toThinking().send(ConvEvent.OracleBlock(1, block)).send(ConvEvent.ScribeFinished(1, 1))
+        assertEquals(ConvState.Scribing(1, streamDone = false, scribeDone = true, blocks = 1), r.state)
         r.send(ConvEvent.OracleBlock(1, block))
-        assertEquals(ConvState.Scribing(1, streamDone = false, scribeDone = false), r.state)
+        assertEquals(ConvState.Scribing(1, streamDone = false, scribeDone = false, blocks = 2), r.state)
         assertEquals(2, r.effect<ConvEffect.PlanBlock>().size)
+    }
+
+    @Test fun aLateFinishForAnEarlierBlockDoesNotEndTheAnswer() {
+        val r = toThinking().send(ConvEvent.OracleBlock(1, block)).send(ConvEvent.OracleBlock(1, block))
+        r.send(ConvEvent.ScribeFinished(1, 1)).send(ConvEvent.OracleDone(1))   // block 1's report arrives after block 2
+        assertEquals(ConvState.Scribing(1, streamDone = true, blocks = 2), r.state)
+        assertTrue(r.effect<ConvEffect.Record>().isEmpty())
+        r.send(ConvEvent.ScribeFinished(0, 2))                                   // another request's report
+        assertTrue(r.state is ConvState.Scribing)
+        r.send(ConvEvent.ScribeFinished(1, 2))
+        assertEquals(ConvState.Idle, r.state)
+        assertEquals(ExchangeStatus.Complete, r.effect<ConvEffect.Record>().single().status)
     }
 
     @Test fun penDownWhileScribingInterruptsAndRecordsPartial() {
         val r = toThinking().send(ConvEvent.OracleBlock(1, block)).send(ConvEvent.PenDown)
-        assertEquals(ConvState.Interrupted(1), r.state)
+        assertEquals(ConvState.Interrupted(1, blocks = 1), r.state)
         assertEquals(ConvEffect.StopScribe(1), r.effect<ConvEffect.StopScribe>().single())
         assertEquals(ConvEffect.CancelRequest(1), r.effect<ConvEffect.CancelRequest>().single())      // stream still open
         assertEquals(ExchangeStatus.Interrupted, r.effect<ConvEffect.Record>().single().status)
@@ -136,7 +148,9 @@ class ConversationRulesTest {
         val r = toThinking().send(ConvEvent.OracleBlock(1, block)).send(ConvEvent.PenDown)
         r.send(ConvEvent.TapContinue)
         assertEquals(ConvEffect.ResumeScribe(1), r.effect<ConvEffect.ResumeScribe>().single())
-        assertEquals(ConvState.Scribing(1, streamDone = true), r.state)
+        assertEquals(ConvState.Scribing(1, streamDone = true, blocks = 1), r.state)
+        r.send(ConvEvent.ScribeFinished(1, 1))
+        assertEquals(ConvState.Idle, r.state)
         val r2 = toThinking().send(ConvEvent.OracleBlock(1, block)).send(ConvEvent.PenDown).send(up("z", 9000))
         assertEquals(setOf(StrokeId("z")), (r2.state as ConvState.Pausing).utt.strokeIds)
     }
@@ -167,7 +181,7 @@ class ConversationRulesTest {
     @Test fun failureAfterTheAnswerStartedKeepsTheInkWrittenSoFar() {
         val r = toThinking().send(ConvEvent.OracleBlock(1, block)).send(ConvEvent.OracleFailed(1, DomainError.Network(NetworkKind.Timeout)))
         assertTrue(r.state is ConvState.Scribing)                          // keep writing what we have
-        r.send(ConvEvent.ScribeFinished)
+        r.send(ConvEvent.ScribeFinished(1, 1))
         assertEquals(ConvState.Idle, r.state)
         assertEquals(ExchangeStatus.Interrupted, r.effect<ConvEffect.Record>().single().status)
     }
@@ -187,6 +201,26 @@ class ConversationRulesTest {
         assertTrue(ConvEffect.CancelTimer in r.effects)
         r.send(ConvEvent.Tick(4500))                                       // the cancelled timer firing anyway is harmless
         assertEquals(1, r.effect<ConvEffect.SendRequest>().size)
+    }
+
+    @Test fun aLessonBeginsOnlyFromAQuietPageAndWaitsWhenMuted() {
+        val utt = Utterance(page, emptySet(), PageRect(120f, 160f, 120f, 160f))
+        val r = run().send(ConvEvent.Begin(utt))
+        assertEquals(utt, r.effect<ConvEffect.SendRequest>().single().utt)
+        assertTrue(r.state is ConvState.Thinking)
+        val busy = run().send(ConvEvent.PenDown).send(ConvEvent.Begin(utt))
+        assertEquals(ConvState.Writing(null), busy.state)
+        val muted = run(ConvSettings(3500, listening = false)).send(ConvEvent.Begin(utt))
+        assertEquals(ConvState.Held(utt), muted.state)
+        assertEquals(1, muted.send(ConvEvent.AskNow).effect<ConvEffect.SendRequest>().size)
+    }
+
+    @Test fun askingAgainGoesEvenWhenMutedAndAfterAStoppedAnswer() {
+        val utt = Utterance(page, emptySet(), PageRect(100f, 200f, 300f, 260f), Purpose.Again("q", "a"))
+        val muted = run(ConvSettings(3500, listening = false)).send(ConvEvent.Begin(utt))
+        assertEquals(1, muted.effect<ConvEffect.SendRequest>().size)
+        val stopped = toThinking().send(ConvEvent.OracleBlock(1, block)).send(ConvEvent.PenDown).send(ConvEvent.Begin(utt))
+        assertEquals(2, stopped.effect<ConvEffect.SendRequest>().last().reqId)
     }
 
     @Test fun askNowWithNothingWrittenDoesNothing() {
@@ -219,7 +253,7 @@ class ConversationRulesTest {
         7, 8 -> ConvEvent.OracleBlock(req, block)
         9 -> ConvEvent.OracleDone(req)
         10 -> ConvEvent.OracleFailed(req, DomainError.Auth)
-        11 -> ConvEvent.ScribeFinished
+        11 -> ConvEvent.ScribeFinished(req, rnd.nextInt(0, 4))
         else -> if (rnd.nextBoolean()) ConvEvent.TapContinue else ConvEvent.TapRetry
     }
 

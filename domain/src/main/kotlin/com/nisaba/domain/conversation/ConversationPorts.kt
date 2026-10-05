@@ -19,21 +19,35 @@ interface ExchangeStore {
     suspend fun append(exchange: Exchange)
     suspend fun listByNotebook(id: NotebookId): List<Exchange>
     fun observeByNotebook(id: NotebookId): Flow<List<Exchange>>
+    suspend fun get(id: com.nisaba.domain.shared.ExchangeId): Exchange?
+
+    /** Exchanges in any notebook whose question or answer contains [query] (case-insensitive), newest first. */
+    suspend fun search(query: String, limit: Int): List<Exchange>
+
+    /** Token counts of every exchange ever made. */
+    suspend fun usage(): List<com.nisaba.domain.usage.ExchangeUsage>
 }
 
 /** Everything the session needs to make visible; implemented by the app (canvas, inkwell, toolbar messages). */
 interface ConversationSurface {
     fun showInkwell(utt: Utterance)
     fun hideInkwell(dry: Boolean)
-    fun planBlock(reqId: Int, block: com.nisaba.domain.answer.Block)
+    /** [exchangeId] = the id the answer will be saved under, so its strokes can point at it. */
+    fun planBlock(reqId: Int, block: com.nisaba.domain.answer.Block, exchangeId: com.nisaba.domain.shared.ExchangeId)
     fun stopScribe(reqId: Int)
     fun resumeScribe(reqId: Int)
     fun showFailure(error: com.nisaba.domain.shared.DomainError)
     fun clearFailure()
+
+    /** One line after a reply changed what Nisaba remembers ("Remembered: loved Dune"). */
+    fun showMemoryNote(note: String) {}
 }
 
 /** Extra context the session needs when it builds a request. */
 interface ConversationContextPorts {
     suspend fun documentPages(): List<String>
     val currentDocumentPage: Int?
+
+    /** Non-null in a lesson notebook: the learner's goal (see [teachingPrompt]). */
+    val teachGoal: String? get() = null
 }

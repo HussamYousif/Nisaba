@@ -29,7 +29,15 @@ class MathParser(private val src: String) {
     private var i = 0
     private var depth = 0
 
-    fun parse(): MathNode = row(stopAt = { false })
+    fun parse(): MathNode {
+        val parts = ArrayList<MathNode>()
+        while (true) {
+            parts += row(stopAt = { false })
+            if (i >= src.length) break
+            i++ // a stray '}' ended the row early: skip it, keep the rest
+        }
+        return finish(parts.flatMap { if (it is MathNode.Row) it.items else listOf(it) })
+    }
 
     private fun peek(): Char? = src.getOrNull(i)
     private fun startsWith(s: String) = src.startsWith(s, i)
@@ -190,11 +198,15 @@ class MathParser(private val src: String) {
         var cells = ArrayList<MathNode>()
         val end = "\\end{$env}"
         if (++depth > MAX_DEPTH) { depth--; return MathNode.EMPTY }
+        var parts = ArrayList<MathNode>()          // pieces of the current cell (a stray '}' splits one)
+        fun endCell() { cells += finish(parts.flatMap { if (it is MathNode.Row) it.items else listOf(it) }); parts = ArrayList() }
         while (i < src.length && !startsWith(end)) {
-            cells += row(stopAt = { startsWith("&") || startsWith("\\\\") || startsWith(end) })
+            parts += row(stopAt = { startsWith("&") || startsWith("\\\\") || startsWith(end) })
             when {
-                startsWith("&") -> i++
-                startsWith("\\\\") -> { i += 2; rows += cells; cells = ArrayList() }
+                startsWith("&") -> { endCell(); i++ }
+                startsWith("\\\\") -> { endCell(); i += 2; rows += cells; cells = ArrayList() }
+                startsWith(end) || i >= src.length -> endCell()
+                else -> i++ // a stray '}' stopped the cell: skip it, the cell carries on
             }
         }
         if (cells.isNotEmpty()) rows += cells

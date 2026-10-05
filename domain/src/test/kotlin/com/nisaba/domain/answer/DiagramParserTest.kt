@@ -47,6 +47,14 @@ class DiagramParserTest {
         assertEquals(100f, c.xs.last(), 0.01f)
     }
 
+    @Test fun chainedSmoothCurvesKeepMirroringTheirControlPoints() {
+        val s = parseDiagram(svg("""<path d="M0 0 C 0 100 100 100 100 0 S 200 -100 200 0 S 300 100 300 0"/>"""))!!.shapes.single()
+        val lastHump = s.ys.filterIndexed { i, _ -> s.xs[i] > 200f }
+        assertEquals(75f, lastHump.max(), 2f) // the second S mirrors the first S's control point, not the current point
+        val t = parseDiagram(svg("""<path d="M0 0 Q 50 100 100 0 T 200 0 T 300 0"/>"""))!!.shapes.single()
+        assertEquals(50f, t.ys.filterIndexed { i, _ -> t.xs[i] > 200f }.max(), 2f)
+    }
+
     @Test fun severalSubpathsAreSeparateShapes() {
         assertEquals(2, parseDiagram(svg("""<path d="M0 0 L10 10 M50 50 L60 60"/>"""))!!.shapes.size)
     }

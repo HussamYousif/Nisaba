@@ -1,5 +1,6 @@
 package com.nisaba.domain.conversation
 
+import com.nisaba.domain.memory.fact
 import com.nisaba.domain.settings.Settings
 import com.nisaba.domain.shared.ExchangeId
 import com.nisaba.domain.shared.NotebookId
@@ -18,6 +19,30 @@ class ConversationContextRulesTest {
     private val snap = PageSnapshot(byteArrayOf(1), byteArrayOf(2))
     private fun input(exchanges: List<Exchange>, pages: List<String> = emptyList(), page: Int? = null, s: PageSnapshot = snap) =
         ContextInput(pages, page, exchanges, s, Settings())
+
+    @Test fun memoryGoesInTheRequestAndShrinksTheHistoryRoom() {
+        assertNull(buildRequest(input(emptyList())).memoryContext)
+        val facts = (1..2_000L).map { fact(it, "a fairly ordinary remembered fact number $it") }
+        val history = (1..400).map { ex(it, "question $it " + "q".repeat(400), "answer $it " + "a".repeat(400)) }
+        val withMemory = buildRequest(ContextInput(emptyList(), null, history, snap, Settings(), facts))
+        val without = buildRequest(input(history))
+        assertTrue(withMemory.memoryContext!!.contains("#2000 "))
+        assertTrue(withMemory.history.size < without.history.size)
+    }
+
+    @Test fun aLessonNotebookAddsTheHiddenTeachingPromptAndOpensOnABlankPage() {
+        assertEquals(SYSTEM_PROMPT, buildRequest(input(emptyList())).system)
+        val blank = PageSnapshot(byteArrayOf(1), null)
+        val lesson = buildRequest(
+            ContextInput(listOf("Cells"), null, emptyList(), blank, Settings(), teachGoal = "exam Friday", purpose = Purpose.Opening),
+        )
+        assertTrue(lesson.system.startsWith(SYSTEM_PROMPT) && lesson.system.contains("# Teaching"))
+        assertTrue(lesson.system.contains("\"exam Friday\""))
+        assertTrue(lesson.instruction.startsWith(INSTRUCTION_BEGIN_LESSON))
+        assertEquals(1, lesson.images.size)
+        val noGoal = buildRequest(ContextInput(listOf("Cells"), null, emptyList(), snap, Settings(), teachGoal = ""))
+        assertTrue(noGoal.system.contains("# Teaching") && !noGoal.system.contains("Their goal"))
+    }
 
     @Test fun historyAlternatesUserAssistantOldestFirst() {
         val (turns, _) = historyTurns(listOf(ex(2, "b", "B"), ex(1, "a", "A")))

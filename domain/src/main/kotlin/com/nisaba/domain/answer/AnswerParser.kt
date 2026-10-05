@@ -1,10 +1,18 @@
 package com.nisaba.domain.answer
 
-private const val OPEN_ANSWER = "<answer>"
+import com.nisaba.domain.lesson.stripTopicTags
+import com.nisaba.domain.memory.stripMemoryTags
+
 private const val CLOSE_ANSWER = "</answer>"
-private const val SILENT = "<silent/>"
+/** `<silent/>` however the model spells it: `<silent />`, `<Silent>`, `<silent></silent>`. */
+private val SILENT_RE = Regex("""^<\s*silent\s*/?\s*>(\s*<\s*/\s*silent\s*>)?""", RegexOption.IGNORE_CASE)
+private val ANSWER_RE = Regex("""^<\s*answer\s*>""", RegexOption.IGNORE_CASE)
+
+/** A line that is nothing but a stray tag (`</answer>`, `<thinking/>`): never ink. */
+private val LONE_TAG_RE = Regex("""^</?\s*[A-Za-z][\w-]*\s*/?>$""")
 private const val OPEN_HEARD = "<heard>"
 private const val CLOSE_HEARD = "</heard>"
+private const val CLOSE_SILENT = "</silent>"
 
 private val LIST_RE = Regex("""^(\s*)([-*•]|\d+[.)])\s+(.*)$""")
 private val HEADING_RE = Regex("""^\s*(#{1,3})\s+(.*)$""")
@@ -53,13 +61,39 @@ class AnswerParser {
     private fun start(out: MutableList<ParseEvent>, final: Boolean): Boolean {
         val r = rest().trimStart()
         val skipped = rest().length - r.length
+        val silent = SILENT_RE.find(r)
+        val answer = ANSWER_RE.find(r)
         when {
             r.isEmpty() -> { phase = if (final) Phase.Done else phase; return false }
-            r.startsWith(SILENT) -> { pos += skipped + SILENT.length; out += ParseEvent.Silent; phase = Phase.AfterAnswer }
-            r.startsWith(OPEN_ANSWER) -> { pos += skipped + OPEN_ANSWER.length; phase = Phase.InAnswer }
-            !final && (SILENT.startsWith(r) || OPEN_ANSWER.startsWith(r)) -> return false // tag still arriving
-            else -> { pos += skipped; phase = Phase.InAnswer }                              // model forgot <answer>
+            // `<silent>` may still grow a `</silent>`: wait until something follows it
+            silent != null && (final || silentIsWhole(silent, r)) -> {
+                pos += skipped + silent.value.length; out += ParseEvent.Silent; phase = Phase.AfterAnswer
+            }
+            answer != null -> { pos += skipped + answer.value.length; phase = Phase.InAnswer }
+            r.startsWith(OPEN_HEARD) -> return heardFirst(r, skipped, out, final)              // <heard> before <answer>
+            !final && r.startsWith("<") && (!r.contains('>') || silent != null) -> return false // tag still arriving
+            else -> { pos += skipped; phase = Phase.InAnswer }                                  // model forgot <answer>
         }
+        return true
+    }
+
+    private fun silentIsWhole(m: MatchResult, r: String): Boolean {
+        if (m.value.endsWith("/>") || m.groupValues[1].isNotEmpty()) return true
+        val after = r.substring(m.value.length).trimStart()
+        return after.isNotEmpty() && !CLOSE_SILENT.startsWith(after.take(CLOSE_SILENT.length), ignoreCase = true)
+    }
+
+    /** The model put `<heard>` first: report it and keep looking for the answer. */
+    private fun heardFirst(r: String, skipped: Int, out: MutableList<ParseEvent>, final: Boolean): Boolean {
+        val close = r.indexOf(CLOSE_HEARD)
+        if (close < 0) {
+            if (final) {
+                out += ParseEvent.Heard(r.removePrefix(OPEN_HEARD).trim()); heardEmitted = true; pos = buf.length; phase = Phase.Done
+            }
+            return false
+        }
+        out += ParseEvent.Heard(r.substring(OPEN_HEARD.length, close).trim()); heardEmitted = true
+        pos += skipped + close + CLOSE_HEARD.length
         return true
     }
 
@@ -103,15 +137,18 @@ class AnswerParser {
         if (chunk.isEmpty()) return
         val lines = chunk.split('\n')
         val complete = if (flushTail) lines else lines.dropLast(1)
-        for ((i, l) in complete.withIndex()) {
-            if (flushTail && i == complete.lastIndex && l.isEmpty()) continue
-            out += blocks.line(l.trimEnd('\r'))
+        for ((i, raw) in complete.withIndex()) {
+            val l = stripTopicTags(stripMemoryTags(raw))
+            val trailingEmpty = flushTail && i == complete.lastIndex && raw.isEmpty()
+            val tagOnly = l.isBlank() && raw.isNotBlank() // a memory tag on its own line: not ink, not a paragraph break
+            if (!trailingEmpty && !tagOnly) out += blocks.line(l.trimEnd('\r'))
         }
     }
 
     private fun afterAnswer(out: MutableList<ParseEvent>, final: Boolean): Boolean {
         val text = rest()
         val open = text.indexOf(OPEN_HEARD)
+        if (heardEmitted) { phase = Phase.Done; return false } // it came first
         if (open < 0) { phase = if (final) Phase.Done else phase; return false }
         val from = open + OPEN_HEARD.length
         val close = text.indexOf(CLOSE_HEARD, from)
@@ -132,6 +169,7 @@ private class BlockSplitter {
     private var list: ListBuilder? = null
     private val table = ArrayList<String>()
     private var fence: ArrayList<String>? = null
+    private var fenceLanguage = ""
     private var math: ArrayList<String>? = null
 
     private class ListBuilder(val ordered: Boolean, val marker: String, val depth: Int, var text: String)
@@ -139,7 +177,7 @@ private class BlockSplitter {
     fun line(l: String): List<ParseEvent> {
         val out = ArrayList<ParseEvent>()
         val t = l.trim()
-        if (!inOpenContainer(l, t, out)) closingPass(l, t, out)
+        if (!inOpenContainer(l, t, out) && !LONE_TAG_RE.matches(t)) closingPass(l, t, out)
         return out
     }
 
@@ -148,7 +186,7 @@ private class BlockSplitter {
     /** Fence and display-math bodies swallow lines verbatim until their closer. Returns true if [l] was consumed. */
     private fun inOpenContainer(l: String, t: String, out: MutableList<ParseEvent>): Boolean {
         fence?.let { f ->
-            if (t == "```") { emit(out, diagram(f)); fence = null } else f += l
+            if (t == "```") { emit(out, closeFence(f)); fence = null } else f += l
             return true
         }
         math?.let { m ->
@@ -181,7 +219,7 @@ private class BlockSplitter {
         val item = LIST_RE.matchEntire(l)
         when {
             t.isEmpty() -> emit(out, closePara())
-            t.startsWith("```") -> { emit(out, closePara()); fence = ArrayList() }
+            t.startsWith("```") -> { emit(out, closePara()); fence = ArrayList(); fenceLanguage = t.removePrefix("```").trim() }
             t.startsWith("$$") -> { emit(out, closePara()); openMath(t, out) }
             heading != null -> {
                 emit(out, closePara())
@@ -207,7 +245,7 @@ private class BlockSplitter {
         val out = ArrayList<ParseEvent>()
         fun emit(b: Block?) { if (b != null) out += ParseEvent.BlockReady(b) }
         emit(closeList()); emit(closeTable()); emit(closePara())
-        fence?.let { emit(closeAsParagraph(it)); fence = null }
+        fence?.let { emit(closeFence(it)); fence = null } // cut off mid-block: draw what arrived, never write out raw SVG
         math?.let { emit(Block.MathBlock(it.joinToString(" ").trim())); math = null }
         return out
     }
@@ -238,10 +276,24 @@ private class BlockSplitter {
 
     private fun splitRow(row: String): List<String> = row.trim().removePrefix("|").removeSuffix("|").split('|').map { it.trim() }
 
+    /** ```diagram (or anything holding an <svg>) is a drawing; any other fence is code. */
+    private fun closeFence(lines: List<String>): Block? {
+        val drawing = fenceLanguage.equals("diagram", ignoreCase = true) || fenceLanguage.equals("svg", ignoreCase = true) ||
+            lines.any { "<svg" in it }
+        if (drawing) return diagram(lines)
+        val body = lines.dropWhile { it.isBlank() }.dropLastWhile { it.isBlank() }.map { it.trimEnd().replace("\t", "    ") }
+        return if (body.isEmpty()) null else Block.Code(fenceLanguage, body)
+    }
+
     private fun diagram(lines: List<String>): Block? {
         val body = lines.joinToString("\n")
         val end = body.indexOf("</svg>")
-        if (end < 0) return closeAsParagraph(lines)
+        if (end < 0) {
+            val open = body.indexOf("<svg")
+            if (open < 0) return closeAsParagraph(lines)
+            val complete = body.substring(open, body.lastIndexOf('>') + 1) // drop a half-sent element
+            return Block.Diagram("$complete</svg>", emptyList())
+        }
         val svg = body.substring(0, end + "</svg>".length).trim()
         val labels = body.substring(end + "</svg>".length).lines().mapNotNull { l ->
             LABEL_RE.matchEntire(l.trim())?.let { m ->

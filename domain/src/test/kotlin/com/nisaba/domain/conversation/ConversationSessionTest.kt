@@ -2,6 +2,9 @@ package com.nisaba.domain.conversation
 
 import com.nisaba.domain.answer.Block
 import com.nisaba.domain.answer.Inline
+import com.nisaba.domain.memory.FactCategory
+import com.nisaba.domain.memory.FakeMemoryStore
+import com.nisaba.domain.memory.fact
 import com.nisaba.domain.notebook.FakeIdGen
 import com.nisaba.domain.settings.Settings
 import com.nisaba.domain.shared.DomainError
@@ -26,12 +29,16 @@ class ConversationSessionTest {
     private val snapshotter = FakeSnapshotter()
     private val store = FakeExchangeStore()
     private val surface = RecordingSurface()
+    private val memory = FakeMemoryStore(listOf(fact(1, "Is a nurse", FactCategory.Me)))
 
     private class Rig(val session: ConversationSession, val scope: TestScope)
 
-    private fun TestScope.rig(listening: Boolean = true): Rig {
+    private val lessons = FakeLessonStore()
+
+    private fun TestScope.rig(listening: Boolean = true, context: FakeContextPorts = FakeContextPorts()): Rig {
         val deps = ConversationDeps(
-            NotebookId("n"), oracle, snapshotter, store, surface, FakeContextPorts(), VirtualClock(testScheduler), FakeIdGen("ex"),
+            NotebookId("n"), oracle, snapshotter, store, surface, context, VirtualClock(testScheduler), FakeIdGen("ex"),
+            memory = memory, lessons = lessons,
         )
         return Rig(ConversationSession(deps, backgroundScope, Settings(), listening), this)
     }
@@ -39,6 +46,12 @@ class ConversationSessionTest {
     private fun Rig.write(id: String, r: PageRect = PageRect(100f, 200f, 300f, 260f)) {
         session.onPenDown(); scope.runCurrent()
         session.onPenUp(StrokeId(id), r, page); scope.runCurrent()
+    }
+
+    /** The hand reports having drawn every block it was given so far. */
+    private fun Rig.handDone() {
+        val st = session.status.value.state as? ConvState.Scribing ?: return
+        session.onScribeFinished(st.reqId, st.blocks)
     }
 
     private suspend fun TestScope.wait(ms: Long) { advanceTimeBy(ms); runCurrent() }
@@ -55,13 +68,162 @@ class ConversationSessionTest {
         assertEquals(listOf("ink+", "ink-handoff", "plan1", "plan1"), surface.log)
         assertEquals(2, surface.blocks.size)
         assertEquals(Block.Paragraph(listOf(Inline.Text("Hello there."))), surface.blocks[0])
-        rig.session.onScribeFinished(); runCurrent()
+        rig.handDone(); runCurrent()
         assertEquals(ConvState.Idle, rig.session.status.value.state)
         val saved = store.saved.single()
         assertEquals(ExchangeStatus.Complete, saved.status)
         assertEquals("say hi", saved.heard)
         assertTrue(saved.answerMarkup.contains("Hello there."))
         assertEquals(1500, saved.inputTokens)
+    }
+
+    @Test fun answerStrokesCanPointAtTheSavedExchange() = runTest {
+        oracle.chunks = hello
+        val rig = rig()
+        rig.write("a"); wait(3600); rig.handDone(); runCurrent()
+        assertEquals(store.saved.single().id, surface.exchangeIds.distinct().single())
+    }
+
+    @Test fun leavingThePageMidAnswerKeepsWhatWasWritten() = runTest {
+        oracle.chunks = hello; oracle.gapMillis = 1_000
+        val rig = rig()
+        rig.write("a"); wait(3600); wait(1_200)                            // first block is being written
+        rig.session.close(); runCurrent()
+        assertEquals(1, oracle.cancelled)
+        val saved = store.saved.single()
+        assertEquals(ExchangeStatus.Interrupted, saved.status)
+        assertTrue(saved.answerMarkup.contains("Hello there."))
+    }
+
+    @Test fun leavingAfterTheStreamEndedButBeforeTheHandFinishedSavesIt() = runTest {
+        oracle.chunks = hello
+        val rig = rig()
+        rig.write("a"); wait(3600)
+        assertTrue(store.saved.isEmpty())                                   // the hand is still writing
+        rig.session.close(); runCurrent()
+        assertEquals(ExchangeStatus.Interrupted, store.saved.single().status)
+    }
+
+    @Test fun leavingWhileThinkingLeavesNoTraceAndIgnoresLateEvents() = runTest {
+        oracle.chunks = hello; oracle.gapMillis = 5_000
+        val rig = rig()
+        rig.write("a"); wait(3600)
+        rig.session.close(); runCurrent()
+        rig.write("b"); wait(10_000)
+        assertTrue(store.saved.isEmpty())
+        assertEquals(1, oracle.started)
+    }
+
+    @Test fun aFreshLessonNotebookIsOpenedByNisabaOnce() = runTest {
+        oracle.chunks = listOf("<answer>\nWelcome. Cells first.\n</answer><heard></heard>")
+        val rig = rig(context = FakeContextPorts(listOf("Cells are small."), teachGoal = ""))
+        rig.session.beginLesson(page); runCurrent()
+        assertEquals(1, oracle.started)
+        assertEquals(listOf<PageRect?>(null), snapshotter.focuses)              // nothing written: no focus crop
+        assertTrue(oracle.requests.single().system.contains("# Teaching"))
+        assertTrue(oracle.requests.single().instruction.startsWith(INSTRUCTION_BEGIN_LESSON))
+        rig.handDone(); runCurrent()
+        assertEquals("(opens the lesson notebook)", store.saved.single().heard)
+        rig.session.beginLesson(page); runCurrent()                         // reopening: it has exchanges now
+        assertEquals(1, oracle.started)
+    }
+
+    @Test fun aLessonRecordsTopicsAndSendsThemBackAsProgress() = runTest {
+        val lesson = FakeContextPorts(listOf("Fjords are…"), teachGoal = "")
+        oracle.chunks = listOf("<answer>\nCorrect.\n</answer><topic status=\"learned\">Fjords</topic><heard>a fjord is a valley</heard>")
+        val rig = rig(context = lesson)
+        rig.write("a"); wait(3600); rig.handDone(); runCurrent()
+        assertEquals(listOf("Fjords"), lessons.rows.value.map { it.topic })
+        assertEquals(1, surface.blocks.size)                                         // the tag is not ink
+        rig.write("b"); wait(3600)
+        assertTrue(oracle.requests.last().instruction.contains("Lesson progress so far (learned: Fjords)"))
+    }
+
+    @Test fun anOrdinaryNotebookKeepsNoLessonProgress() = runTest {
+        oracle.chunks = listOf("<answer>\nHi.\n</answer><topic status=\"learned\">X</topic>")
+        val rig = rig()
+        rig.write("a"); wait(3600); rig.handDone(); runCurrent()
+        assertTrue(lessons.rows.value.isEmpty())
+    }
+
+    @Test fun comingBackToALessonAfterABreakRecapsBelowTheInk() = runTest {
+        oracle.chunks = hello
+        val rig = rig(context = FakeContextPorts(listOf("doc"), teachGoal = ""))
+        rig.write("a"); wait(3600); rig.handDone(); runCurrent()
+        rig.session.beginLesson(page, belowY = 900f); runCurrent()                  // back straight away: nothing
+        assertEquals(1, oracle.started)
+        advanceTimeBy(5 * 60 * 60 * 1000L); runCurrent()
+        rig.session.beginLesson(page, belowY = 900f); runCurrent()
+        assertEquals(2, oracle.started)
+        assertTrue(oracle.requests.last().instruction.startsWith(INSTRUCTION_RESUME_LESSON))
+        assertEquals(listOf<PageRect?>(null), snapshotter.focuses.drop(1))                // no new writing: no focus crop
+    }
+
+    @Test fun aLessonWithWritingButNoAnswersYetIsNotOpenedOverIt() = runTest {
+        oracle.chunks = hello
+        val rig = rig(context = FakeContextPorts(listOf("doc"), teachGoal = ""))
+        rig.session.beginLesson(page, belowY = 400f); runCurrent()
+        assertEquals(0, oracle.started)
+    }
+
+    @Test fun askingAgainResendsTheSameWritingWithThePreviousAnswer() = runTest {
+        oracle.chunks = hello
+        val rig = rig()
+        rig.write("a"); wait(3600); rig.handDone(); runCurrent()
+        val first = store.saved.single()
+        assertEquals(PageRect(100f, 200f, 300f, 260f), first.focus)
+        oracle.chunks = listOf("<answer>\nPut differently.\n</answer>")             // no <heard> this time
+        rig.session.askAgain(first, page); runCurrent()
+        val req = oracle.requests.last()
+        assertTrue(req.instruction.contains("asked again") && req.instruction.contains("Hello there."))
+        assertTrue(snapshotter.focuses.last()!!.left < 100f)                          // the old question is in focus
+        rig.handDone(); runCurrent()
+        assertEquals("say hi", store.saved.last().heard)                              // same question in history
+    }
+
+    @Test fun tidyingReadsTheSourcePageAndWritesOnTheNewOne() = runTest {
+        oracle.chunks = listOf("<answer>\n# Notes\n- milk\n</answer><heard>whole page</heard>")
+        val rig = rig()
+        rig.session.tidy(PageId("src"), page); runCurrent()
+        assertEquals(listOf<PageRect?>(null), snapshotter.focuses)
+        assertEquals(listOf(PageId("src")), snapshotter.pages)
+        assertEquals(INSTRUCTION_TIDY, oracle.requests.single().instruction)
+        rig.handDone(); runCurrent()
+        assertEquals(page, store.saved.single().pageId)
+        assertEquals("(asks for a tidy copy of a page of notes)", store.saved.single().heard)
+    }
+
+    @Test fun knownFactsRideAlongAndNewOnesAreSavedWithANote() = runTest {
+        oracle.chunks = listOf(
+            "<answer>\nA nurse who reads? Naturally.\n</answer>",
+            "<remember category=\"books\">Loved Dune</remember><heard>I loved Dune</heard>",
+        )
+        val rig = rig()
+        rig.write("a"); wait(3600)
+        assertTrue(oracle.requests.single().memoryContext!!.contains("#1 Is a nurse"))
+        rig.handDone(); runCurrent()
+        assertEquals(listOf("Is a nurse", "Loved Dune"), memory.facts.value.map { it.text })
+        assertEquals(store.saved.single().id, memory.facts.value.last().sourceExchangeId)
+        assertEquals(listOf("Remembered: Loved Dune"), surface.memoryNotes)
+        assertEquals(1, surface.blocks.size) // the tag never becomes ink
+    }
+
+    @Test fun aReplyCutOffMidStreamChangesNoMemory() = runTest {
+        oracle.chunks = listOf("<answer>\nMoved? Fine.\n</answer><forget id=\"1\"/>", "<remember>Is a doctor</remember><heard>x</heard>")
+        oracle.gapMillis = 1_000
+        val rig = rig()
+        rig.write("a"); wait(3600); wait(1_200)                          // the forget arrived, the remember did not
+        rig.session.onPenDown(); runCurrent()
+        assertEquals(ExchangeStatus.Interrupted, store.saved.single().status)
+        assertEquals(listOf("Is a nurse"), memory.facts.value.map { it.text })
+    }
+
+    @Test fun failedRequestsTeachNothing() = runTest {
+        oracle.failure = OracleException(DomainError.Auth)
+        val rig = rig()
+        rig.write("a"); wait(3600)
+        assertEquals(1, memory.facts.value.size)
+        assertTrue(surface.memoryNotes.isEmpty())
     }
 
     @Test fun notesStaySilentAndAreRemembered() = runTest {
@@ -146,7 +308,7 @@ class ConversationSessionTest {
     @Test fun requestCarriesEarlierExchangesAsHistory() = runTest {
         oracle.chunks = hello
         val rig = rig()
-        rig.write("a"); wait(3600); rig.session.onScribeFinished(); runCurrent()
+        rig.write("a"); wait(3600); rig.handDone(); runCurrent()
         rig.write("b"); wait(3600)
         val second = oracle.requests.last()
         assertEquals(listOf<Turn>(Turn.User("say hi")), second.history.take(1))

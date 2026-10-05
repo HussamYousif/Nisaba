@@ -29,7 +29,7 @@ class ImportDocumentUseCaseTest {
         val sizes = listOf(PageSize(1860f, 2400f), PageSize(1860f, 1300f), PageSize(1860f, 2400f))
         val info = DocumentInfo(DocumentId("d1"), "Thesis", sizes, hasText = true)
         val progress = mutableListOf<Float>()
-        val result = ImportDocumentUseCase(FakeImporter(Outcome.Ok(info)), create)("content://x", progress::add)
+        val result = ImportDocumentUseCase(FakeImporter(Outcome.Ok(info)), create)("content://x", onProgress = progress::add)
         val nb = (result as Outcome.Ok).value
         val pages = store.get(nb.id)!!.pages
         assertEquals("Thesis", nb.name)
@@ -38,6 +38,14 @@ class ImportDocumentUseCaseTest {
         assertEquals(listOf(2400f, 1300f, 2400f), pages.map { it.size.h })
         assertEquals(PageBackground.DocumentPage(DocumentId("d1"), 2), pages[2].background)
         assertEquals(listOf(0.5f, 1f), progress)
+    }
+
+    @Test fun aLessonNotebookKeepsThePdfAsContextAndStartsOnOneBlankPage() = runTest {
+        val info = DocumentInfo(DocumentId("d1"), "Thesis", listOf(PageSize(1860f, 2400f), PageSize(1860f, 2400f)), hasText = true)
+        val nb = (ImportDocumentUseCase(FakeImporter(Outcome.Ok(info)), create)("x", teachGoal = "  exam on ch. 3  ") as Outcome.Ok).value
+        assertEquals(DocumentId("d1"), nb.documentId)
+        assertEquals("exam on ch. 3", nb.teachGoal)
+        assertEquals(listOf(PageBackground.Blank), store.get(nb.id)!!.pages.map { it.background })
     }
 
     @Test fun aFailedImportCreatesNoNotebook() = runTest {

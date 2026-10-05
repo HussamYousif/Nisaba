@@ -13,6 +13,8 @@ data class Notebook(
     val documentId: DocumentId?,
     val listening: Boolean,
     val coverSeed: Int,
+    /** Non-null = a lesson notebook: Nisaba teaches the document; the text is the learner's goal ("" = all of it). */
+    val teachGoal: String? = null,
 )
 
 sealed interface PageBackground {
@@ -37,6 +39,8 @@ data class NotebookSummary(
     val coverSeed: Int,
     val hasDocument: Boolean,
     val endless: Boolean = false,
+    /** Nisaba teaches its document. */
+    val lesson: Boolean = false,
 )
 
 data class NotebookWithPages(val notebook: Notebook, val pages: List<Page>)

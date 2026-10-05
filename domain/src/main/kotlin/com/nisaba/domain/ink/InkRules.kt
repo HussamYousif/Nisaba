@@ -1,5 +1,6 @@
 package com.nisaba.domain.ink
 
+import com.nisaba.domain.shared.ExchangeId
 import com.nisaba.domain.shared.PagePoint
 import com.nisaba.domain.shared.PageRect
 import com.nisaba.domain.shared.StrokeId
@@ -108,3 +109,9 @@ fun estimateXHeight(strokes: List<Stroke>): Float {
 fun utteranceBounds(strokes: List<Stroke>): PageRect? = strokes.map { it.bounds }.reduceOrNull { a, b -> a.union(b) }
 
 fun clampTo(v: Float, lo: Float, hi: Float) = max(lo, min(hi, v))
+
+/** The answer whose ink is nearest [p] within [radius] (a finger on the page), if any. */
+fun answerAt(strokes: List<Stroke>, p: PagePoint, radius: Float): ExchangeId? = strokes
+    .filter { it.origin is StrokeOrigin.Oracle && it.bounds.inflate(radius).let { b -> p.x in b.left..b.right && p.y in b.top..b.bottom } }
+    .minByOrNull { s -> (0 until s.points.size).minOf { i -> hypot(s.points.xs[i] - p.x, s.points.ys[i] - p.y) } }
+    ?.let { (it.origin as StrokeOrigin.Oracle).exchangeId }

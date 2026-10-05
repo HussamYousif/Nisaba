@@ -31,10 +31,68 @@ class AnswerParserTest {
         "<answer>\nlate heard\n<heard>oops</heard>",
         "  \n<answer>\n---\ntext\n</answer>\n<heard> spaced </heard>\n",
         "<answer>\n```diagram\nunterminated fence\n</answer><heard>x</heard>",
+        "<answer>\nNoted.\n<remember category=\"me\">Is a nurse</remember>\nMore.\n</answer><remember>x</remember><heard>h</heard>",
+        "<heard>asked first</heard>\n<answer>\nAnswer.\n</answer>",
+        "<silent /><heard>n</heard>",
+        "<Silent></Silent><heard>n</heard>",
+        "<silent>\n<heard>n</heard>",
+        "<answer>\n```diagram\n<svg viewBox=\"0 0 100 100\"><line x1=\"0\" y1=\"0\" x2=\"9\" y2=\"9\"/><circle cx=\"5",
+        "<answer>\nHi.\n<thinking/>\n</answer><heard>h</heard>",
+        "<answer>\nLike so:\n```python\ndef double(x):\n\n    return x * 2\n```\nDone.\n</answer><heard>c</heard>",
+        "<answer>\n```kotlin\nfun main() {\n    println(1)",
     )
+
+    @Test fun fencedCodeKeepsItsLinesAndIndentation() {
+        assertEquals(
+            listOf(
+                Block.Paragraph(listOf(t("Like so:"))),
+                Block.Code("python", listOf("def double(x):", "", "    return x * 2")),
+                Block.Paragraph(listOf(t("Done."))),
+            ),
+            blocks(fixtures[21]),
+        )
+        assertEquals(Block.Code("kotlin", listOf("fun main() {", "    println(1)")), blocks(fixtures[22]).single()) // cut off
+    }
+
+    @Test fun heardBeforeTheAnswerKeepsTheAnswer() {
+        val events = whole(fixtures[15])
+        assertEquals(ParseEvent.Heard("asked first"), events.first())
+        assertEquals(listOf(Block.Paragraph(listOf(t("Answer.")))), events.filterIsInstance<ParseEvent.BlockReady>().map { it.block })
+    }
+
+    @Test fun silentIsRecognisedHoweverItIsSpelled() {
+        for (f in fixtures.subList(16, 19)) assertEquals(listOf(ParseEvent.Silent, ParseEvent.Heard("n")), whole(f), f)
+    }
+
+    @Test fun aCutOffDiagramIsDrawnNotWritten() {
+        val d = blocks(fixtures[19]).single() as Block.Diagram
+        assertTrue(d.svg.endsWith("</svg>"))
+        assertEquals(1, parseDiagram(d.svg)!!.shapes.size) // the complete line; the half-sent circle is dropped
+    }
+
+    @Test fun lessonTopicTagsAreNeverInk() {
+        assertEquals(
+            listOf(Block.Paragraph(listOf(t("Right.")))),
+            blocks("<answer>\nRight. <topic status=\"learned\">Fjords</topic>\n</answer><topic status=\"shaky\">X</topic><heard>h</heard>"),
+        )
+    }
+
+    @Test fun aLoneTagLineIsNotInk() {
+        assertEquals(listOf(Block.Paragraph(listOf(t("Hi.")))), blocks(fixtures[20]))
+    }
 
     @Test fun silentReportsSilentThenHeard() {
         assertEquals(listOf(ParseEvent.Silent, ParseEvent.Heard("Buy milk")), whole("<silent/><heard>Buy milk</heard>"))
+    }
+
+    @Test fun memoryTagsAreNeverInkEvenInsideTheAnswer() {
+        val events = whole(
+            "<answer>\nNoted. <forget id=\"2\"/>\n<remember category=\"me\">Is a nurse</remember>\nMore.\n</answer>" +
+                "<remember category=\"books\">Dune</remember><heard>I'm a nurse</heard>",
+        )
+        val blocks = events.filterIsInstance<ParseEvent.BlockReady>().map { it.block }
+        assertEquals(listOf(Block.Paragraph(listOf(t("Noted. More.")))), blocks)
+        assertEquals(ParseEvent.Heard("I'm a nurse"), events.last())
     }
 
     @Test fun simpleAnswer() {

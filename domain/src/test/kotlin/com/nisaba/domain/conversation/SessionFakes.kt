@@ -3,6 +3,7 @@ package com.nisaba.domain.conversation
 import com.nisaba.domain.answer.Block
 import com.nisaba.domain.shared.Clock
 import com.nisaba.domain.shared.DomainError
+import com.nisaba.domain.shared.ExchangeId
 import com.nisaba.domain.shared.NotebookId
 import com.nisaba.domain.shared.PageId
 import com.nisaba.domain.shared.PageRect
@@ -36,8 +37,9 @@ class FakeOracle(var chunks: List<String> = emptyList(), var gapMillis: Long = 0
 
 class FakeSnapshotter : PageSnapshotter {
     val focuses = mutableListOf<PageRect?>()
+    val pages = mutableListOf<PageId>()
     override suspend fun snapshot(pageId: PageId, focus: PageRect?): PageSnapshot {
-        focuses += focus
+        focuses += focus; pages += pageId
         return PageSnapshot(byteArrayOf(1), byteArrayOf(2))
     }
 }
@@ -47,6 +49,13 @@ class FakeExchangeStore : ExchangeStore {
     override suspend fun append(exchange: Exchange) { all.value += exchange }
     override suspend fun listByNotebook(id: NotebookId) = all.value
     override fun observeByNotebook(id: NotebookId) = all.map { it }
+    override suspend fun get(id: ExchangeId) = all.value.firstOrNull { it.id == id }
+    override suspend fun search(query: String, limit: Int) = all.value
+        .filter { it.heard.contains(query, ignoreCase = true) || it.answerMarkup.contains(query, ignoreCase = true) }
+        .sortedByDescending { it.createdAtMillis }.take(limit)
+    override suspend fun usage() = all.value.map {
+        com.nisaba.domain.usage.ExchangeUsage(it.model, it.createdAtMillis, it.inputTokens, it.cachedTokens, it.outputTokens)
+    }
     val saved: List<Exchange> get() = all.value
 }
 
@@ -54,15 +63,34 @@ class RecordingSurface : ConversationSurface {
     val log = mutableListOf<String>()
     val blocks = mutableListOf<Block>()
     var failure: DomainError? = null
+    val memoryNotes = mutableListOf<String>()
     override fun showInkwell(utt: Utterance) { log += "ink+" }
     override fun hideInkwell(dry: Boolean) { log += if (dry) "ink-dry" else "ink-handoff" }
-    override fun planBlock(reqId: Int, block: Block) { log += "plan$reqId"; blocks += block }
+    val exchangeIds = mutableListOf<ExchangeId>()
+    override fun planBlock(reqId: Int, block: Block, exchangeId: ExchangeId) {
+        log += "plan$reqId"; blocks += block; exchangeIds += exchangeId
+    }
     override fun stopScribe(reqId: Int) { log += "stop$reqId" }
     override fun resumeScribe(reqId: Int) { log += "resume$reqId" }
     override fun showFailure(error: DomainError) { log += "fail"; failure = error }
     override fun clearFailure() { log += "clear"; failure = null }
+    override fun showMemoryNote(note: String) { memoryNotes += note }
 }
 
-class FakeContextPorts(var pages: List<String> = emptyList(), override var currentDocumentPage: Int? = null) : ConversationContextPorts {
+class FakeContextPorts(
+    var pages: List<String> = emptyList(),
+    override var currentDocumentPage: Int? = null,
+    override val teachGoal: String? = null,
+) : ConversationContextPorts {
     override suspend fun documentPages() = pages
+}
+
+class FakeLessonStore : com.nisaba.domain.lesson.LessonStore {
+    val rows = MutableStateFlow<List<com.nisaba.domain.lesson.LessonTopic>>(emptyList())
+    override suspend fun topics(notebookId: NotebookId) = rows.value
+    override fun observe(notebookId: NotebookId): Flow<List<com.nisaba.domain.lesson.LessonTopic>> = rows
+    override suspend fun upsert(notebookId: NotebookId, topics: List<com.nisaba.domain.lesson.LessonTopic>) {
+        val keep = rows.value.filter { old -> topics.none { it.topic.equals(old.topic, ignoreCase = true) } }
+        rows.value = keep + topics
+    }
 }

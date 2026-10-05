@@ -60,10 +60,18 @@ class MathParserTest {
 
     @Test fun unknownCommandsAndBrokenInputNeverThrow() {
         assertEquals(MathNode.Text("\\weird"), parseMath("\\weird"))
-        val broken = listOf("{", "}", "\\frac{1", "\\frac", "x^", "^2", "\\left(", "\\right)", "\\begin{pmatrix} 1 &", "\\sqrt[", "\\")
+        val broken = listOf("{", "}", "\\frac{1", "\\frac", "x^", "^2", "\\left(", "\\right)", "\\begin{pmatrix} 1 &", "\\sqrt[", "\\",
+            "\\begin{pmatrix} \\frac{1}{2}} & 0 \\end{pmatrix}", "\\begin{matrix} } \\end{matrix}")
         for (bad in broken + listOf("a_{b_{c", "}}}{{{")) {
             parseMath(bad) // must not throw or loop
         }
+    }
+
+    @Test fun aStrayClosingBraceKeepsWhatFollows() {
+        val row = parseMath("a } b") as MathNode.Row
+        assertEquals(2, row.items.size)
+        val m = parseMath("\\begin{pmatrix} 1} & 2 \\end{pmatrix}") as MathNode.Matrix
+        assertEquals(2, m.rows.single().size)
     }
 
     @Test fun randomGarbageNeverThrowsOrHangs() {
