@@ -26,10 +26,10 @@ class InkRenderer(private val profile: PenProfile = PenProfile.DEFAULT) {
     fun drawAll(canvas: Canvas, strokes: List<Stroke>) = strokes.forEach { drawStroke(canvas, it) }
 
     /** Live (uncommitted) stroke drawn straight from points, colour [argb]. */
-    fun drawLive(canvas: Canvas, points: com.nisaba.domain.ink.InkPoints, argb: Int) {
+    fun drawLive(canvas: Canvas, points: com.nisaba.domain.ink.InkPoints, argb: Int, widthScale: Float = 1f) {
         if (points.size == 0) return
         paint.color = argb
-        canvas.drawPath(pathOf(strokeOutline(points, profile)), paint)
+        canvas.drawPath(pathOf(strokeOutline(points, profile, widthScale)), paint)
     }
 
     private fun buildPath(stroke: Stroke) = pathOf(strokeOutline(stroke.points, profile, stroke.width / DEFAULT_WIDTH))

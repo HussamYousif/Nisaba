@@ -72,7 +72,9 @@ class PageSnapshotRenderer(
         val canvas = Canvas(color)
         canvas.scale(scale, scale); canvas.translate(-area.left, -area.top)
         backgroundRenderer.draw(canvas, size, background ?: com.nisaba.domain.notebook.PageBackground.Blank)
-        inkRenderer.drawAll(canvas, strokes)
+        inkRenderer.drawAll(canvas, strokes.filter { s -> s.bounds.let { // an endless canvas holds far more than the window
+            it.right >= area.left - PAD && it.left <= area.right + PAD && it.bottom >= area.top - PAD && it.top <= area.bottom + PAD
+        } })
         val gray = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888)
         val paint = Paint().apply { colorFilter = ColorMatrixColorFilter(ColorMatrix().apply { setSaturation(0f) }) }
         Canvas(gray).drawBitmap(color, 0f, 0f, paint)
@@ -85,6 +87,7 @@ class PageSnapshotRenderer(
 
     private companion object {
         const val LONG_EDGE = 1600
+        const val PAD = 16f // widest ink, so strokes just outside the area still show their edge
         const val WINDOW_SIDE = 400f
         const val WINDOW_ABOVE = 1400f
         const val WINDOW_BELOW = 500f

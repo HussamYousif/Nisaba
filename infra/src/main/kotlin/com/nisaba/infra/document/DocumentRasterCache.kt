@@ -28,18 +28,19 @@ class DocumentRasterCache(private val docsDir: File, private val rasterDir: File
     private fun key(id: DocumentId, index: Int) = "${id.value}/$index"
     private fun file(id: DocumentId, index: Int) = File(File(rasterDir, id.value), "$index.webp")
 
-    override fun cached(documentId: DocumentId, pageIndex: Int): Bitmap? {
-        val k = key(documentId, pageIndex)
-        memory[k]?.let { return it }
+    /** Memory only, so it is safe on the UI thread; [ensure] brings a page in from disk or renders it. */
+    override fun cached(documentId: DocumentId, pageIndex: Int): Bitmap? = memory[key(documentId, pageIndex)]
+
+    private fun fromDisk(documentId: DocumentId, pageIndex: Int): Bitmap? {
         val f = file(documentId, pageIndex)
         if (!f.exists()) return null
-        return BitmapFactory.decodeFile(f.path)?.also { memory.put(k, it) }
+        return BitmapFactory.decodeFile(f.path)?.also { memory.put(key(documentId, pageIndex), it) }
     }
 
     /** Renders (if needed) and returns the picture of a page; null if the file cannot be rendered at all. */
     suspend fun ensure(documentId: DocumentId, pageIndex: Int): Bitmap? = withContext(Dispatchers.IO) {
         cached(documentId, pageIndex) ?: lock.withLock {
-            cached(documentId, pageIndex) ?: render(documentId, pageIndex)?.also { bmp ->
+            cached(documentId, pageIndex) ?: fromDisk(documentId, pageIndex) ?: render(documentId, pageIndex)?.also { bmp ->
                 memory.put(key(documentId, pageIndex), bmp)
                 runCatching { save(bmp, file(documentId, pageIndex)) }
             }

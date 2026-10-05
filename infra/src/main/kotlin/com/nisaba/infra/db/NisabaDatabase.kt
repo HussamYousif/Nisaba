@@ -15,7 +15,7 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface NotebookDao {
     @Query(
-        "SELECT n.id, n.name, n.updatedAt, n.coverSeed, n.documentId IS NOT NULL AS hasDocument, " +
+        "SELECT n.id, n.name, n.updatedAt, n.coverSeed, n.documentId IS NOT NULL AS hasDocument, n.teachGoal IS NOT NULL AS lesson, " +
             "(SELECT COUNT(*) FROM pages p WHERE p.notebookId = n.id) AS pageCount, " +
             "(SELECT COUNT(*) FROM pages p WHERE p.notebookId = n.id AND p.width >= 100000) > 0 AS endless FROM notebooks n",
     )
@@ -77,24 +77,87 @@ interface ExchangeDao {
 
     @Query("SELECT * FROM exchanges WHERE notebookId = :id ORDER BY createdAt")
     fun observe(id: String): Flow<List<ExchangeDto>>
+
+    @Query("SELECT * FROM exchanges WHERE id = :id")
+    suspend fun get(id: String): ExchangeDto?
+
+    /** [like] is a LIKE pattern with `\\` as the escape character. */
+    @Query(
+        "SELECT * FROM exchanges WHERE status != 3 AND (heard LIKE :like ESCAPE '\\' OR answerMarkup LIKE :like ESCAPE '\\') " +
+            "ORDER BY createdAt DESC LIMIT :limit",
+    )
+    suspend fun search(like: String, limit: Int): List<ExchangeDto>
+
+    @Query("SELECT model, createdAt, inputTokens, cachedTokens, outputTokens FROM exchanges")
+    suspend fun usage(): List<UsageRowDto>
+}
+
+@Dao
+interface LessonDao {
+    @Query("SELECT * FROM lesson_topics WHERE notebookId = :id ORDER BY id")
+    suspend fun topics(id: String): List<LessonTopicDto>
+
+    @Query("SELECT * FROM lesson_topics WHERE notebookId = :id ORDER BY id")
+    fun observe(id: String): Flow<List<LessonTopicDto>>
+
+    @Query("SELECT * FROM lesson_topics WHERE notebookId = :id AND topicKey = :key")
+    suspend fun find(id: String, key: String): LessonTopicDto?
+
+    @Insert
+    suspend fun insert(t: LessonTopicDto)
+
+    @Query("UPDATE lesson_topics SET topic = :topic, status = :status, updatedAt = :at WHERE id = :rowId")
+    suspend fun update(rowId: Long, topic: String, status: String, at: Long)
+
+    /** Replaces each topic's status, adding the ones not seen before, in one transaction. */
+    @Transaction
+    suspend fun upsert(rows: List<LessonTopicDto>) {
+        for (r in rows) {
+            val old = find(r.notebookId, r.topicKey)
+            if (old == null) insert(r) else update(old.id, r.topic, r.status, r.updatedAt)
+        }
+    }
+}
+
+@Dao
+interface FactDao {
+    @Query("SELECT * FROM facts ORDER BY id")
+    suspend fun all(): List<FactDto>
+
+    @Query("SELECT * FROM facts ORDER BY id")
+    fun observe(): Flow<List<FactDto>>
+
+    @Insert
+    suspend fun insert(f: List<FactDto>)
+
+    @Query("DELETE FROM facts WHERE id IN (:ids)")
+    suspend fun delete(ids: List<Long>)
+
+    @Transaction
+    suspend fun apply(add: List<FactDto>, forget: List<Long>) {
+        if (forget.isNotEmpty()) delete(forget)
+        if (add.isNotEmpty()) insert(add)
+    }
 }
 
 @Database(
-    entities = [NotebookDto::class, PageDto::class, DocumentDto::class, ExchangeDto::class],
-    version = 2,
+    entities = [NotebookDto::class, PageDto::class, DocumentDto::class, ExchangeDto::class, FactDto::class, LessonTopicDto::class],
+    version = 5,
     exportSchema = true,
 )
 abstract class NisabaDatabase : RoomDatabase() {
     abstract fun notebooks(): NotebookDao
     abstract fun exchanges(): ExchangeDao
+    abstract fun facts(): FactDao
+    abstract fun lessons(): LessonDao
 
     companion object {
         @Volatile private var shared: NisabaDatabase? = null
 
-        /** One connection pool for the whole process (notebooks and exchanges share it). */
+        /** One connection pool for the whole process (notebooks, exchanges and facts share it). */
         fun shared(context: Context): NisabaDatabase = shared ?: synchronized(this) {
             shared ?: Room.databaseBuilder(context.applicationContext, NisabaDatabase::class.java, "nisaba.db")
-                .addMigrations(MIGRATION_1_2).build().also { shared = it }
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5).build().also { shared = it }
         }
 
         fun inMemory(context: Context): NisabaDatabase =
@@ -113,5 +176,38 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
                 "FOREIGN KEY(`notebookId`) REFERENCES `notebooks`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)",
         )
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_exchanges_notebookId_createdAt` ON `exchanges` (`notebookId`, `createdAt`)")
+    }
+}
+
+/** v2 → v3: adds the `facts` table (long-term memory, DESIGN §4.5). */
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `facts` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `category` TEXT NOT NULL, " +
+                "`text` TEXT NOT NULL, `sourceExchangeId` TEXT, `createdAt` INTEGER NOT NULL)",
+        )
+    }
+}
+
+/** v3 → v4: lesson notebooks remember the learner's goal (null = an ordinary notebook). */
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `notebooks` ADD COLUMN `teachGoal` TEXT")
+    }
+}
+
+/** v4 → v5: cached tokens and the answered region on exchanges (usage, "ask again"); lesson progress. */
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `exchanges` ADD COLUMN `cachedTokens` INTEGER NOT NULL DEFAULT 0")
+        for (c in listOf("focusLeft", "focusTop", "focusRight", "focusBottom")) db.execSQL("ALTER TABLE `exchanges` ADD COLUMN `$c` REAL")
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `lesson_topics` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `notebookId` TEXT NOT NULL, " +
+                "`topicKey` TEXT NOT NULL, `topic` TEXT NOT NULL, `status` TEXT NOT NULL, `updatedAt` INTEGER NOT NULL, " +
+                "FOREIGN KEY(`notebookId`) REFERENCES `notebooks`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)",
+        )
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_lesson_topics_notebookId_topicKey` ON `lesson_topics` (`notebookId`, `topicKey`)",
+        )
     }
 }

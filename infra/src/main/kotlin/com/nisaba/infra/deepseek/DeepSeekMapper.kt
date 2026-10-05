@@ -13,10 +13,15 @@ import kotlinx.serialization.json.put
 
 /**
  * Provider-agnostic [OracleRequest] → DeepSeek wire format. Images go in the FINAL user message only
- * (the API rejects them elsewhere); the document text rides in the system message so it stays in the cached prefix.
+ * (the API rejects them elsewhere); the document text and the memory ride in the system message so they stay in the
+ * cached prefix. Memory comes after the document: a new fact then leaves the (bigger, per-notebook) document cached.
  */
 fun OracleRequest.toWire(encode: (ByteArray) -> String = { Base64.encodeToString(it, Base64.NO_WRAP) }): ChatRequestDto {
-    val systemText = if (documentContext == null) system else "$system\n\n# Document\n$documentContext"
+    val systemText = buildString {
+        append(system)
+        documentContext?.let { append("\n\n# Document\n").append(it) }
+        memoryContext?.let { append("\n\n# Memory\n").append(it) }
+    }
     val messages = buildList {
         add(MessageDto("system", JsonPrimitive(systemText)))
         for (t in history) when (t) {

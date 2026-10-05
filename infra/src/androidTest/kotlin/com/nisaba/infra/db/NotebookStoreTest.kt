@@ -23,7 +23,7 @@ import org.junit.runner.RunWith
 class NotebookStoreTest {
     private lateinit var db: NisabaDatabase
     private lateinit var store: RoomNotebookStore
-    private val nb = Notebook(NotebookId("n1"), "Maths", 1, 2, DocumentId("d1"), true, 42)
+    private val nb = Notebook(NotebookId("n1"), "Maths", 1, 2, DocumentId("d1"), true, 42, teachGoal = "exam")
 
     private fun page(id: String, pos: Double, bg: PageBackground = PageBackground.Blank) =
         Page(PageId(id), nb.id, pos, PageSize.PORTRAIT, bg)

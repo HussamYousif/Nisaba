@@ -39,13 +39,20 @@ class DeepSeekClientTest {
 
     @AfterTest fun stop() { server.shutdown() }
 
-    private fun client(key: String? = "sk-test") =
-        DeepSeekClient(http, { key }, baseUrl = server.url("/").toString().trimEnd('/'), encodeImage = { "B64:${it.size}" })
+    private fun client(key: String? = "sk-test", retries: Int = 2, firstTokenMillis: Long = 45_000) = DeepSeekClient(
+        http, { key }, baseUrl = server.url("/").toString().trimEnd('/'), encodeImage = { "B64:${it.size}" },
+        maxRetries = retries, retryDelayMillis = 10, firstTokenMillis = firstTokenMillis,
+    )
 
-    private fun request(thinking: Boolean = false, history: List<Turn> = emptyList(), doc: String? = null) = OracleRequest(
+    private fun request(
+        thinking: Boolean = false,
+        history: List<Turn> = emptyList(),
+        doc: String? = null,
+        memory: String? = null,
+    ) = OracleRequest(
         system = "SYS", documentContext = doc, history = history, instruction = "look",
         images = listOf(OracleImage(byteArrayOf(1, 2, 3), ImageDetail.Auto), OracleImage(byteArrayOf(9), ImageDetail.High)),
-        options = OracleOptions("deepseek-flash", thinking),
+        options = OracleOptions("deepseek-flash", thinking), memoryContext = memory,
     )
 
     private fun sse(vararg data: String) = data.joinToString("") { "data: $it\n\n" }
@@ -88,6 +95,14 @@ class DeepSeekClientTest {
         assertEquals("high", parts[2]["image_url"]!!.jsonObject["detail"]!!.jsonPrimitive.content)
     }
 
+    @Test fun memoryFollowsTheDocumentInTheSystemMessage() = runBlocking {
+        server.enqueue(MockResponse().setBody(sse(chunk("x"), "[DONE]")))
+        client().ask(request(doc = "[p.1] hello", memory = "## books\n#1 Loved Dune")).toList()
+        val body = Json.parseToJsonElement(server.takeRequest().body.readUtf8()).jsonObject
+        val system = body["messages"]!!.jsonArray[0].jsonObject["content"]!!.jsonPrimitive.content
+        assertEquals("SYS\n\n# Document\n[p.1] hello\n\n# Memory\n## books\n#1 Loved Dune", system)
+    }
+
     @Test fun thinkingModeIsRequestedExplicitly() = runBlocking {
         server.enqueue(MockResponse().setBody(sse(chunk("x"), "[DONE]")))
         client().ask(request(thinking = true)).toList()
@@ -98,7 +113,37 @@ class DeepSeekClientTest {
 
     private fun errorOf(code: Int): DomainError = runBlocking {
         server.enqueue(MockResponse().setResponseCode(code).setBody("""{"error":"x"}"""))
-        assertFailsWith<OracleException> { client().ask(request()).toList() }.error
+        assertFailsWith<OracleException> { client(retries = 0).ask(request()).toList() }.error
+    }
+
+    @Test fun serverErrorsAndRateLimitsBeforeTheAnswerAreRetried() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(503))
+        server.enqueue(MockResponse().setResponseCode(429).setHeader("Retry-After", "0"))
+        server.enqueue(MockResponse().setBody(sse(chunk("ok"), "[DONE]")))
+        assertEquals(listOf(OracleEvent.Delta("ok")), client().ask(request()).toList())
+        assertEquals(3, server.requestCount)
+    }
+
+    @Test fun aConnectionDroppedBeforeTheResponseIsRetried() = runBlocking {
+        server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AT_START))
+        server.enqueue(MockResponse().setBody(sse(chunk("ok"), "[DONE]")))
+        assertEquals(listOf(OracleEvent.Delta("ok")), client().ask(request()).toList())
+    }
+
+    @Test fun retriesGiveUpWithTheLastError() = runBlocking {
+        repeat(3) { server.enqueue(MockResponse().setResponseCode(503)) }
+        val e = assertFailsWith<OracleException> { client().ask(request()).toList() }
+        assertEquals(DomainError.Network(NetworkKind.Server), e.error)
+        assertEquals(3, server.requestCount)
+    }
+
+    @Test fun keepAlivesWithoutATokenEndInATimeout() = runBlocking {
+        // the server only ever sends comments; each one would reset a plain read timeout
+        server.enqueue(MockResponse().setBody(": keep-alive\n\n".repeat(200)).throttleBody(16, 50, TimeUnit.MILLISECONDS))
+        val started = System.nanoTime()
+        val e = assertFailsWith<OracleException> { client(firstTokenMillis = 300).ask(request()).toList() }
+        assertEquals(DomainError.Network(NetworkKind.Timeout), e.error)
+        assertTrue((System.nanoTime() - started) / 1_000_000 < 3_000)
     }
 
     @Test fun httpStatusesMapToDomainErrors() {

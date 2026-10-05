@@ -97,7 +97,7 @@ class DocumentImportTest {
         assertEquals(null, cache.cached(info.id, 1))
         cache.ensure(info.id, 1)
         assertTrue(File(File(rasters, info.id.value), "1.webp").exists())
-        assertNotNull(DocumentRasterCache(docs, rasters).cached(info.id, 1))           // a fresh cache finds it on disk
+        assertNotNull(DocumentRasterCache(docs, rasters).ensure(info.id, 1))           // a fresh cache finds it on disk
     }
 
     @Test fun deleteRemovesTheFileTextAndPictures() = runBlocking {

@@ -5,6 +5,8 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import com.nisaba.domain.settings.SecretStore
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -18,12 +20,12 @@ import javax.crypto.spec.GCMParameterSpec
 class KeystoreSecretStore(context: Context, private val devFallback: String = "") : SecretStore {
     private val prefs = context.applicationContext.getSharedPreferences("secrets", Context.MODE_PRIVATE)
 
-    override suspend fun apiKey(): String? {
+    override suspend fun apiKey(): String? = withContext(Dispatchers.IO) { // Keystore and prefs touch disk
         val stored = prefs.getString(PREF_KEY, null)?.let { runCatching { decrypt(it) }.getOrNull() }
-        return stored ?: devFallback.ifBlank { null }
+        stored ?: devFallback.ifBlank { null }
     }
 
-    override suspend fun setApiKey(key: String?) {
+    override suspend fun setApiKey(key: String?) = withContext(Dispatchers.IO) {
         prefs.edit().apply { if (key.isNullOrBlank()) remove(PREF_KEY) else putString(PREF_KEY, encrypt(key.trim())) }.apply()
     }
 

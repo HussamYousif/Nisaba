@@ -30,6 +30,9 @@ private object Keys {
     val eraser = stringPreferencesKey("eraserMode")
     val onboarded = booleanPreferencesKey("onboarded")
     val hintSeen = booleanPreferencesKey("hintSeen")
+    val codeHighlight = stringPreferencesKey("codeHighlight")
+    val penInk = intPreferencesKey("penInk")
+    val penSize = stringPreferencesKey("penSize")
 }
 
 private inline fun <reified E : Enum<E>> String?.toEnum(default: E): E = enumValues<E>().firstOrNull { it.name == this } ?: default
@@ -47,6 +50,7 @@ class DataStoreSettingsStore(context: Context) : SettingsStore {
             it[Keys.model] = next.model; it[Keys.thinking] = next.thinking
             it[Keys.listening] = next.listeningDefault; it[Keys.eraser] = next.eraserMode.name
             it[Keys.onboarded] = next.onboarded; it[Keys.hintSeen] = next.hintSeen
+            it[Keys.codeHighlight] = next.codeHighlight.name; it[Keys.penInk] = next.penInk; it[Keys.penSize] = next.penSize.name
         }
     }
 
@@ -59,6 +63,8 @@ class DataStoreSettingsStore(context: Context) : SettingsStore {
             model = this[Keys.model] ?: d.model, thinking = this[Keys.thinking] ?: d.thinking,
             listeningDefault = this[Keys.listening] ?: d.listeningDefault, eraserMode = this[Keys.eraser].toEnum(d.eraserMode),
             onboarded = this[Keys.onboarded] ?: d.onboarded, hintSeen = this[Keys.hintSeen] ?: d.hintSeen,
+            codeHighlight = this[Keys.codeHighlight].toEnum(d.codeHighlight), penInk = this[Keys.penInk] ?: d.penInk,
+            penSize = this[Keys.penSize].toEnum(d.penSize),
         )
     }
 }

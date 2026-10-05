@@ -12,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.FlowCollector
@@ -30,20 +31,29 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import okio.BufferedSource
 import java.io.IOException
-import java.net.SocketTimeoutException
+import java.io.InterruptedIOException
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 /**
  * DeepSeek chat-completions adapter (OpenAI-compatible, SSE). Collecting starts the call; cancelling the
  * collector cancels the OkHttp call, which closes the socket immediately.
+ *
+ * Failures before the answer starts (no connection, 429, 5xx) are retried [maxRetries] times with a short backoff.
+ * Once streaming, a reply must produce its first token within [firstTokenMillis] (keep-alive comments don't count),
+ * and the whole call is capped, so a stalled server ends in a Timeout instead of an endless wait.
  */
 class DeepSeekClient(
     private val http: OkHttpClient,
     private val apiKey: suspend () -> String?,
     private val baseUrl: String = "https://api.deepseek.com",
     private val encodeImage: ((ByteArray) -> String)? = null,
+    private val maxRetries: Int = 2,
+    private val retryDelayMillis: Long = 500,
+    private val firstTokenMillis: Long = 45_000,
+    private val thinkingFirstTokenMillis: Long = 120_000,
 ) : Oracle {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true; explicitNulls = false }
     private val sse = SseParser()
@@ -57,40 +67,90 @@ class DeepSeekClient(
             .header("Accept", "text/event-stream")
             .post(json.encodeToString(wire).toRequestBody("application/json".toMediaType()))
             .build()
-        val readSeconds = if (request.options.thinking) THINKING_READ_SECONDS else FIRST_TOKEN_SECONDS
-        val call = http.newBuilder().readTimeout(readSeconds, TimeUnit.SECONDS).build().newCall(httpRequest)
-        coroutineScope {
-            // Cancelling the collector cancels this scope; the watcher's finally then aborts the socket at once.
-            val watcher = launch(start = CoroutineStart.UNDISPATCHED) { try { awaitCancellation() } finally { call.cancel() } }
-            try {
-                readStream(call)
-            } catch (e: SocketTimeoutException) {
-                currentCoroutineContext().ensureActive()
-                throw OracleException(DomainError.Network(NetworkKind.Timeout), e.message, e)
-            } catch (e: IOException) {
-                currentCoroutineContext().ensureActive()
-                throw OracleException(DomainError.Network(NetworkKind.Offline), e.message, e)
-            } finally {
-                watcher.cancel()
+        val thinking = request.options.thinking
+        val client = http.newBuilder()
+            .readTimeout(if (thinking) THINKING_READ_SECONDS else FIRST_TOKEN_SECONDS, TimeUnit.SECONDS)
+            .callTimeout(if (thinking) THINKING_CALL_SECONDS else CALL_SECONDS, TimeUnit.SECONDS)
+            .build()
+        var attempt = 0
+        while (true) {
+            val call = client.newCall(httpRequest)
+            when (val a = attempt(call, attempt)) {
+                is Attempt.Retry -> { attempt++; delay(a.waitMillis) }
+                is Attempt.Got -> { stream(call, a.response, if (thinking) thinkingFirstTokenMillis else firstTokenMillis); return@flow }
             }
         }
     }.flowOn(Dispatchers.IO)
 
-    private suspend fun FlowCollector<OracleEvent>.readStream(call: Call) {
-        call.await().use { response ->
+    private sealed interface Attempt {
+        class Got(val response: Response) : Attempt
+        class Retry(val waitMillis: Long) : Attempt
+    }
+
+    /** One try at getting response headers; a transient failure becomes [Attempt.Retry] while retries are left. */
+    private suspend fun attempt(call: Call, n: Int): Attempt {
+        val response = try {
+            call.await()
+        } catch (e: InterruptedIOException) {
+            return failed(e, NetworkKind.Timeout, n)
+        } catch (e: IOException) {
+            return failed(e, NetworkKind.Offline, n)
+        }
+        val transient = response.code == HTTP_TOO_MANY || response.code >= HTTP_SERVER_ERROR
+        if (!transient || n >= maxRetries) return Attempt.Got(response)
+        val wait = backoff(n, response.header("Retry-After"))
+        response.close()
+        return Attempt.Retry(wait)
+    }
+
+    private suspend fun failed(e: IOException, kind: NetworkKind, n: Int): Attempt {
+        currentCoroutineContext().ensureActive()
+        if (n >= maxRetries) throw OracleException(DomainError.Network(kind), e.message, e)
+        return Attempt.Retry(backoff(n, null))
+    }
+
+    private fun backoff(attempt: Int, retryAfter: String?): Long =
+        retryAfter?.trim()?.toLongOrNull()?.let { (it * MILLIS).coerceAtMost(MAX_RETRY_AFTER_MILLIS) }
+            ?: (retryDelayMillis * (1 + attempt * 2))
+
+    private suspend fun FlowCollector<OracleEvent>.stream(call: Call, response: Response, firstTokenMs: Long) = coroutineScope {
+        val produced = AtomicBoolean(false)
+        val stalled = AtomicBoolean(false)
+        // Cancelling the collector cancels this scope; the watcher's finally then aborts the socket at once.
+        val watcher = launch(start = CoroutineStart.UNDISPATCHED) { try { awaitCancellation() } finally { call.cancel() } }
+        val watchdog = launch {
+            delay(firstTokenMs)
+            if (!produced.get()) { stalled.set(true); call.cancel() }
+        }
+        try {
+            readStream(response, produced)
+        } catch (e: InterruptedIOException) {
+            currentCoroutineContext().ensureActive()
+            throw OracleException(DomainError.Network(NetworkKind.Timeout), e.message, e)
+        } catch (e: IOException) {
+            currentCoroutineContext().ensureActive()
+            throw OracleException(DomainError.Network(if (stalled.get()) NetworkKind.Timeout else NetworkKind.Offline), e.message, e)
+        } finally {
+            watcher.cancel(); watchdog.cancel()
+        }
+    }
+
+    private suspend fun FlowCollector<OracleEvent>.readStream(response: Response, produced: AtomicBoolean) {
+        response.use {
             val source = openStream(response)
             var parseFailure = false
-            var produced = false
+            var any = false
             sse.read(source) { data ->
                 if (data == "[DONE]") return@read false
                 val events = runCatching { json.decodeFromString<ChatChunkDto>(data).toEvents() }
                     .onFailure { parseFailure = true } // a malformed chunk is skipped; fatal only if nothing ever parses
                     .getOrDefault(emptyList())
-                if (events.isNotEmpty()) produced = true
+                if (events.isNotEmpty()) any = true
+                if (events.any { it is OracleEvent.Delta }) produced.set(true)
                 events.forEach { emit(it) }
                 true
             }
-            if (!produced && parseFailure) throw OracleException(DomainError.Network(NetworkKind.Server), "unparseable stream")
+            if (!any && parseFailure) throw OracleException(DomainError.Network(NetworkKind.Server), "unparseable stream")
         }
     }
 
@@ -118,6 +178,10 @@ class DeepSeekClient(
     private companion object {
         const val FIRST_TOKEN_SECONDS = 45L
         const val THINKING_READ_SECONDS = 120L
+        const val CALL_SECONDS = 180L
+        const val THINKING_CALL_SECONDS = 420L
+        const val MILLIS = 1000L
+        const val MAX_RETRY_AFTER_MILLIS = 5_000L
         const val HTTP_UNAUTHORIZED = 401
         const val HTTP_PAYMENT_REQUIRED = 402
         const val HTTP_TOO_MANY = 429

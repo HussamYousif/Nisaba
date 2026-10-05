@@ -14,6 +14,8 @@ data class NotebookDto(
     val documentId: String?,
     val listening: Boolean,
     val coverSeed: Int,
+    /** Lesson notebooks only (v4). */
+    val teachGoal: String? = null,
 )
 
 @Entity(
@@ -51,6 +53,7 @@ data class SummaryRowDto(
     val hasDocument: Boolean,
     val pageCount: Int,
     val endless: Boolean,
+    val lesson: Boolean = false,
 )
 
 @Entity(
@@ -71,4 +74,29 @@ data class ExchangeDto(
     val latencyMillis: Long,
     val inputTokens: Int,
     val outputTokens: Int,
+    // v5
+    val cachedTokens: Int = 0,
+    val focusLeft: Float? = null,
+    val focusTop: Float? = null,
+    val focusRight: Float? = null,
+    val focusBottom: Float? = null,
+)
+
+/** The token columns of an exchange, for the usage summary. */
+data class UsageRowDto(val model: String, val createdAt: Long, val inputTokens: Int, val cachedTokens: Int, val outputTokens: Int)
+
+/** Lesson progress (v5): one row per topic of a lesson notebook. */
+@Entity(
+    tableName = "lesson_topics",
+    foreignKeys = [ForeignKey(NotebookDto::class, parentColumns = ["id"], childColumns = ["notebookId"], onDelete = ForeignKey.CASCADE)],
+    indices = [Index(value = ["notebookId", "topicKey"], unique = true)],
+)
+data class LessonTopicDto(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val notebookId: String,
+    /** Lower-cased [topic], so "Fjords" and "fjords" are one topic. */
+    val topicKey: String,
+    val topic: String,
+    val status: String,
+    val updatedAt: Long,
 )

@@ -9,8 +9,7 @@ object NisabaHttpClient {
         OkHttpClient.Builder()
             .connectTimeout(CONNECT_SECONDS, TimeUnit.SECONDS)
             .readTimeout(READ_SECONDS, TimeUnit.SECONDS)
-            .callTimeout(0, TimeUnit.SECONDS)
-            .retryOnConnectionFailure(false)
+            .retryOnConnectionFailure(false) // the model client retries itself, only before an answer starts
             .build()
     }
 

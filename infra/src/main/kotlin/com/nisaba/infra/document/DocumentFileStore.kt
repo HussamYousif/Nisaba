@@ -36,10 +36,11 @@ class FileDocumentStore(
     private val json = Json
     private val textCache = HashMap<String, List<String>>()
 
-    override suspend fun delete(id: DocumentId) {
+    override suspend fun delete(id: DocumentId) = withContext(Dispatchers.IO) {
         docsDir.listFiles { f -> f.name.startsWith("${id.value}.") }?.forEach { it.delete() }
         File(rasterDir, id.value).deleteRecursively()
         synchronized(textCache) { textCache.remove(id.value) }
+        Unit
     }
 
     override suspend fun pages(id: DocumentId): List<String> = withContext(Dispatchers.IO) {
