@@ -660,6 +660,18 @@ Goal: answers are *written*: humanized single-line glyphs drawn along the pen pa
 
 ---
 
+## M8 — Memory (DESIGN §4.5, D16)
+
+### M8.1 Stage 1: facts in every request · L ✅
+- Domain `memory/`: model, `MemoryParser` (tags), `MemoryRules` (plan/dedupe, context format + budget, note), `MemoryStore` port, use cases. `buildRequest` adds `memoryContext` (25 % budget); `DeepSeekMapper` appends `# Memory` after `# Document`. Session applies tags after saving the exchange; surface `showMemoryNote`.
+- Infra: `facts` table, Room v3 + `MIGRATION_2_3`, `RoomFactStore`. App: toolbar chip, `MemoryScreen` (paged), Settings section. Prompt v5.
+**Tests:** parser, rules, use cases, session (facts in request, tag → fact + note, failures teach nothing), context budget, wire order, migration 2→3 + store (device), `MemoryViewModelTest`.
+
+### M8.2 Stage 2: recall tool · M (when facts > ~2,000)
+- FTS4 over `facts.text`; `recall(query)` via DeepSeek function calling (stream → tool call → second request); always-on core summary instead of all facts.
+
+---
+
 ## Cross-cutting
 
 ### Logging & diagnostics

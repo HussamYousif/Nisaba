@@ -26,6 +26,7 @@ Status: **v1 design, 2026-09-29** · Fresh start (prior attempt lives in git his
 | D13 | Manual constructor DI via one composition root (`AppGraph`). No Hilt/Koin | Explicit, fast builds, nothing magic |
 | D14 | Bring-your-own API key (entered in Settings, stored Keystore-encrypted). Debug builds may read `.env` | Required for Play Store; no key ever ships in a release |
 | D15 | PDF only. No export, no sync, no backup in v1 | Your spec |
+| D16 | **Long-term memory across notebooks** (§4.5): a SQLite `facts` table the model writes via `<remember>`/`<forget>` tags; all facts ride in every request (stage 1). No embeddings, no vector DB | Your ask (2026-10-02); keyword/LLM selection covers it at notebook scale |
 
 ---
 
@@ -48,7 +49,7 @@ States (pure state machine, §4.4):
 | **Idle** | Nothing | pen-down → Writing |
 | **Writing** | Your ink, instantly | pen-up → Pausing |
 | **Pausing** (3.5 s) | Nothing. (Optional: faint 3-dot "breath" in the margin at 1 s, 2 s, 3 s — off by default) | pen-down → Writing (same utterance). Timer → Thinking |
-| **Thinking** | The **inkwell**: a drop of lapis ink forms at the spot where the answer will start, swells, ripples (6 discrete e-ink frames, ~3 fps) | pen-down → **cancel request**, back to Writing (utterance keeps growing). First answer tokens → Scribing. `<silent/>` → Idle (drop dries and vanishes) |
+| **Thinking** | Nothing is shown (the inkwell animation was removed at the user's request, 2026-10-02): the answer simply starts writing. An endless canvas still pans to where it will start | pen-down → **cancel request**, back to Writing (utterance keeps growing). First answer tokens → Scribing. `<silent/>` → Idle (drop dries and vanishes) |
 | **Scribing** | The hand writes, letter by letter (no nib; ink just appears) | pen-down → Interrupted. Done → Idle |
 | **Interrupted** | Partial answer + "…" mark at its end | tap "…" → Scribing resumes. Anything else → the answer stays partial |
 | **Failed** | Drop turns into a small hand-written "?" with one line: "the ink wouldn't flow — tap to retry" | tap → Thinking. Pen-down → Writing |
@@ -76,6 +77,8 @@ States (pure state machine, §4.4):
   - *Tables:* the hand rules the lines (slightly imperfect), then fills cells row by row in a smaller hand.
   - *Diagrams:* SVG subset from the model → paths → gently wobbled → drawn in stroke order.
 - **Skip:** a finger tap on the answer finishes it instantly.
+- **One answer:** a long finger press on an answer offers *Erase answer* (all its strokes, every page it spilled onto, one undo step) and *Ask again* (erase, then the same writing is re-sent with the previous answer so the new one differs).
+- **Code:** fenced code is written on a monospace grid in a ruled box (indentation kept, letters never joined, long lines wrap after a ↳ hook, smaller hand in narrow spots). **Highlighted with different pens** (`CodeHighlightRules`, ~30 languages incl. Haskell, Clojure/Lisp, C#/F#/VB.NET, Java, Kotlin, C/C++, Go, Rust, Swift, JS/TS, Python, Ruby, PHP, SQL, shell; generic fallback): keywords red-brown, strings/numbers/`:keywords` green, comments a thin grey pencil, the rest lapis. With black answer ink: keywords bold, comments thin grey. Inks in `canvas/AnswerInkColors.kt`, to be tuned on the Kaleido panel.
 
 ### 1.5 Pen, eraser, gestures
 
@@ -83,6 +86,7 @@ States (pure state machine, §4.4):
 |---|---|
 | Stylus tip | Write (Onyx raw drawing, pressure) |
 | Stylus button held / eraser end | Stroke eraser (whole stroke). Toolbar toggle → area eraser (splits strokes) |
+| Stylus tip, shape tool | Auto: a rough line, triangle, box or ellipse is replaced by a clean one (anything else stays as drawn). Line/Arrow/Box/Ellipse/Triangle: drag corner to corner |
 | Finger swipe ←/→ | Turn page (instant swap) |
 | Finger two-tap / three-tap | Undo / redo |
 | Finger tap on answer being written | Finish instantly |
@@ -91,9 +95,10 @@ States (pure state machine, §4.4):
 ### 1.6 Screens
 
 1. **Splash (≤ 900 ms):** paper background; the hand writes "Nisaba" in lapis, then the wedge-star mark stamps in. Cold-start work runs in parallel; the splash never waits past readiness plus the end of the stroke in progress.
-2. **Library:** a grid of notebook "tomes" on paper. Each cover is **generated from the notebook name** (seeded cuneiform-wedge pattern + name in the hand), so every notebook looks unique without you picking art. Actions: *New notebook*, *New from PDF*, long-press → rename / delete. Header: wordmark + settings glyph.
-3. **Notebook:** the page, edge to edge. A thin top bar that auto-hides after 3 s of writing: ‹ back · title · page n/m · pen / eraser · undo / redo · **Listening** (quill; filled = on) · **Ask now** (manual send, e.g. when Listening is off).
-4. **Settings:** API key (masked, "test key" button) · model · thinking on/off · pause length · hand speed · hand style (2 hands) · answer ink (lapis / black) · about / privacy.
+2. **Library:** a grid of notebook "tomes" on paper. Each cover is **generated from the notebook name** (seeded cuneiform-wedge pattern + name in the hand), so every notebook looks unique without you picking art. Actions: *New notebook*, *Open a PDF* (PDF pages as backgrounds), *Learn a PDF* (a **lesson notebook**: blank pages, the PDF as hidden context, a hidden teaching prompt plus an optional goal; Nisaba writes the first lesson unprompted, then teaches one idea at a time and checks with a question), long-press → rename / delete. Header: wordmark + settings glyph.
+3. **Notebook:** the page, edge to edge. A top bar of hand-drawn icons that auto-hides 3 s after writing, 5 s after the bar itself was used (never while its menu, the page grid or a picker is open); a tap within 0.5 s of it hiding does not bring it back (no flashing); while hidden, a small Nisaba star in the bottom-right corner brings it back: ‹ back · title (rename) · **page n/m ▾** (page grid, 36 per screen) · pen (tap again: 8 inks, Fine/Medium/Bold; a dot on the icon shows a non-black ink; remembered in Settings) | shapes (tap again: Auto, Line, Arrow, Box, Ellipse, Triangle; current ink and size; undo as usual) | eraser (hold for area eraser) · undo · redo · **eye** (Listening; closed eye = muted) · **quill** (Ask now, only when muted, enabled when there is unsent writing) · **⋯** (+ Page, Tidy this page, Overview/Home on an endless canvas, Lesson progress in a lesson notebook, Rename, Settings). Undo/redo: two-/three-finger tap. Neighbouring pages are kept loaded (instant turns, undo survives). *Tidy this page* writes a clean, structured copy of the user's notes on a new page after it. *Overview* shows the whole endless canvas shrunk to fit; a tap jumps there.
+4. **Settings:** two panes, no scrolling: a list on the left (Key & model · Waiting · The hand · Ink & colours · Memory · Usage), one short screen on the right. API key (masked, "test key" button) · model · thinking on/off · pause length · hand speed · hand style (2 hands) · **Ink & colours** (answer ink lapis / black; code marked with coloured pens / bold & thin / plain; a preview written by the hand in exactly those inks, laid out as a real code block) · memory · **Usage** (answers and tokens this month / all time, cost estimated from list prices with the peak-hour double) · about / privacy.
+5. **Search** (library): every question and answer across notebooks, the 10 newest matches; a tap opens that page. Lesson notebooks record `<topic status="learned|shaky">` tags as progress (*Lesson progress* in ⋯); coming back after 4 h, the tutor recaps and re-checks a shaky topic below the last ink.
 
 ### 1.7 Brand
 
@@ -200,6 +205,7 @@ Test files mirror their subject: `ConversationRulesTest.kt`.
 │                      InsertPageUseCase.kt  ListNotebooksUseCase.kt
 ├── ink/               InkModel.kt (Stroke, InkPoint, StrokeOrigin, PageInk, InkCommand)
 │                      InkRules.kt (hit-test, erase/split, bounds, x-height estimate)
+│                      ShapeRules.kt (clean shapes from a drag; Auto: recognise a rough line/triangle/box/ellipse)
 │                      InkHistoryRules.kt (undo/redo stack — command pattern)
 │                      InkPorts.kt (InkStore)
 │                      CommitStrokeUseCase.kt  EraseUseCase.kt  UndoUseCase.kt  RedoUseCase.kt
@@ -216,6 +222,9 @@ Test files mirror their subject: `ConversationRulesTest.kt`.
 │                      ConversationPorts.kt (Oracle, PageSnapshotter, ExchangeStore)
 │                      ConversationSession.kt (runs the state machine per open page)
 │                      RecordExchangeUseCase.kt
+├── memory/            MemoryModel.kt (Fact, FactCategory, MemoryOp, MemoryPlan)  MemoryParser.kt (reply tags → ops)
+│                      MemoryRules.kt (dedupe/plan, context format + budget, toolbar note)  MemoryPorts.kt (MemoryStore)
+│                      ApplyMemoryUseCase.kt  ObserveMemoryUseCase.kt  ForgetFactUseCase.kt
 └── settings/          SettingsModel.kt  SettingsPorts.kt (SettingsStore, SecretStore)
 
 :scribe  com.nisaba.scribe
@@ -300,7 +309,7 @@ enum class ExchangeStatus { Complete, Interrupted, Silent, Failed }
 
 ### 4.2 Storage
 
-- **Room** (`nisaba.db`): notebooks, pages, documents, exchanges, settings-free metadata. Real migrations from v1 on (Play Store).
+- **Room** (`nisaba.db`): notebooks, pages, documents, exchanges, facts (v3), settings-free metadata. Real migrations from v1 on (Play Store).
 - **Ink files**: `files/ink/<pageId>.ink`, one per page. Versioned binary (`kotlinx.serialization` ProtoBuf over `InkFileDto`). Written atomically (temp + rename), debounced 500 ms after pen-up, flushed on `onPause`.
 - **Documents**: the imported PDF is copied to `files/docs/<documentId>.pdf`; extracted text is cached in `files/docs/<documentId>.txt`; page rasters are cached in `cache/raster/<documentId>/<index>.webp` (can be rebuilt).
 
@@ -310,6 +319,7 @@ The request order is chosen so DeepSeek's **prefix cache** hits (stable parts fi
 
 1. System prompt (§5.1) (static)
 2. Document text: the entire PDF text, page-tagged `[p.12] …` (static per notebook). Scanned or no-text PDFs send nothing here; the current page image still carries it.
+2b. Memory (§4.5): `# Memory` then `## category` sections of `#id fact` lines (global, changes only when a fact does). After the document so a new fact leaves the bigger per-notebook prefix cached. Budget 25 % of the token budget (~2,000 facts); over it, the newest facts that fit.
 3. Prior exchanges, oldest first, as alternating `user: <heard>` / `assistant: <answerMarkup>` text messages (append-only). `ConversationContextRules` drops the oldest once the budget passes ~120k tokens. With 1M context, that's rarely hit.
 4. Current turn (user message): the text instruction plus two images:
    - **page**: the whole current page (background + all ink incl. prior answers), grayscale JPEG, ~1600 px long edge, `detail: auto`
@@ -336,6 +346,16 @@ Invariants (each is a unit test):
 - With Listening off, only `AskNow` leaves `Pausing` for `Thinking`.
 
 `ConversationSession` owns one page's session: it feeds pen/stream/timer events into `reduce` and executes effects (starting/cancelling a coroutine job for the request, which cancels the OkHttp call).
+
+### 4.5 Memory (D16)
+
+What Nisaba knows about the person, shared by every notebook.
+- **Storage:** Room `facts(id INTEGER autoincrement, category, text, sourceExchangeId?, createdAt)`. No foreign key: facts outlive their notebook. Short numeric ids because the model sees and names them.
+- **Categories (fixed):** me, people, projects, books, screen, music, preferences, goals, other. Unknown → other.
+- **Writing:** the model appends `<remember category="books">Loved Dune</remember>` / `<forget id="12"/>` after `</answer>` (§5.2). A change = forget + remember. After the exchange is saved (Complete/Interrupted only), `ApplyMemoryUseCase` parses the tags, `planMemory` drops blanks, duplicates (normalised text), unknown ids, >5 adds per reply, cuts at 200 chars; one transaction. `AnswerParser` strips tags so they are never ink, even if the model puts them inside `<answer>`.
+- **Reading (stage 1):** all facts in every request (§4.3 2b); the model picks what is relevant.
+- **Feedback:** toolbar chip "✎ Remembered: …" for 6 s (tap dismisses). **Settings → Memory → View**: paged list by category (no scrolling), Forget with confirm.
+- **Stage 2 (later, when >~2,000 facts):** a `recall(query)` tool over an FTS index; vectors could slot in behind the same port.
 
 ---
 
@@ -364,6 +384,8 @@ The model must reply with exactly one of:
 <answer>
 …markdown subset…
 </answer>
+<remember category="…">…</remember>   (optional, zero or more; §4.5)
+<forget id="N"/>                        (optional)
 <heard>…verbatim transcription of the new writing…</heard>
 ```
 
@@ -403,7 +425,7 @@ When you answer:
 `\frac \sqrt[n]{} ^ _ \sum \prod \int \lim \infty \pm \cdot \times \le \ge \ne \approx \to`, Greek letters, `\left( \right)`, `\begin{pmatrix}`, `\text{}`. Unsupported commands are written literally in the hand (a graceful fallback, never a crash).
 
 ### 5.5 Privacy (Play Store)
-The page images, the PDF text and the transcriptions go to DeepSeek. First-run notice + privacy policy. Nothing else leaves the device. No analytics in v1.
+The page images, the PDF text, the transcriptions and the remembered facts go to DeepSeek. First-run notice + privacy policy. Nothing else leaves the device. No analytics in v1.
 
 ---
 
@@ -503,4 +525,4 @@ Tooling: ktlint + detekt, `verifyFileRoles` (§3.3), lint `abortOnError` (Androi
 
 ## 13. Out of scope (v1) / later
 
-Export, sync/backup, EPUB/DOCX/TXT, right-to-left hands (Arabic), lasso select/move, zoom, voice, other AI providers (the `Oracle` port is ready), handwriting-to-text search.
+Export, sync/backup, EPUB/DOCX/TXT, right-to-left hands (Arabic), lasso select/move, zoom, voice, other AI providers (the `Oracle` port is ready), handwriting-to-text search, memory stage 2 (`recall` tool + FTS, §4.5).
