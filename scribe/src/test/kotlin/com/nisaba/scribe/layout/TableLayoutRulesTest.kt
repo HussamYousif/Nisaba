@@ -2,6 +2,7 @@ package com.nisaba.scribe.layout
 
 import com.nisaba.domain.answer.Block
 import com.nisaba.domain.answer.Inline
+import com.nisaba.domain.shared.PageRect
 import com.nisaba.domain.shared.PageSize
 import com.nisaba.scribe.hand.HandFixtures
 import kotlin.test.Test
@@ -12,8 +13,22 @@ class TableLayoutRulesTest {
     private val hand = HandFixtures.hand()
     private val region = LayoutRegion.below(PageSize.PORTRAIT, 120f, 300f, 44f)
     private fun cell(t: String) = listOf<Inline>(Inline.Text(t))
-    private fun lay(t: Block.Table, r: LayoutRegion = region, start: LayoutCursor = LayoutCursor(0, r.top)) =
-        layoutBlock(t, start, r, { null }, hand)
+    private fun lay(
+        t: Block.Table,
+        r: LayoutRegion = region,
+        start: LayoutCursor = LayoutCursor(0, r.top),
+        occ: Occupancy? = null,
+    ) = layoutBlock(t, start, r, { if (it == 0) occ else null }, hand)
+
+    /** Every word starts inside a column and ends before that column's right rule. */
+    private fun assertWordsInColumns(b: LaidBlock) {
+        val verticals = b.paths.filter { it.xs[0] == it.xs[1] }.map { it.xs[0] }.sorted().distinct()
+        for (w in b.words) {
+            val col = verticals.indexOfLast { it <= w.x + 0.5f }
+            assertTrue(col in 0 until verticals.lastIndex, "word starts outside the table")
+            assertTrue(w.x + w.width <= verticals[col + 1] + 0.5f, "word '${w.chars.map { it.ch }.joinToString("")}' overflows its column")
+        }
+    }
 
     private val planets = Block.Table(
         listOf(cell("Planet"), cell("Moons"), cell("Notes")),
@@ -80,5 +95,29 @@ class TableLayoutRulesTest {
         val start = LayoutCursor(0, region.top)
         val (b, next) = lay(Block.Table(emptyList(), emptyList()), start = start)
         assertTrue(b.words.isEmpty() && b.paths.isEmpty()); assertEquals(start, next)
+    }
+
+    @Test fun rowsNeverDrawOverInkAlreadyOnThePage() {
+        val occ = Occupancy.empty(PageSize.PORTRAIT)
+        val note = PageRect(0f, region.top + 400f, PageSize.PORTRAIT.w, region.top + 600f) // a note across the page
+        occ.mark(note)
+        val rows = List(8) { i -> listOf(cell("Row $i"), cell("$i"), cell("short")) }
+        val (b, _) = lay(Block.Table(listOf(cell("Name"), cell("N"), cell("Note")), rows), occ = occ)
+        for (w in b.words.filter { it.page == 0 }) {
+            val top = w.baseline - w.scale * 1.5f
+            assertTrue(w.baseline < note.top || top > note.bottom, "a word at ${w.baseline} sits on the note")
+        }
+        for (p in b.paths.filter { it.page == 0 }) {
+            assertTrue(p.ys.max() <= note.top + 1f || p.ys.min() >= note.bottom - 1f, "a rule crosses the note: ${p.ys.toList()}")
+        }
+        assertEquals(8, b.words.count { w -> w.chars.joinToString("") { it.ch.toString() } == "short" }, "every row is written")
+    }
+
+    @Test fun aWideTableInANarrowSpaceSqueezesItsWordsIntoTheColumns() {
+        val narrow = LayoutRegion.below(PageSize.PORTRAIT, 1150f, 300f, 44f)
+        val head = listOf("Element", "Symbol", "Number", "Mass", "Category", "Discovered").map(::cell)
+        val row = listOf("Hydrogen", "H", "1", "1.008", "Nonmetal", "Cavendish").map(::cell)
+        val (b, _) = lay(Block.Table(head, listOf(row, row)), r = narrow)
+        assertWordsInColumns(b)
     }
 }

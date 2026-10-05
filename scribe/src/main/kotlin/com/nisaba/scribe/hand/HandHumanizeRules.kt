@@ -118,7 +118,7 @@ private fun linkTargetFor(word: LaidWord, ci: Int, pose: LetterPose, seed: Long,
     val next = word.chars.getOrNull(ci + 1) ?: return null
     val nextFirst = next.glyph.strokes.firstOrNull { !it.delayed } ?: return null
     val gap = ((next.dx - here.dx) / word.scale) - here.glyph.adv * here.scale
-    if (!p.joinLetters || !canJoin(here.ch, here.glyph, next.ch, next.glyph, gap)) return null
+    if (!p.joinLetters || !word.joinable || !canJoin(here.ch, here.glyph, next.ch, next.glyph, gap)) return null
     val nextPose = letterPose(word, next, ci + 1, seed, p)
     val (nx, ny) = localPoints(nextFirst, nextPose).let { it.first.first() to it.second.first() }
     return (nextPose.x + nx - pose.x) to (pose.y - (nextPose.y - ny))
@@ -144,9 +144,9 @@ private fun strokeOf(
         val wx = wob * smoothNoise(seed, key * 8 + si, run / (xh * WOBBLE_PERIOD))
         val wy = wob * smoothNoise(seed, key * 8 + si + 4, run / (xh * WOBBLE_PERIOD))
         xs[i] = pose.x + dx[i] + wx
-        ys[i] = pose.y + lineWander(seed, word.line, xs[i], word.x, xHeight, p) - dy[i] + wy
+        ys[i] = pose.y + lineWander(seed, word.line, xs[i], word.lineX, xHeight, p) - dy[i] + wy
     }
-    return LaidStroke(word.page, xs, ys, pressureProfile(xs, ys, word.bold, xh), gs.delayed, word.index, ci)
+    return LaidStroke(word.page, xs, ys, pressureProfile(xs, ys, word.bold, xh), gs.delayed, word.index, ci, word.tone)
 }
 
 /**

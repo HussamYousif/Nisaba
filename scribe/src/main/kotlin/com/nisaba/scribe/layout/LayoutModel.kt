@@ -5,6 +5,9 @@ import com.nisaba.domain.shared.PageSize
 import com.nisaba.scribe.hand.Glyph
 import java.util.BitSet
 
+/** Which pen a stroke is written with: the answer's own ink, or a highlighter tone inside code. */
+enum class InkTone { Plain, Keyword, Literal, Comment }
+
 /** Where an answer may be written. All values are page units (px of the Air 5C panel in portrait). */
 data class LayoutRegion(
     val pageSize: PageSize,
@@ -102,6 +105,11 @@ class LaidWord(
     val bold: Boolean,
     val line: Int,
     val index: Int,
+    /** Where the word's line starts: the baseline's slope runs from there, so a line drifts as one. */
+    val lineX: Float = x,
+    /** False for code: letters stay apart even in a joined hand. */
+    val joinable: Boolean = true,
+    val tone: InkTone = InkTone.Plain,
 )
 
 /** A pen path that is not letters: a ruled line, a table grid line, a diagram stroke. Page coordinates. */

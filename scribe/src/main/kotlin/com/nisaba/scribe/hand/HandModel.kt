@@ -26,8 +26,14 @@ class GlyphSet(
     /** Greek letters by name ("alpha", "Sigma", …) in the same units as [glyphs]. */
     val math: Map<String, Glyph> = emptyMap(),
 ) {
+    private val composed = java.util.concurrent.ConcurrentHashMap<Char, Any>() // composing normalises Unicode: do it once
+
     /** Character → glyph, composing accents/ligatures the font lacks (see [GlyphCompositionRules]). */
-    fun resolve(c: Char): Glyph? = glyphs[c] ?: composeGlyph(c, this)
+    fun resolve(c: Char): Glyph? = glyphs[c] ?: composed.getOrPut(c) { composeGlyph(c, this) ?: NONE } as? Glyph
+
+    private companion object {
+        val NONE = Any()
+    }
 }
 
 /** A humanized pen stroke in page coordinates, before timing. [ps] is pressure 0..1 per point. */
@@ -39,6 +45,7 @@ class LaidStroke(
     val delayed: Boolean,
     val wordIndex: Int,
     val charIndex: Int,
+    val tone: com.nisaba.scribe.layout.InkTone = com.nisaba.scribe.layout.InkTone.Plain,
 )
 
 /** How "human" the hand is. [Perfect] is the schoolbook render used while authoring glyphs. */

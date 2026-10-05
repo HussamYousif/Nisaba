@@ -5,7 +5,13 @@ import com.nisaba.domain.shared.PageRect
 import com.nisaba.scribe.layout.LayoutCursor
 
 /** A pen stroke with timing: `points.ts` are milliseconds since the start of the whole answer. */
-class TimedStroke(val page: Int, val points: InkPoints, val bold: Boolean, val wordIndex: Int) {
+class TimedStroke(
+    val page: Int,
+    val points: InkPoints,
+    val bold: Boolean,
+    val wordIndex: Int,
+    val tone: com.nisaba.scribe.layout.InkTone = com.nisaba.scribe.layout.InkTone.Plain,
+) {
     val startMs: Int get() = points.ts.first()
     val endMs: Int get() = points.ts.last()
 }

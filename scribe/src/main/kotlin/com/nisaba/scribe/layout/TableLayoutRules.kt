@@ -12,8 +12,12 @@ private const val CELL_LINE = 1.9f        // line pitch inside a cell, in cell x
 private const val MIN_COL = 3f            // never squeeze a column below this many cell x-heights
 private const val DOUBLE_RULE_GAP = 0.18f
 private const val BASELINE_IN_LINE = 1.35f
+private const val MIN_SQUEEZE = 0.6f
 
-private class CellLine(val words: List<Pair<WordSpec, Pair<List<PlacedChar>, Float>>>)
+/** A word in a cell: its glyphs, its width, and its scale (below the cell's x-height when squeezed into a narrow column). */
+private class CellWord(val spec: WordSpec, val chars: List<PlacedChar>, val width: Float, val scale: Float)
+
+private class CellLine(val words: List<CellWord>)
 
 private class Cell(val lines: List<CellLine>) {
     val lineCount: Int get() = max(1, lines.size)
@@ -51,19 +55,37 @@ private fun naturalWidth(specs: List<WordSpec>, ctx: Ctx, xh: Float, space: Floa
     return w
 }
 
+/** Wraps a cell to [width]; a word wider than the column is squeezed, and broken if squeezing is not enough. */
 private fun wrapCell(specs: List<WordSpec>, ctx: Ctx, xh: Float, space: Float, width: Float): Cell {
     val lines = ArrayList<CellLine>()
-    var current = ArrayList<Pair<WordSpec, Pair<List<PlacedChar>, Float>>>()
+    var current = ArrayList<CellWord>()
     var used = 0f
-    for (spec in specs) {
+    for (spec in breakOverlong(specs, ctx.set, xh, width)) {
         val measured = if (spec.math != null) inlineMath(spec.math, ctx.set, xh) else measure(spec.text, ctx.set, xh)
-        val w = measured.second
+        val k = if (measured.second > width) (width / measured.second).coerceAtLeast(MIN_SQUEEZE) else 1f
+        val w = measured.second * k
         if (current.isNotEmpty() && used + space + w > width) { lines += CellLine(current); current = ArrayList(); used = 0f }
-        current += spec to measured
+        current += CellWord(spec, measured.first, w, xh * k)
         used += (if (used > 0f) space else 0f) + w
     }
     if (current.isNotEmpty()) lines += CellLine(current)
     return Cell(lines)
+}
+
+private fun cellSpecs(r: List<List<WordSpec>>, c: Int) = r.getOrElse(c) { emptyList() }
+
+/** Each column as wide as its content, squeezed by [fitColumns] when the table is wider than the region. */
+private fun columnWidths(rows: List<List<List<WordSpec>>>, cols: Int, ctx: Ctx, xh: Float, space: Float): List<Float> {
+    val natural = List(cols) { c -> rows.maxOf { naturalWidth(cellSpecs(it, c), ctx, xh, space) } + 2 * PAD_X * xh }
+    val longestWord = List(cols) { c ->
+        rows.maxOf { r -> cellSpecs(r, c).maxOfOrNull { wordWidth(it, ctx, xh) } ?: 0f } + 2 * PAD_X * xh
+    }
+    return fitColumns(natural, longestWord.map { max(it, (MIN_COL + 2 * PAD_X) * xh) }, ctx.region.width)
+}
+
+private fun buildRow(r: List<List<WordSpec>>, isHeader: Boolean, widths: List<Float>, ctx: Ctx, xh: Float, space: Float): Row {
+    val cells = List(widths.size) { c -> wrapCell(cellSpecs(r, c), ctx, xh, space, widths[c] - 2 * PAD_X * xh) }
+    return Row(cells, cells.maxOf { it.lineCount } * CELL_LINE + 2 * PAD_Y, isHeader)
 }
 
 /**
@@ -79,23 +101,11 @@ internal fun layoutTable(t: Block.Table, cursor: LayoutCursor, ctx: Ctx): Pair<L
     val cols = max(header.size, body.maxOfOrNull { it.size } ?: 0)
     if (cols == 0) return LaidBlock(emptyList(), emptyList(), null) to cursor
 
-    fun cellSpecs(r: List<List<WordSpec>>, c: Int) = r.getOrElse(c) { emptyList() }
-    val natural = List(cols) { c ->
-        (listOf(header) + body).maxOf { naturalWidth(cellSpecs(it, c), ctx, xh, space) } + 2 * PAD_X * xh
-    }
     val available = ctx.region.width
-    val longestWord = List(cols) { c ->
-        (listOf(header) + body).maxOf { r -> cellSpecs(r, c).maxOfOrNull { wordWidth(it, ctx, xh) } ?: 0f } + 2 * PAD_X * xh
-    }
-    val widths = fitColumns(natural, longestWord.map { max(it, (MIN_COL + 2 * PAD_X) * xh) }, available)
+    val widths = columnWidths(listOf(header) + body, cols, ctx, xh, space)
 
-    fun buildRow(r: List<List<WordSpec>>, isHeader: Boolean): Row {
-        val cells = List(cols) { c -> wrapCell(cellSpecs(r, c), ctx, xh, space, widths[c] - 2 * PAD_X * xh) }
-        val lines = cells.maxOf { it.lineCount }
-        return Row(cells, lines * CELL_LINE + 2 * PAD_Y, isHeader)
-    }
-    val headerRow = buildRow(header, true)
-    val rows = body.map { buildRow(it, false) }
+    val headerRow = buildRow(header, true, widths, ctx, xh, space)
+    val rows = body.map { buildRow(it, false, widths, ctx, xh, space) }
 
     val words = ArrayList<LaidWord>(); val paths = ArrayList<LaidPath>()
     var page = cursor.page
@@ -120,9 +130,10 @@ internal fun layoutTable(t: Block.Table, cursor: LayoutCursor, ctx: Ctx): Pair<L
             for ((li, line) in cell.lines.withIndex()) {
                 var wx = x + PAD_X * xh
                 val baseline = top + (PAD_Y + li * CELL_LINE + BASELINE_IN_LINE) * xh
-                for ((spec, measured) in line.words) {
-                    words += LaidWord(page, wx, baseline, xh, measured.first, measured.second, spec.bold, lineNo, wordNo++)
-                    wx += measured.second + space
+                for (cw in line.words) {
+                    // no line-long drift in a cell: the rules are too close
+                    words += LaidWord(page, wx, baseline, cw.scale, cw.chars, cw.width, cw.spec.bold, lineNo, wordNo++)
+                    wx += cw.width + space
                 }
                 lineNo++
             }
@@ -136,9 +147,14 @@ internal fun layoutTable(t: Block.Table, cursor: LayoutCursor, ctx: Ctx): Pair<L
 
     place(headerRow)
     for (row in rows) {
-        if (top + row.heightUnits * xh > ctx.region.bottom && top > ctx.region.pageTop) {           // next page: repeat the header
+        val h = row.heightUnits * xh
+        val pastBottom = top + h > ctx.region.bottom && top > ctx.region.pageTop
+        val blocked = !isFree(ctx, page, PageRect(left, top, left + widths.sum(), top + h))
+        if (pastBottom || blocked) { // next page, or something is already written here: carry on below it, header again
             closeSegment()
-            page++; top = ctx.region.pageTop; tableTop = top; maxB = top
+            val from = if (pastBottom) page + 1 to ctx.region.pageTop else page to top
+            val (p, t) = findBox(from.first, from.second, left, headerRow.heightUnits * xh + h, ctx)
+            page = p; top = t; tableTop = top; maxB = top
             place(headerRow)
         }
         place(row)
@@ -150,4 +166,6 @@ internal fun layoutTable(t: Block.Table, cursor: LayoutCursor, ctx: Ctx): Pair<L
 }
 
 private fun Float?.orZero() = this ?: 0f
+
+private fun isFree(ctx: Ctx, page: Int, r: PageRect) = ctx.occ.on(page)?.isFree(r) ?: true
 

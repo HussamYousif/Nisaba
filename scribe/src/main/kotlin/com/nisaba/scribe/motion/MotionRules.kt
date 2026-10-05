@@ -72,7 +72,8 @@ fun timeWord(strokes: List<LaidStroke>, start: MotionState, profile: SpeedProfil
     var t = start.timeMs; var chars = start.chars
     val out = ArrayList<TimedStroke>()
     fun emit(s: LaidStroke, dur: Int) {
-        out += TimedStroke(s.page, sampleStroke(s.xs, s.ys, s.ps, t, dur), bold = s.ps.maxOrNull().let { (it ?: 0f) > 0.95f }, s.wordIndex)
+        val bold = s.ps.maxOrNull().let { (it ?: 0f) > 0.95f }
+        out += TimedStroke(s.page, sampleStroke(s.xs, s.ys, s.ps, t, dur), bold, s.wordIndex, s.tone)
         t += dur
     }
     val regular = strokes.filter { !it.delayed }
@@ -112,5 +113,5 @@ fun pointsReachedBy(stroke: TimedStroke, tMs: Int): Int {
 /** Splits [stroke] at time [tMs]: the part already written (may be empty). Used when the pen interrupts the hand. */
 fun truncateAt(stroke: TimedStroke, tMs: Int): TimedStroke? {
     val n = min(pointsReachedBy(stroke, tMs), stroke.points.size)
-    return if (n < 1) null else TimedStroke(stroke.page, stroke.points.slice(0, n), stroke.bold, stroke.wordIndex)
+    return if (n < 1) null else TimedStroke(stroke.page, stroke.points.slice(0, n), stroke.bold, stroke.wordIndex, stroke.tone)
 }

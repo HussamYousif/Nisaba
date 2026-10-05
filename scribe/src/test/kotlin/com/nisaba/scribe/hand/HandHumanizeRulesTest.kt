@@ -77,6 +77,17 @@ class HandHumanizeRulesTest {
         assertTrue(abs(mean) < 0.1, "roughly centred: $mean")
     }
 
+    @Test fun theBaselineSlopeRunsFromTheStartOfTheLineNotTheWord() {
+        val slopeOnly = HumanParams.PERFECT.copy(baseSlopeDeg = 3f)
+        val w = word("o")
+        fun startY(lineX: Float) = wordStrokes(
+            LaidWord(w.page, 1200f, w.baseline, w.scale, w.chars, w.width, false, 0, 0, lineX), 44f, 7, slopeOnly,
+        ).first().ys.first()
+        val asLineStart = startY(1200f)
+        val laterInTheLine = startY(200f)
+        assertTrue(abs(laterInTheLine - asLineStart) > 1f, "a word far along the line has drifted: ${laterInTheLine - asLineStart}")
+    }
+
     @Test fun linesDriftButOnlyALittle() {
         val xs = (0..1500 step 100).map { lineWander(11, 2, it.toFloat(), 0f, 44f, HumanParams.CASUAL) }
         assertTrue(xs.distinct().size > 3)

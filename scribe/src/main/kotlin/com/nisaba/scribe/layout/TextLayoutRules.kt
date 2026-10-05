@@ -65,7 +65,7 @@ internal fun runsToWords(runs: List<TextRun>): List<WordSpec> = runs.flatMap { r
 }
 
 /** Words that could not be squeezed onto a line even at [MIN_SQUEEZE] are broken into line-sized pieces. */
-private fun breakOverlong(words: List<WordSpec>, set: GlyphSet, xh: Float, maxWidth: Float): List<WordSpec> =
+internal fun breakOverlong(words: List<WordSpec>, set: GlyphSet, xh: Float, maxWidth: Float): List<WordSpec> =
     words.flatMap { w ->
         val (text, bold) = w.text to w.bold
         if (w.math != null || measure(text, set, xh).second * MIN_SQUEEZE <= maxWidth) return@flatMap listOf(w)
@@ -108,7 +108,7 @@ private fun flow(runs: List<TextRun>, style: Style, start: LayoutCursor, ctx: Ct
             val k = (maxW / w).coerceAtLeast(MIN_SQUEEZE); scale = xh * k; w *= k
         }
         val baseline = top + xh / style.scale * BASELINE_FACTOR
-        words += LaidWord(page, x, baseline, scale, chars, w, bold || style.bold, line, index++)
+        words += LaidWord(page, x, baseline, scale, chars, w, bold || style.bold, line, index++, lineStartX)
         minL = minOf(minL, x); maxR = maxOf(maxR, x + w)
         minT = minOf(minT, top); maxB = maxOf(maxB, top + ctx.region.lineHeight)
         x += w + space; lineWidthUsed = x - lineStartX
@@ -152,6 +152,7 @@ fun layoutBlock(
         is Block.MathBlock -> displayMath(block.latex, cursor, ctx)
         is Block.Table -> layoutTable(block, cursor, ctx)
         is Block.Diagram -> layoutDiagram(block, cursor, ctx)
+        is Block.Code -> layoutCode(block, cursor, ctx)
         Block.Rule -> rule(cursor, ctx)
     }
 }
