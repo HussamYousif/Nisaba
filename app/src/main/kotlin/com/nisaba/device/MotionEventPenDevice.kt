@@ -33,6 +33,7 @@ class MotionEventPenDevice(private val acceptFinger: Boolean = false) : PenDevic
     override fun suspendRawInk() = Unit
     override fun resumeRawInk() = Unit
     override fun setTool(tool: PenTool) { this.tool = tool }
+    override fun setPen(argb: Int, width: Float) = Unit // the view paints this device's live ink in the pen's colour
     override fun detach() { reset() }
 
     override fun handleTouch(e: MotionEvent): Boolean {
@@ -44,7 +45,7 @@ class MotionEventPenDevice(private val acceptFinger: Boolean = false) : PenDevic
             MotionEvent.ACTION_DOWN -> {
                 if (exclude.any { it.contains(e.x.toInt(), e.y.toInt()) }) return false
                 reset(); t0 = e.eventTime
-                erasing = type == MotionEvent.TOOL_TYPE_ERASER || tool != PenTool.Pen
+                erasing = type == MotionEvent.TOOL_TYPE_ERASER || tool.erases
                 flow.tryEmit(PenEvent.PenDown(e.x, e.y))
                 add(e.x, e.y, pressure(e), e.eventTime)
             }

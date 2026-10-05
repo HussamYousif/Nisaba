@@ -14,7 +14,6 @@ import com.nisaba.domain.ink.Stroke
 import com.nisaba.domain.ink.StrokeOrigin
 import com.nisaba.domain.shared.PagePoint
 import com.nisaba.domain.shared.StrokeId
-import com.nisaba.ui.brand.InkwellRenderer
 import com.nisaba.domain.notebook.PageBackground
 import com.nisaba.domain.shared.Affine
 import com.nisaba.domain.shared.PageSize
@@ -34,10 +33,15 @@ class PageView(
     private val pen: PenDevice,
     private val ink: InkRenderer,
     private val background: BackgroundRenderer,
-) : View(context) {
+) : View(context), ScribeCanvas {
     var onSwipe: (Int) -> Unit = {}
     var onMultiTap: (Int) -> Unit = {}
     var onTopTap: () -> Unit = {}
+
+    /** A finger held still on the page (view px): e.g. to act on the answer under it. */
+    var onLongPress: (Float, Float) -> Unit = { _, _ -> }
+    private val longPress = Runnable { if (!moved && maxPointers == 1 && !isScribing()) { longPressed = true; onLongPress(downX, downY) } }
+    private var longPressed = false
     var onSizeKnown: (Int, Int) -> Unit = { _, _ -> }
     var topStripPx: Int = 96
     /** Endless canvas only: the view's top-left in page space changed (to remember where you were). */
@@ -59,9 +63,18 @@ class PageView(
         }
         if (n <= liveDrawn) return
         val seg = pen.liveSlice(maxOf(0, liveDrawn - LIVE_OVERLAP), n) ?: return
-        ink.drawLive(canvas, seg, LIVE_INK)
+        ink.drawLive(canvas, seg, liveInk, liveWidthScale)
         invalidate(dirtyOfView(seg.bounds(), MAX_WIDTH))
         liveDrawn = n
+    }
+
+    private var liveInk = LIVE_INK
+    private var liveWidthScale = 1f
+
+    /** The user's pen: live ink (here or the device's own) is drawn in [argb] at [width] page units. */
+    fun setPen(argb: Int, width: Float) {
+        liveInk = argb; liveWidthScale = width / MEDIUM_WIDTH
+        pen.setPen(argb, width)
     }
 
     private fun dirtyOfView(b: com.nisaba.domain.shared.PageRect, pad: Float) =
@@ -128,13 +141,16 @@ class PageView(
         canvas.save()
         canvas.clipRect(r)
         canvas.drawColor(BackgroundRenderer.PAPER)
-        withPageTransform(canvas) { ink.drawAll(canvas, visibleStrokes()) }
+        withPageTransform(canvas) { ink.drawAll(canvas, visibleStrokes(r)) }
         canvas.restore()
     }
 
-    private fun visibleStrokes(): List<Stroke> {
+    /** On an endless canvas, only the strokes that reach [area] (view px; the whole view when null): the canvas is huge. */
+    private fun visibleStrokes(area: Rect? = null): List<Stroke> {
         if (!endless) return strokes
-        val l = panX - MAX_WIDTH; val t = panY - MAX_WIDTH; val r = panX + width + MAX_WIDTH; val b = panY + height + MAX_WIDTH
+        val a = area ?: Rect(0, 0, width, height)
+        val l = panX + a.left - MAX_WIDTH; val t = panY + a.top - MAX_WIDTH
+        val r = panX + a.right + MAX_WIDTH; val b = panY + a.bottom + MAX_WIDTH
         return strokes.filter { s -> s.bounds.let { it.right >= l && it.left <= r && it.bottom >= t && it.top <= b } }
     }
 
@@ -160,13 +176,10 @@ class PageView(
         return false
     }
 
-    // --- the hand writing (drawn straight into the ink layer), inkwell, resume mark -------------------------------
+    // --- the hand writing (drawn straight into the ink layer), resume mark ----------------------------------------
     private val markPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
         color = 0xFF27407A.toInt(); textSize = 64f; typeface = android.graphics.Typeface.SERIF
     }
-    private val inkwellRenderer = InkwellRenderer()
-    private var inkwell: PagePoint? = null
-    private var inkwellFrame = 0
     private var resumeMark: PagePoint? = null
     private val drawnByHand = HashSet<StrokeId>()
     var onMarkTap: () -> Unit = {}
@@ -174,21 +187,12 @@ class PageView(
     var onStylusDownWhileScribing: () -> Unit = {}
     var isScribing: () -> Boolean = { false }
 
-    private val inkwellTick = object : Runnable {
-        override fun run() {
-            val a = inkwell ?: return
-            inkwellFrame = (inkwellFrame + 1) % InkwellRenderer.FRAMES
-            invalidate(dirtyAround(a, inkwellRenderer.reach))
-            postDelayed(this, InkwellRenderer.FRAME_MILLIS)
-        }
-    }
-
     /** Draws points [from, toExclusive) of a stroke being written by the hand into the ink layer. */
-    fun drawSegment(points: InkPoints, from: Int, toExclusive: Int, argb: Int) {
+    override fun drawSegment(points: InkPoints, from: Int, toExclusive: Int, argb: Int, widthScale: Float) {
         val canvas = layerCanvas ?: return
         if (toExclusive <= from) return
         val part = points.slice(from, toExclusive)
-        withPageTransform(canvas) { ink.drawLive(canvas, part, argb) }
+        withPageTransform(canvas) { ink.drawLive(canvas, part, argb, widthScale) }
         invalidate(dirtyOf(part.bounds(), MAX_WIDTH))
         if (endless) followWriting(points.ys[toExclusive - 1])
     }
@@ -201,18 +205,17 @@ class PageView(
     /** Strokes the hand already drew and the caller has committed: `setStrokes` must not draw them a second time. */
     fun markDrawn(ids: Collection<StrokeId>) { drawnByHand += ids }
 
-    fun showInkwell(at: PagePoint?) {
-        if (endless && at != null && width > 0) {
-            val vx = at.x - panX; val vy = at.y - panY
-            val offSideways = vx < 0 || vx > width - MIN_VISIBLE_WIDTH
-            if (offSideways || vy < 0 || vy > height * FOLLOW_EDGE) {
-                panTo(if (offSideways) at.x - ENDLESS_LEFT_MARGIN else panX, at.y - height * FOLLOW_TARGET)
-            }
+    /** Shows the endless canvas from [origin] (page space): a jump, so the whole picture is redrawn. */
+    fun jumpTo(origin: PagePoint) { if (endless) panTo(origin.x, origin.y) }
+
+    /** The answer will start at [at]: nothing is shown while the model thinks, but an endless canvas pans there. */
+    fun prepareAnswerAt(at: PagePoint) {
+        if (!endless || width <= 0) return
+        val vx = at.x - panX; val vy = at.y - panY
+        val offSideways = vx < 0 || vx > width - MIN_VISIBLE_WIDTH
+        if (offSideways || vy < 0 || vy > height * FOLLOW_EDGE) {
+            panTo(if (offSideways) at.x - ENDLESS_LEFT_MARGIN else panX, at.y - height * FOLLOW_TARGET)
         }
-        removeCallbacks(inkwellTick)
-        val old = inkwell; inkwell = at; inkwellFrame = 0
-        old?.let { invalidate(dirtyAround(it, inkwellRenderer.reach)) }
-        if (at != null) { invalidate(dirtyAround(at, inkwellRenderer.reach)); postDelayed(inkwellTick, InkwellRenderer.FRAME_MILLIS) }
     }
 
     fun showResumeMark(at: PagePoint?) {
@@ -222,7 +225,7 @@ class PageView(
     }
 
     /** One clean refresh pass over a region of page space (minX, minY, maxX, maxY). */
-    fun cleanRegion(b: FloatArray) = invalidate(dirtyOf(com.nisaba.domain.shared.PageRect(b[0], b[1], b[2], b[3]), MAX_WIDTH))
+    override fun cleanRegion(b: FloatArray) = invalidate(dirtyOf(com.nisaba.domain.shared.PageRect(b[0], b[1], b[2], b[3]), MAX_WIDTH))
 
     private fun dirtyAround(p: PagePoint, reach: Float): Rect {
         val cx = p.x * affine.scale + affine.dx; val cy = p.y * affine.scale + affine.dy
@@ -237,6 +240,9 @@ class PageView(
 
     /** The page picture became available (or changed): repaint paper, picture and ink. */
     fun reloadBackground() { rebuild(); invalidate() }
+
+    /** Live ink still waiting for its committed copy will not get one as drawn (it was replaced): paint what arrives. */
+    fun forgetLiveInk() { liveStrokesAwaitingCommit = 0 }
 
     fun setExclusions(rects: List<Rect>) {
         exclusions = rects
@@ -289,7 +295,6 @@ class PageView(
     override fun onDraw(canvas: Canvas) {
         layer?.let { canvas.drawBitmap(it, 0f, 0f, null) }
         canvas.save(); canvas.translate(affine.dx, affine.dy); canvas.scale(affine.scale, affine.scale)
-        inkwell?.let { inkwellRenderer.draw(canvas, it.x, it.y, inkwellFrame) }
         resumeMark?.let { canvas.drawText("…", it.x, it.y, markPaint) }
         canvas.restore()
     }
@@ -301,18 +306,31 @@ class PageView(
         if (pen.handleTouch(e)) return true
         if (e.getToolType(0) != MotionEvent.TOOL_TYPE_FINGER) return true
         when (e.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                downX = e.x; downY = e.y; downTime = e.eventTime; maxPointers = 1; moved = false
-                lastX = e.x; lastY = e.y; pendingDx = 0f; pendingDy = 0f
-            }
-            MotionEvent.ACTION_POINTER_DOWN -> maxPointers = maxOf(maxPointers, e.pointerCount)
+            MotionEvent.ACTION_DOWN -> fingerDown(e)
+            MotionEvent.ACTION_POINTER_DOWN -> { maxPointers = maxOf(maxPointers, e.pointerCount); removeCallbacks(longPress) }
             MotionEvent.ACTION_MOVE -> {
-                if (abs(e.x - downX) > TAP_SLOP || abs(e.y - downY) > TAP_SLOP) moved = true
+                if (abs(e.x - downX) > TAP_SLOP || abs(e.y - downY) > TAP_SLOP) { moved = true; removeCallbacks(longPress) }
                 if (endless && maxPointers == 1) dragCanvas(e)
             }
-            MotionEvent.ACTION_UP -> if (endless && moved && maxPointers == 1) applyPendingPan() else finishGesture(e)
+            MotionEvent.ACTION_UP -> fingerUp(e)
+            MotionEvent.ACTION_CANCEL -> removeCallbacks(longPress)
         }
         return true
+    }
+
+    private fun fingerDown(e: MotionEvent) {
+        downX = e.x; downY = e.y; downTime = e.eventTime; maxPointers = 1; moved = false; longPressed = false
+        removeCallbacks(longPress); postDelayed(longPress, LONG_PRESS_MILLIS)
+        lastX = e.x; lastY = e.y; pendingDx = 0f; pendingDy = 0f
+    }
+
+    private fun fingerUp(e: MotionEvent) {
+        removeCallbacks(longPress)
+        when {
+            longPressed -> Unit
+            endless && moved && maxPointers == 1 -> applyPendingPan()
+            else -> finishGesture(e)
+        }
     }
 
     /** One finger drags the endless canvas; the picture follows in discrete steps (e-ink), not every move event. */
@@ -358,10 +376,12 @@ class PageView(
         const val TAG = "NisabaPage"
         const val TAP_SLOP = 40f
         const val TAP_MILLIS = 350L
+        const val LONG_PRESS_MILLIS = 550L
         const val SWIPE_MIN = 140f
         const val MAX_WIDTH = 12f
         const val LIVE_OVERLAP = 3
         const val LIVE_INK = 0xFF111111.toInt()
+        const val MEDIUM_WIDTH = 3.5f
         const val MARK_REACH = 60f
         const val MARK_HIT = 90f
         const val PAN_STEP_MILLIS = 120L

@@ -17,6 +17,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import com.nisaba.scribe.hand.strokeOutline
+import com.nisaba.scribe.layout.InkTone
 import com.nisaba.scribe.motion.pointsReachedBy
 import kotlinx.coroutines.delay
 
@@ -45,6 +46,22 @@ private fun DrawScope.drawHand(text: HandText, color: Color, upToMs: Int?) {
                         strokeOutline(s.points.slice(0, n))
                     }
                     drawPath(pathOf(poly), color)
+                }
+            }
+        }
+    }
+}
+
+/** Hand-written [text] drawn whole, each stroke in the pen [penFor] gives its tone: colour and width scale. */
+@Composable
+fun HandInkComponent(text: HandText, penFor: (InkTone) -> Pair<Color, Float>, modifier: Modifier = Modifier) {
+    Canvas(modifier.aspectRatio(text.width / text.height)) {
+        val k = size.width / text.width
+        scale(k, k, pivot = Offset.Zero) {
+            translate(-text.minX, -text.minY) {
+                for (s in text.strokes) {
+                    val (color, width) = penFor(s.tone)
+                    drawPath(pathOf(strokeOutline(s.points, widthScale = width)), color)
                 }
             }
         }

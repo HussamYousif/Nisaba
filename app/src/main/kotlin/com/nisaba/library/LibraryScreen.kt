@@ -50,6 +50,9 @@ data class LibraryActions(
     val onDismiss: () -> Unit,
     val onSettings: () -> Unit = {},
     val onPickPdf: () -> Unit = {},
+    val onSearch: () -> Unit = {},
+    val onPickPdfToLearn: () -> Unit = {},
+    val onLearn: (uri: String, goal: String) -> Unit = { _, _ -> },
     val animateWordmark: Boolean = false,
     val onWordmarkDone: () -> Unit = {},
 )
@@ -68,9 +71,13 @@ fun LibraryScreen(state: LibraryUiState, actions: LibraryActions) {
                         "Nisaba", c.lapis, Modifier.width(230.dp), animate = actions.animateWordmark, onDone = actions.onWordmarkDone,
                     )
                 }
+                NisabaButton("Search", actions.onSearch)
+                Spacer(Modifier.width(12.dp))
                 NisabaButton("Settings", actions.onSettings)
                 Spacer(Modifier.width(12.dp))
                 NisabaButton("Open a PDF", actions.onPickPdf, enabled = state.importing == null)
+                Spacer(Modifier.width(12.dp))
+                NisabaButton("Learn a PDF", actions.onPickPdfToLearn, enabled = state.importing == null)
                 Spacer(Modifier.width(12.dp))
                 NisabaButton("New notebook", actions.onNew, filled = true)
             }
@@ -114,6 +121,7 @@ private fun NotebookGrid(notebooks: List<CoverItem>, actions: LibraryActions) {
                 Text(
                     when {
                         item.endless -> "Endless canvas"
+                        item.lesson -> "Lesson · PDF"
                         else -> "${item.pageCount} page${if (item.pageCount == 1) "" else "s"}" + if (item.hasDocument) " · PDF" else ""
                     },
                     style = MaterialTheme.typography.labelSmall, color = c.faint,
@@ -152,6 +160,20 @@ private fun LibraryDialogs(dialog: LibraryDialog, actions: LibraryActions) {
             NisabaDialog("Rename", onDismiss) {
                 NisabaTextField(name, { name = it }, onDone = { actions.onRename(d.id, name) })
                 NisabaButtonRow { NisabaButton("Cancel", onDismiss); NisabaButton("Save", { actions.onRename(d.id, name) }, filled = true) }
+            }
+        }
+        is LibraryDialog.LearnGoal -> {
+            var goal by remember { mutableStateOf("") }
+            NisabaDialog("What would you like to learn?", onDismiss) {
+                Text(
+                    "Optional, e.g. \"the exam on chapter 3\". Leave it empty to learn all of it.",
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+                NisabaTextField(goal, { goal = it }, onDone = { actions.onLearn(d.uri, goal) })
+                NisabaButtonRow {
+                    NisabaButton("Cancel", onDismiss)
+                    NisabaButton("Begin", { actions.onLearn(d.uri, goal) }, filled = true)
+                }
             }
         }
         is LibraryDialog.Message -> NisabaDialog("Could not open it", onDismiss) {

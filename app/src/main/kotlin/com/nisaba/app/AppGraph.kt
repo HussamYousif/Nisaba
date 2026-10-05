@@ -19,10 +19,13 @@ import com.nisaba.domain.conversation.ConversationSession
 import com.nisaba.domain.document.ImportDocumentUseCase
 import com.nisaba.domain.ink.CommitStrokeUseCase
 import com.nisaba.domain.ink.CommitStrokesUseCase
+import com.nisaba.domain.ink.EraseAnswerUseCase
 import com.nisaba.domain.ink.EraseUseCase
 import com.nisaba.domain.ink.LoadPageInkUseCase
 import com.nisaba.domain.ink.RedoUseCase
 import com.nisaba.domain.ink.UndoUseCase
+import com.nisaba.domain.memory.ForgetFactUseCase
+import com.nisaba.domain.memory.ObserveMemoryUseCase
 import com.nisaba.domain.notebook.CreateNotebookUseCase
 import com.nisaba.domain.notebook.DeleteNotebookUseCase
 import com.nisaba.domain.notebook.InsertPageUseCase
@@ -37,6 +40,8 @@ import com.nisaba.domain.shared.Clock
 import com.nisaba.domain.shared.IdGen
 import com.nisaba.domain.shared.NotebookId
 import com.nisaba.infra.db.RoomExchangeStore
+import com.nisaba.infra.db.RoomFactStore
+import com.nisaba.infra.db.RoomLessonStore
 import com.nisaba.infra.db.RoomNotebookStore
 import com.nisaba.infra.deepseek.DeepSeekClient
 import com.nisaba.infra.document.DocumentRasterCache
@@ -51,17 +56,22 @@ import com.nisaba.infra.settings.DataStoreSettingsStore
 import com.nisaba.infra.settings.KeystoreSecretStore
 import com.nisaba.infra.snapshot.PageSnapshotRenderer
 import com.nisaba.library.LibraryViewModel
+import com.nisaba.memory.MemoryViewModel
 import com.nisaba.notebook.InkUseCases
 import com.nisaba.notebook.NotebookDeps
 import com.nisaba.notebook.NotebookViewModel
+import com.nisaba.notebook.NotebookSources
 import com.nisaba.notebook.SessionFactory
 import com.nisaba.scribe.hand.GlyphSet
 import com.nisaba.scribe.hand.GlyphSetParser
 import com.nisaba.scribe.layout.Occupancy
+import com.nisaba.domain.search.SearchUseCase
+import com.nisaba.domain.usage.summarizeUsage
+import com.nisaba.search.SearchViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.UUID
@@ -76,6 +86,7 @@ class AppGraph(private val app: Application) {
 
     /** Debug only: a document location to import as soon as the library opens. */
     var debugImportPdf: String? = null
+    var debugLearnGoal: String? = null
 
     /** Debug only: open the first notebook automatically. */
     var debugOpenFirst: Boolean = false
@@ -87,6 +98,8 @@ class AppGraph(private val app: Application) {
 
     private val notebooks by lazy { RoomNotebookStore.open(app) }
     private val exchanges by lazy { RoomExchangeStore.open(app) }
+    private val facts by lazy { RoomFactStore.open(app) }
+    private val lessons by lazy { RoomLessonStore.open(app) }
     private val inkStore by lazy { InkFileStore(File(app.filesDir, "ink"), io, logger) }
     private val docsDir = File(app.filesDir, "docs")
     private val rasterDir = File(app.cacheDir, "raster")
@@ -138,10 +151,23 @@ class AppGraph(private val app: Application) {
     private fun saveView(page: PageId, at: PagePoint) = viewPrefs.edit().putString(page.value, "${at.x},${at.y}").apply()
 
     fun settingsFactory(): ViewModelProvider.Factory = viewModelFactory {
-        initializer { com.nisaba.settings.SettingsViewModel(settings, secrets, oracle) }
+        initializer {
+            com.nisaba.settings.SettingsViewModel(
+                settings, secrets, oracle, ObserveMemoryUseCase(facts),
+                usage = { summarizeUsage(exchanges.usage(), clock.nowMillis(), java.time.ZoneId.systemDefault()) },
+            )
+        }
     }
 
-    fun notebookFactory(id: NotebookId): ViewModelProvider.Factory = viewModelFactory {
+    fun memoryFactory(): ViewModelProvider.Factory = viewModelFactory {
+        initializer { MemoryViewModel(ObserveMemoryUseCase(facts), ForgetFactUseCase(facts)) }
+    }
+
+    fun searchFactory(): ViewModelProvider.Factory = viewModelFactory {
+        initializer { SearchViewModel({ q -> SearchUseCase(exchanges, notebooks)(q) }) }
+    }
+
+    fun notebookFactory(id: NotebookId, startPage: PageId? = null): ViewModelProvider.Factory = viewModelFactory {
         initializer {
             NotebookViewModel(
                 NotebookDeps(
@@ -149,13 +175,17 @@ class AppGraph(private val app: Application) {
                     rename = RenameNotebookUseCase(notebooks, clock),
                     ink = InkUseCases(
                         LoadPageInkUseCase(inkStore), CommitStrokeUseCase(inkStore), CommitStrokesUseCase(inkStore),
-                        EraseUseCase(inkStore, idGen), UndoUseCase(inkStore), RedoUseCase(inkStore),
+                        EraseUseCase(inkStore, idGen), UndoUseCase(inkStore), RedoUseCase(inkStore), EraseAnswerUseCase(inkStore),
                     ),
                     setListening = SetListeningUseCase(notebooks), idGen = idGen,
                     settings = settings.observe(), sessions = sessionFactory(id), hands = ::hand,
-                    memory = NotebookMemory({ settings.update { it.copy(hintSeen = true) } }, ::loadView, ::saveView),
-                    documentPages = { documentText(id) }, backgroundOccupancy = ::printedOccupancy,
+                    memory = NotebookMemory(
+                        { settings.update { it.copy(hintSeen = true) } }, ::loadView, ::saveView,
+                        { ink, size -> settings.update { it.copy(penInk = ink, penSize = size) } },
+                    ),
+                    sources = NotebookSources({ documentText(id) }, ::printedOccupancy, exchanges::get, lessons.observe(id)),
                 ),
+                startPage = startPage,
             )
         }
     }
@@ -182,11 +212,13 @@ class AppGraph(private val app: Application) {
                 notebookId = id, oracle = oracle,
                 snapshotter = PageSnapshotRenderer(id, notebooks, inkStore, inkRenderer, backgroundRenderer, rasters),
                 exchanges = exchanges, surface = surface, context = context, clock = clock, idGen = idGen, logger = logger,
+                memory = facts, lessons = lessons,
             ),
             scope, s, listening,
         )
     }
 
     /** Writes pending ink now (called when the app leaves the foreground). */
-    fun flushInk() = runBlocking { inkStore.flush() }
+    /** Writes pending ink now, off the UI thread (the app scope outlives the activity). */
+    fun flushInk() { io.launch { inkStore.flush() } }
 }

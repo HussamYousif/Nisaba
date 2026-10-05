@@ -7,7 +7,12 @@ import com.nisaba.domain.ink.InkPoints
 import com.nisaba.domain.shared.PagePoint
 import kotlinx.coroutines.flow.SharedFlow
 
-enum class PenTool { Pen, StrokeEraser, AreaEraser }
+/** [Shape] draws like the pen; the stroke is then replaced by a clean shape. */
+enum class PenTool {
+    Pen, Shape, StrokeEraser, AreaEraser;
+
+    val erases: Boolean get() = this == StrokeEraser || this == AreaEraser
+}
 
 /** Coordinates are VIEW pixels; the ViewModel maps them to page units. */
 sealed interface PenEvent {
@@ -36,6 +41,9 @@ interface PenDevice {
     fun suspendRawInk()
     fun resumeRawInk()
     fun setTool(tool: PenTool)
+
+    /** The live ink's colour (ARGB) and width (view px) so it matches what will be committed. */
+    fun setPen(argb: Int, width: Float)
     fun detach()
 
     /** Called from the view's onTouchEvent. Returns true if the event was consumed as pen input. */

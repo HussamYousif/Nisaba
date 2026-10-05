@@ -4,8 +4,11 @@ import com.nisaba.device.PenEvent
 import com.nisaba.device.PenTool
 import com.nisaba.domain.ink.CommitStrokeUseCase
 import com.nisaba.domain.ink.CommitStrokesUseCase
+import com.nisaba.domain.ink.EraseAnswerUseCase
 import com.nisaba.domain.ink.EraseUseCase
 import com.nisaba.domain.ink.InkPoints
+import com.nisaba.domain.ink.ShapeKind
+import com.nisaba.domain.settings.PenSize
 import com.nisaba.domain.ink.StrokeOrigin
 import com.nisaba.scribe.motion.TimedStroke
 import com.nisaba.domain.ink.LoadPageInkUseCase
@@ -14,7 +17,6 @@ import com.nisaba.domain.ink.UndoUseCase
 import com.nisaba.domain.notebook.CreateNotebookUseCase
 import com.nisaba.domain.notebook.FakeClock
 import com.nisaba.domain.notebook.FakeIdGen
-import com.nisaba.domain.notebook.FakeInkStore
 import com.nisaba.domain.notebook.FakeNotebookStore
 import com.nisaba.domain.notebook.InsertPageUseCase
 import com.nisaba.domain.notebook.ObserveNotebookUseCase
@@ -22,6 +24,11 @@ import com.nisaba.domain.notebook.RenameNotebookUseCase
 import com.nisaba.domain.notebook.SetListeningUseCase
 import com.nisaba.domain.shared.NotebookId
 import com.nisaba.domain.shared.PagePoint
+import com.nisaba.domain.ink.InkStore
+import com.nisaba.domain.ink.PageInk
+import com.nisaba.domain.ink.Stroke
+import com.nisaba.domain.shared.PageId
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
@@ -36,7 +43,7 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class NotebookViewModelTest {
     private val store = FakeNotebookStore()
-    private val ink = FakeInkStore()
+    private val ink = GatedInkStore()
     private val ids = FakeIdGen("s")
     private val clock = FakeClock()
 
@@ -46,11 +53,13 @@ class NotebookViewModelTest {
             nb.id, ObserveNotebookUseCase(store), InsertPageUseCase(store, FakeIdGen("pg")), RenameNotebookUseCase(store, clock),
             InkUseCases(
                 LoadPageInkUseCase(ink), CommitStrokeUseCase(ink), CommitStrokesUseCase(ink), EraseUseCase(ink, ids),
-                UndoUseCase(ink), RedoUseCase(ink),
+                UndoUseCase(ink), RedoUseCase(ink), EraseAnswerUseCase(ink),
             ),
             SetListeningUseCase(store), ids,
         )
-        val vm = NotebookViewModel(deps, scope.backgroundScope, eraserRadius = 6f, toolbarHideMillis = 3000)
+        val vm = NotebookViewModel(
+            deps, scope.backgroundScope, eraserRadius = 6f, toolbarHideMillis = 3000, nowMillis = { scope.testScheduler.currentTime },
+        )
         scope.runCurrent() // the page opens
         vm.onViewSize(930, 1240) // scale 0.5 → page coords are view coords × 2
         return vm to nb.id
@@ -105,6 +114,49 @@ class NotebookViewModelTest {
         assertEquals(2, vm.state.value.strokes.size)
     }
 
+    @Test fun aPenStrokeWithAnEraserPickedErasesInsteadOfInking() = runTest { // the Onyx pen tip reports strokes either way
+        val (vm, _) = open(this)
+        vm.onPenEvent(PenEvent.StrokeDone(line(100f, 200f, 300f))); runCurrent()
+        vm.setTool(PenTool.StrokeEraser)
+        vm.onPenEvent(PenEvent.StrokeDone(InkPoints(floatArrayOf(150f, 150f), floatArrayOf(280f, 320f), FloatArray(2), IntArray(2))))
+        runCurrent()
+        assertTrue(vm.state.value.strokes.isEmpty())
+    }
+
+    @Test fun thePenWritesInItsPickedInkAndThickness() = runTest {
+        val (vm, _) = open(this)
+        vm.tapPen() // the pen is already picked, so its panel opens
+        assertEquals(ToolPanel.Pen, vm.state.value.toolPanel)
+        vm.setPenInk(0xFFC0281C.toInt()); vm.setPenSize(PenSize.Bold); vm.closePanel()
+        vm.onPenEvent(PenEvent.StrokeDone(line(100f, 200f, 300f))); runCurrent()
+        val s = vm.state.value.strokes.single()
+        assertEquals(0xFFC0281C.toInt(), s.color.argb); assertEquals(PenSize.Bold.width, s.width)
+    }
+
+    @Test fun aDragWithTheShapeToolBecomesTheCleanShape() = runTest {
+        val (vm, _) = open(this)
+        vm.tapShape(); vm.tapShape()
+        assertEquals(ToolPanel.Shapes, vm.state.value.toolPanel)
+        vm.setShape(ShapeKind.Rectangle)
+        val effects = mutableListOf<NotebookEffect>()
+        backgroundScope.launch { vm.effects.collect { effects += it } }
+        val xs = floatArrayOf(100f, 180f, 260f, 300f); val ys = floatArrayOf(100f, 140f, 120f, 200f)
+        val wobbly = InkPoints(xs, ys, FloatArray(4) { .5f }, IntArray(4))
+        vm.onPenEvent(PenEvent.StrokeDone(wobbly)); runCurrent()
+        val b = vm.state.value.strokes.single().bounds
+        assertEquals(200f, b.left, 8f); assertEquals(600f, b.right, 8f); assertEquals(200f, b.top, 8f); assertEquals(400f, b.bottom, 8f)
+        assertTrue(NotebookEffect.Repaint in effects)
+    }
+
+    @Test fun autoShapesKeepWritingAsDrawn() = runTest {
+        val (vm, _) = open(this)
+        vm.setTool(PenTool.Shape) // Auto by default
+        val xs = floatArrayOf(100f, 120f, 140f, 160f, 180f, 200f); val ys = floatArrayOf(100f, 160f, 100f, 160f, 100f, 160f)
+        val zigzag = InkPoints(xs, ys, FloatArray(6) { .5f }, IntArray(6))
+        vm.onPenEvent(PenEvent.StrokeDone(zigzag)); runCurrent()
+        assertEquals(6, vm.state.value.strokes.single().points.size)
+    }
+
     @Test fun turningPastTheLastPageAppendsOneAndRequestsFullRefresh() = runTest {
         val (vm, _) = open(this)
         val effects = mutableListOf<NotebookEffect>()
@@ -117,6 +169,18 @@ class NotebookViewModelTest {
         assertTrue(effects.contains(NotebookEffect.Refresh(full = true)))
         vm.turnPage(-1); runCurrent()
         assertEquals(0, vm.state.value.pageIndex); assertEquals(1, vm.state.value.strokes.size)
+        assertTrue(vm.state.value.canUndo, "the page comes back with its undo history")
+    }
+
+    @Test fun neighbouringPagesArePreloadedAndStayCurrent() = runTest {
+        val (vm, nbId) = open(this)
+        vm.turnPage(+1); runCurrent(); vm.turnPage(+1); runCurrent()     // three pages, on the last
+        val pages = store.books.value[nbId]!!.pages.map { it.id }
+        val writtenElsewhere = listOf(TimedStroke(0, line(100f, 200f, 300f), bold = false, wordIndex = 0))
+        vm.onScribeAbandoned(writtenElsewhere, null, pages[1]); runCurrent() // an answer lands on the (preloaded) middle page
+        vm.turnPage(-1); runCurrent()
+        assertEquals(1, vm.state.value.strokes.size, "the preloaded copy saw the change")
+        assertEquals(1, ink.saved[pages[1]]!!.size)
     }
 
     @Test fun turningBeforeTheFirstPageDoesNothing() = runTest {
@@ -131,12 +195,14 @@ class NotebookViewModelTest {
         vm.onPenEvent(PenEvent.StrokeDone(line(100f, 200f, 300f))); runCurrent()
         advanceTimeBy(3100); runCurrent()
         assertFalse(vm.state.value.toolbarVisible)
+        advanceTimeBy(600)                                                     // past the guard against a racing tap
         vm.showToolbar(); runCurrent()
         assertTrue(vm.state.value.toolbarVisible)
     }
 
     @Test fun aSpillingAnswerIsCommittedThenTurnsToANewPageAndTheHandContinues() = runTest {
-        val (vm, _) = open(this)
+        val (vm, nbId) = open(this)
+        val first = store.books.value[nbId]!!.pages.first().id
         val commands = mutableListOf<ScribeCommand>()
         backgroundScope.launch { vm.scribeCommands.collect { commands += it } }
         runCurrent()
@@ -146,18 +212,104 @@ class NotebookViewModelTest {
                 bold = false, wordIndex = 0,
             ),
         )
-        val ids = vm.onScribePageBreak(written, 1)
+        val ids = vm.onScribePageBreak(written, 1, null, first)
         assertEquals(1, ids.size)
         advanceTimeBy(1_000); runCurrent()
         val s = vm.state.value
         assertEquals(2, s.pageCount); assertEquals(1, s.pageIndex)
         assertTrue(s.strokes.isEmpty(), "the spill page starts blank")
         assertEquals(1, ink.saved.values.count { it.size == 1 && it[0].id == ids[0] }, "the first page kept what was written")
-        assertEquals(ScribeCommand.PageReady(1), commands.last())
+        val second = store.books.value[nbId]!!.pages.single { it.id != first }.id
+        assertEquals(ScribeCommand.PageReady(1, second), commands.last())
         assertFalse(commands.contains(ScribeCommand.Reset), "a spill must not reset the hand")
         vm.turnPage(-1); runCurrent()
         assertEquals(ids[0], vm.state.value.strokes.single().id)
         assertTrue(vm.state.value.strokes.single().origin is StrokeOrigin.Oracle)
+    }
+
+    @Test fun strokesMadeWhileASaveIsSlowAreAllKept() = runTest {
+        val (vm, _) = open(this)
+        ink.gate = CompletableDeferred()
+        vm.onPenEvent(PenEvent.StrokeDone(line(100f, 200f, 300f)))
+        vm.onPenEvent(PenEvent.StrokeDone(line(100f, 200f, 500f)))
+        runCurrent()
+        ink.gate!!.complete(Unit); runCurrent()
+        assertEquals(2, vm.state.value.strokes.size)
+        assertEquals(2, ink.saved.values.single().size)
+    }
+
+    @Test fun anAnswerCommittedAfterThePageTurnedLandsOnItsOwnPage() = runTest {
+        val (vm, nbId) = open(this)
+        val first = store.books.value[nbId]!!.pages.first().id
+        ink.gate = CompletableDeferred()
+        val written = listOf(TimedStroke(0, line(100f, 200f, 300f), bold = false, wordIndex = 0))
+        vm.onScribeAbandoned(written, null, first)
+        vm.turnPage(+1); runCurrent()
+        ink.gate!!.complete(Unit); runCurrent()
+        assertEquals(1, vm.state.value.pageIndex)
+        assertTrue(vm.state.value.strokes.isEmpty(), "the new page stays blank")
+        assertEquals(1, ink.saved[first]!!.size)
+        vm.onPenEvent(PenEvent.StrokeDone(line(100f, 200f, 300f))); runCurrent()
+        assertEquals(1, ink.saved[first]!!.size, "new writing goes to the open page")
+        assertEquals(1, vm.state.value.strokes.size)
+    }
+
+    @Test fun erasingAnAnswerClearsItFromEveryPageItSpilledOnto() = runTest {
+        val (vm, nbId) = open(this)
+        vm.turnPage(+1); runCurrent(); vm.turnPage(+1); runCurrent()                  // three pages
+        val pages = store.books.value[nbId]!!.pages.map { it.id }
+        val ref = com.nisaba.canvas.BlockRef(1, 1, 1, com.nisaba.domain.shared.ExchangeId("x"))
+        val stroke = listOf(TimedStroke(0, line(100f, 200f, 300f), bold = false, wordIndex = 0))
+        vm.onScribeAbandoned(stroke, ref, pages[0]); vm.onScribeAbandoned(stroke, ref, pages[1]); runCurrent()
+        vm.onPenEvent(PenEvent.StrokeDone(line(100f, 200f, 600f))); runCurrent()     // the user's own ink on page 3 stays
+        vm.turnPage(-1); runCurrent()                                                 // on page 2, part of the answer
+        vm.eraseAnswer(com.nisaba.domain.shared.ExchangeId("x")); runCurrent()
+        assertTrue(ink.saved[pages[0]].orEmpty().isEmpty() && ink.saved[pages[1]].orEmpty().isEmpty())
+        assertEquals(1, ink.saved[pages[2]]!!.size)
+        assertTrue(vm.state.value.strokes.isEmpty())
+    }
+
+    @Test fun pickingASpotInTheOverviewCentresTheViewOnIt() = runTest {
+        val (vm, _) = open(this)
+        val effects = mutableListOf<NotebookEffect>()
+        backgroundScope.launch { vm.effects.collect { effects += it } }
+        vm.onViewSize(1000, 800); vm.showOverview(); runCurrent()
+        assertTrue(vm.state.value.overview)
+        vm.jumpTo(PagePoint(5000f, 5000f)); runCurrent()
+        assertFalse(vm.state.value.overview)
+        assertEquals(NotebookEffect.PanTo(PagePoint(4500f, 4600f)), effects.first { it is NotebookEffect.PanTo })
+    }
+
+    @Test fun anOpenMenuKeepsTheToolbarUpUntilItCloses() = runTest {
+        val (vm, _) = open(this)
+        vm.showToolbar(); vm.openMenu(); advanceTimeBy(5_000); runCurrent()
+        assertTrue(vm.state.value.toolbarVisible && vm.state.value.menuOpen)
+        vm.closeMenu(); advanceTimeBy(5_100); runCurrent()
+        assertFalse(vm.state.value.toolbarVisible)
+    }
+
+    @Test fun thePageGridOpensOnTheCurrentScreenfulAndJumpsToAPage() = runTest {
+        val (vm, _) = open(this)
+        repeat(3) { vm.turnPage(+1); runCurrent() }                                 // four pages, on the last
+        vm.openPageGrid(); runCurrent()
+        assertTrue(vm.state.value.pageGridOpen); assertEquals(0, vm.state.value.pageGridScreen)
+        vm.goToPage(1); runCurrent()
+        assertFalse(vm.state.value.pageGridOpen)
+        assertEquals(1, vm.state.value.pageIndex)
+        vm.showToolbar(); vm.openPageGrid(); advanceTimeBy(5_000); runCurrent()
+        assertTrue(vm.state.value.toolbarVisible, "the bar stays while the grid is open")
+    }
+
+    @Test fun usingTheBarKeepsItLongerAndATapRightAfterItHidesDoesNotBringItBack() = runTest {
+        val (vm, _) = open(this)
+        vm.showToolbar(); advanceTimeBy(4_000); runCurrent()
+        assertTrue(vm.state.value.toolbarVisible, "5 s after it was summoned")
+        advanceTimeBy(1_100); runCurrent()
+        assertFalse(vm.state.value.toolbarVisible)
+        vm.showToolbar(); runCurrent()
+        assertFalse(vm.state.value.toolbarVisible, "a tap racing the hide is ignored")
+        advanceTimeBy(600); vm.showToolbar(); runCurrent()
+        assertTrue(vm.state.value.toolbarVisible)
     }
 
     @Test fun renameUpdatesTitle() = runTest {
@@ -166,4 +318,13 @@ class NotebookViewModelTest {
         vm.confirmRename("Physics"); runCurrent()
         assertEquals("Physics", vm.state.value.title); assertFalse(vm.state.value.renaming)
     }
+}
+
+/** In-memory ink whose saves can be held up (a slow disk) until [gate] completes. */
+private class GatedInkStore : InkStore {
+    val saved = mutableMapOf<PageId, List<Stroke>>()
+    var gate: CompletableDeferred<Unit>? = null
+    override suspend fun load(pageId: PageId) = PageInk(pageId, saved[pageId].orEmpty())
+    override suspend fun save(pageId: PageId, strokes: List<Stroke>) { gate?.await(); saved[pageId] = strokes }
+    override suspend fun deletePages(ids: List<PageId>) { ids.forEach(saved::remove) }
 }

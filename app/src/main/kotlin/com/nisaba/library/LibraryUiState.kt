@@ -9,6 +9,7 @@ data class CoverItem(
     val seed: Int,
     val hasDocument: Boolean,
     val endless: Boolean = false,
+    val lesson: Boolean = false,
 )
 
 sealed interface LibraryDialog {
@@ -18,6 +19,9 @@ sealed interface LibraryDialog {
     data class Rename(val id: NotebookId, val name: String) : LibraryDialog
     data class ConfirmDelete(val id: NotebookId, val name: String) : LibraryDialog
     data class Message(val text: String) : LibraryDialog
+
+    /** A PDF was picked to learn from: ask what for (optional) before importing it. */
+    data class LearnGoal(val uri: String) : LibraryDialog
 }
 
 data class LibraryUiState(

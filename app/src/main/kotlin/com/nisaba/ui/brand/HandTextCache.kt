@@ -31,15 +31,20 @@ class HandTextCache(private val hand: () -> GlyphSet) {
 
     @Synchronized
     fun of(text: String, lineWidth: Float = DEFAULT_WIDTH, xHeight: Float = DEFAULT_X_HEIGHT): HandText =
-        cache.getOrPut("$lineWidth|$xHeight|$text") { build(text, lineWidth, xHeight) }
+        cache.getOrPut("$lineWidth|$xHeight|$text") { build(Block.Paragraph(listOf(Inline.Text(text))), text, lineWidth, xHeight) }
 
-    private fun build(text: String, lineWidth: Float, xh: Float): HandText {
+    /** Any answer block (e.g. code, so a preview shows exactly how the hand lays it out); strokes keep their tones. */
+    @Synchronized
+    fun of(block: Block, lineWidth: Float = DEFAULT_WIDTH, xHeight: Float = DEFAULT_X_HEIGHT): HandText =
+        cache.getOrPut("$lineWidth|$xHeight|$block") { build(block, block.toString(), lineWidth, xHeight) }
+
+    private fun build(block: Block, seed: String, lineWidth: Float, xh: Float): HandText {
         val region = LayoutRegion(PageSize(lineWidth, LARGE), 0f, lineWidth, 0f, LARGE, xh)
         val plan = ScribePlanUseCase(
-            hand(), region, OccupancyLookup { null }, text.hashCode().toLong(),
+            hand(), region, OccupancyLookup { null }, seed.hashCode().toLong(),
             HumanParams.CASUAL, speedProfile(HandSpeed.Swift),
         )
-        val step = plan(plan.start(), Block.Paragraph(listOf(Inline.Text(text))))
+        val step = plan(plan.start(), block)
         val strokes = step.strokes.filter { it.page == 0 }
         if (strokes.isEmpty()) return HandText(emptyList(), emptyList(), 0f, 0f, 1f, 1f)
         val minX = strokes.minOf { it.points.xs.min() } - PAD; val maxX = strokes.maxOf { it.points.xs.max() } + PAD

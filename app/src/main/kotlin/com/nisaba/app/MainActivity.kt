@@ -23,6 +23,7 @@ class MainActivity : ComponentActivity() {
             graph.debugWriteText = intent.getStringExtra("write")
             graph.debugOpenFirst = intent.getBooleanExtra("open_first", false)
             graph.debugImportPdf = intent.getStringExtra("import_pdf")
+            graph.debugLearnGoal = intent.getStringExtra("learn_goal") // with import_pdf: a lesson notebook ("" = no goal)
         }
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowInsetsControllerCompat(window, window.decorView).apply {

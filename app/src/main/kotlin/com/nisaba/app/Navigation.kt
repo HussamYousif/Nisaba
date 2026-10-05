@@ -10,13 +10,21 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavHostController
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.nisaba.domain.shared.NotebookId
+import com.nisaba.domain.shared.PageId
+import com.nisaba.search.SearchScreen
+import com.nisaba.search.SearchViewModel
 import com.nisaba.library.LibraryActions
 import com.nisaba.library.LibraryScreen
 import com.nisaba.library.LibraryViewModel
+import com.nisaba.memory.MemoryScreen
+import com.nisaba.memory.MemoryViewModel
 import com.nisaba.notebook.NotebookScreen
 import com.nisaba.notebook.NotebookViewModel
 import com.nisaba.settings.SettingsScreen
@@ -26,9 +34,11 @@ import kotlinx.coroutines.flow.first
 import androidx.compose.runtime.produceState
 
 private const val LIBRARY = "library"
-private const val NOTEBOOK = "notebook/{id}"
+private const val NOTEBOOK = "notebook/{id}?page={page}"
+private const val SEARCH = "search"
 private const val SETTINGS = "settings"
 private const val WELCOME = "welcome"
+private const val MEMORY = "memory"
 private const val DEBUG_SETTLE_MILLIS = 1500L
 
 /** No animated transitions anywhere (e-ink): route changes are instant swaps. */
@@ -45,39 +55,13 @@ fun NisabaNavHost(graph: AppGraph) {
         enterTransition = { EnterTransition.None }, exitTransition = { ExitTransition.None },
         popEnterTransition = { EnterTransition.None }, popExitTransition = { ExitTransition.None },
     ) {
-        composable(LIBRARY) {
-            val vm: LibraryViewModel = viewModel(factory = graph.libraryFactory())
-            val state by vm.state.collectAsState()
-            LaunchedEffect(state.notebooks) {
-                val first = state.notebooks.firstOrNull()
-                if (graph.debugOpenFirst && first != null) { graph.debugOpenFirst = false; nav.navigate("notebook/${first.id.value}") }
-            }
-            LaunchedEffect(Unit) {
-                graph.debugImportPdf?.let { uri ->
-                    graph.debugImportPdf = null
-                    vm.importPdf(uri) { nav.navigate("notebook/${it.value}") }
-                }
-            }
-            val pickPdf = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-                if (uri != null) vm.importPdf(uri.toString()) { nav.navigate("notebook/${it.value}") }
-            }
-            LibraryScreen(
-                state,
-                LibraryActions(
-                    onPickPdf = { pickPdf.launch(arrayOf("application/pdf")) },
-                    animateWordmark = !graph.wordmarkPlayed, onWordmarkDone = { graph.wordmarkPlayed = true },
-                    onOpen = { nav.navigate("notebook/${it.value}") },
-                    onNew = vm::onNew, onMenu = vm::onMenu,
-                    onCreate = { name, endless -> vm.confirmCreate(name, endless) { nav.navigate("notebook/${it.value}") } },
-                    onRename = vm::confirmRename, onDelete = vm::confirmDelete,
-                    onRenameRequested = vm::onRenameRequested, onDeleteRequested = vm::onDeleteRequested, onDismiss = vm::dismiss,
-                    onSettings = { nav.navigate(SETTINGS) },
-                ),
-            )
-        }
-        composable(NOTEBOOK) { entry ->
+        composable(LIBRARY) { LibraryRoute(graph, nav) }
+        val pageArg = navArgument("page") { type = NavType.StringType; nullable = true; defaultValue = null }
+        composable(NOTEBOOK, arguments = listOf(pageArg)) { entry ->
             val id = entry.arguments?.getString("id").orEmpty()
-            val vm: NotebookViewModel = viewModel(key = id, factory = graph.notebookFactory(NotebookId(id)))
+            val startPage = entry.arguments?.getString("page")?.takeIf { it.isNotBlank() }?.let(::PageId)
+            val factory = graph.notebookFactory(NotebookId(id), startPage)
+            val vm: NotebookViewModel = viewModel(key = id + startPage?.value.orEmpty(), factory = factory)
             val pen = remember { graph.createPen() }
             LaunchedEffect(id) {
                 graph.debugWriteText?.let { text ->
@@ -102,7 +86,58 @@ fun NisabaNavHost(graph: AppGraph) {
         composable(SETTINGS) {
             val vm: SettingsViewModel = viewModel(factory = graph.settingsFactory())
             val state by vm.state.collectAsState()
-            SettingsScreen(state, vm, onBack = { nav.popBackStack() })
+            SettingsScreen(state, vm, onBack = { nav.popBackStack() }, onOpenMemory = { nav.navigate(MEMORY) })
+        }
+        composable(SEARCH) {
+            val vm: SearchViewModel = viewModel(factory = graph.searchFactory())
+            val state by vm.state.collectAsState()
+            SearchScreen(state, vm, onBack = { nav.popBackStack() }, onOpen = { hit ->
+                nav.navigate("notebook/${hit.notebookId.value}?page=${hit.pageId.value}")
+            })
+        }
+        composable(MEMORY) {
+            val vm: MemoryViewModel = viewModel(factory = graph.memoryFactory())
+            val state by vm.state.collectAsState()
+            MemoryScreen(state, vm, onBack = { nav.popBackStack() })
         }
     }
+}
+
+/** The library: notebooks, new notebook, open a PDF, learn a PDF. */
+@Composable
+private fun LibraryRoute(graph: AppGraph, nav: NavHostController) {
+    val vm: LibraryViewModel = viewModel(factory = graph.libraryFactory())
+    val state by vm.state.collectAsState()
+    LaunchedEffect(state.notebooks) {
+        val first = state.notebooks.firstOrNull()
+        if (graph.debugOpenFirst && first != null) { graph.debugOpenFirst = false; nav.navigate("notebook/${first.id.value}") }
+    }
+    LaunchedEffect(Unit) {
+        graph.debugImportPdf?.let { uri ->
+            graph.debugImportPdf = null
+            vm.importPdf(uri, graph.debugLearnGoal) { nav.navigate("notebook/${it.value}") }
+        }
+    }
+    val pickPdf = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) vm.importPdf(uri.toString()) { nav.navigate("notebook/${it.value}") }
+    }
+    val pickPdfToLearn = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) vm.onPdfToLearnPicked(uri.toString())
+    }
+    LibraryScreen(
+        state,
+        LibraryActions(
+            onPickPdf = { pickPdf.launch(arrayOf("application/pdf")) },
+            onPickPdfToLearn = { pickPdfToLearn.launch(arrayOf("application/pdf")) },
+            onLearn = { uri, goal -> vm.importPdf(uri, teachGoal = goal) { nav.navigate("notebook/${it.value}") } },
+            animateWordmark = !graph.wordmarkPlayed, onWordmarkDone = { graph.wordmarkPlayed = true },
+            onOpen = { nav.navigate("notebook/${it.value}") },
+            onNew = vm::onNew, onMenu = vm::onMenu,
+            onCreate = { name, endless -> vm.confirmCreate(name, endless) { nav.navigate("notebook/${it.value}") } },
+            onRename = vm::confirmRename, onDelete = vm::confirmDelete,
+            onRenameRequested = vm::onRenameRequested, onDeleteRequested = vm::onDeleteRequested, onDismiss = vm::dismiss,
+            onSettings = { nav.navigate(SETTINGS) },
+            onSearch = { nav.navigate(SEARCH) },
+        ),
+    )
 }

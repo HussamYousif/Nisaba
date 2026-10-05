@@ -30,6 +30,9 @@ class OnyxPenDevice : PenDevice {
     private var helper: TouchHelper? = null
     private var suspendCount = 0
     private var maxPressure = DEFAULT_MAX_PRESSURE
+    private var penArgb = android.graphics.Color.BLACK
+    private var penWidth = STROKE_WIDTH
+    private var tool = PenTool.Pen
 
     private val callback = object : RawInputCallback() {
         override fun onBeginRawDrawing(b: Boolean, p: TouchPoint) { flow.tryEmit(PenEvent.PenDown(p.x, p.y)) }
@@ -61,9 +64,10 @@ class OnyxPenDevice : PenDevice {
         detach()
         runCatching {
             helper = TouchHelper.create(view, callback).apply {
-                setStrokeWidth(STROKE_WIDTH).setStrokeStyle(TouchHelper.STROKE_STYLE_FOUNTAIN)
+                setStrokeWidth(penWidth).setStrokeStyle(TouchHelper.STROKE_STYLE_FOUNTAIN)
                 setLimitRect(drawArea, exclude).openRawDrawing()
-                setStrokeColor(android.graphics.Color.BLACK)
+                setStrokeColor(penArgb)
+                setRawDrawingRenderEnabled(!tool.erases)
                 enableSideBtnErase(true)
                 setRawDrawingEnabled(suspendCount == 0)
             }
@@ -79,7 +83,16 @@ class OnyxPenDevice : PenDevice {
     override fun suspendRawInk() { if (suspendCount++ == 0) helper?.setRawDrawingEnabled(false) }
     override fun resumeRawInk() { if (suspendCount > 0 && --suspendCount == 0) helper?.setRawDrawingEnabled(true) }
 
-    override fun setTool(tool: PenTool) = Unit // the SDK routes eraser input by pen button/eraser end; AreaEraser handled upstream
+    /** With an eraser picked, the pen tip leaves no ink; its path still arrives as a stroke, which the app erases along. */
+    override fun setTool(tool: PenTool) {
+        this.tool = tool
+        runCatching { helper?.setRawDrawingRenderEnabled(!tool.erases) }
+    }
+
+    override fun setPen(argb: Int, width: Float) {
+        penArgb = argb; penWidth = width * STROKE_WIDTH / APP_WIDTH
+        runCatching { helper?.setStrokeColor(argb)?.setStrokeWidth(penWidth) }
+    }
 
     override fun detach() {
         runCatching { helper?.closeRawDrawing() }
@@ -90,7 +103,8 @@ class OnyxPenDevice : PenDevice {
 
     companion object {
         private const val TAG = "NisabaPen"
-        private const val STROKE_WIDTH = 3f
+        private const val STROKE_WIDTH = 3f   // the SDK's live ink at the app's medium pen…
+        private const val APP_WIDTH = 3.5f    // …whose committed width is this
         private const val DEFAULT_MAX_PRESSURE = 4095f
 
         /** True on Boox devices where the Onyx SDK's system service is present. */

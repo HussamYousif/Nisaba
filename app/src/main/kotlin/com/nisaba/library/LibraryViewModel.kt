@@ -35,7 +35,9 @@ class LibraryViewModel(
                 _state.update { s ->
                     s.copy(
                         loading = false,
-                        notebooks = items.map { CoverItem(it.id, it.name, it.pageCount, it.coverSeed, it.hasDocument, it.endless) },
+                        notebooks = items.map {
+                            CoverItem(it.id, it.name, it.pageCount, it.coverSeed, it.hasDocument, it.endless, it.lesson)
+                        },
                     )
                 }
             }
@@ -53,12 +55,18 @@ class LibraryViewModel(
         scope.launch { val nb = create(name, endless = endless); dismiss(); onCreated(nb.id) }
     }
 
-    /** Imports the picked PDF (copy, measure, extract text) and hands its notebook to [onCreated]. */
-    fun importPdf(uri: String, onCreated: (NotebookId) -> Unit) {
+    /** A PDF was picked to learn from: ask for the (optional) goal first. */
+    fun onPdfToLearnPicked(uri: String) = _state.update { it.copy(dialog = LibraryDialog.LearnGoal(uri)) }
+
+    /**
+     * Imports the picked PDF (copy, measure, extract text) and hands its notebook to [onCreated]. With a [teachGoal]
+     * ("" = no particular goal) it becomes a lesson notebook.
+     */
+    fun importPdf(uri: String, teachGoal: String? = null, onCreated: (NotebookId) -> Unit) {
         if (_state.value.importing != null) return
-        _state.update { it.copy(importing = 0f) }
+        _state.update { it.copy(importing = 0f, dialog = LibraryDialog.None) }
         scope.launch {
-            val result = importDocument(uri) { p -> _state.update { it.copy(importing = p) } }
+            val result = importDocument(uri, teachGoal) { p -> _state.update { it.copy(importing = p) } }
             _state.update { it.copy(importing = null) }
             when (result) {
                 is Outcome.Ok -> onCreated(result.value.id)
