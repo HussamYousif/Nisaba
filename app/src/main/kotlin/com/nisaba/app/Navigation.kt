@@ -112,28 +112,25 @@ private fun LibraryRoute(graph: AppGraph, nav: NavHostController) {
         val first = state.notebooks.firstOrNull()
         if (graph.debugOpenFirst && first != null) { graph.debugOpenFirst = false; nav.navigate("notebook/${first.id.value}") }
     }
+    val open: (com.nisaba.domain.shared.NotebookId) -> Unit = { nav.navigate("notebook/${it.value}") }
     LaunchedEffect(Unit) {
         graph.debugImportPdf?.let { uri ->
             graph.debugImportPdf = null
-            vm.importPdf(uri, graph.debugLearnGoal) { nav.navigate("notebook/${it.value}") }
+            val persona = graph.debugPersona ?: com.nisaba.domain.persona.PersonaRegistry.DEFAULT_ID
+            vm.importPdf(uri, graph.debugLearnGoal, persona, open)
         }
     }
-    val pickPdf = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) vm.importPdf(uri.toString()) { nav.navigate("notebook/${it.value}") }
-    }
-    val pickPdfToLearn = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) vm.onPdfToLearnPicked(uri.toString())
-    }
+    val pickPdf = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> vm.onPdfPicked(uri?.toString(), open) }
     LibraryScreen(
         state,
         LibraryActions(
-            onPickPdf = { pickPdf.launch(arrayOf("application/pdf")) },
-            onPickPdfToLearn = { pickPdfToLearn.launch(arrayOf("application/pdf")) },
-            onLearn = { uri, goal -> vm.importPdf(uri, teachGoal = goal) { nav.navigate("notebook/${it.value}") } },
+            onChooseKind = vm::chooseKind, onSelectVoice = vm::selectVoice, onBack = vm::back,
+            onConfirmVoice = { vm.confirmVoice { pickPdf.launch(arrayOf("application/pdf")) } },
+            onCreate = { name -> vm.confirmCreate(name, open) },
+            onLearn = { goal -> vm.confirmLearn(goal, open) },
             animateWordmark = !graph.wordmarkPlayed, onWordmarkDone = { graph.wordmarkPlayed = true },
-            onOpen = { nav.navigate("notebook/${it.value}") },
+            onOpen = open,
             onNew = vm::onNew, onMenu = vm::onMenu,
-            onCreate = { name, endless -> vm.confirmCreate(name, endless) { nav.navigate("notebook/${it.value}") } },
             onRename = vm::confirmRename, onDelete = vm::confirmDelete,
             onRenameRequested = vm::onRenameRequested, onDeleteRequested = vm::onDeleteRequested, onDismiss = vm::dismiss,
             onSettings = { nav.navigate(SETTINGS) },

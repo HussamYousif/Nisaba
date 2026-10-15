@@ -51,6 +51,8 @@ data class Exchange(
     val cachedTokens: Int = 0,
     /** The writing that was answered (page space); null when Nisaba spoke first. Lets "ask again" re-send it. */
     val focus: PageRect? = null,
+    /** The voice that answered (a `PersonaRegistry` id); null for exchanges from before voices. */
+    val personaId: String? = null,
 )
 
 sealed interface Turn {

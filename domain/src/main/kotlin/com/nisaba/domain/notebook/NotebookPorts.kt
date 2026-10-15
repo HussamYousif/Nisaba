@@ -15,4 +15,5 @@ interface NotebookStore {
     suspend fun insertPage(page: Page)
     suspend fun repositionPages(notebookId: NotebookId, positions: List<Pair<PageId, Double>>)
     suspend fun setListening(id: NotebookId, listening: Boolean)
+    suspend fun setPersona(id: NotebookId, personaId: String)
 }

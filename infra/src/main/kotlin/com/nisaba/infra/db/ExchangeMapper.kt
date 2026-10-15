@@ -11,13 +11,13 @@ import com.nisaba.domain.usage.ExchangeUsage
 fun Exchange.toDto() = ExchangeDto(
     id.value, notebookId.value, pageId.value, heard, answerMarkup, status.ordinal, createdAtMillis,
     model, promptVersion, latencyMillis, inputTokens, outputTokens, cachedTokens,
-    focus?.left, focus?.top, focus?.right, focus?.bottom,
+    focus?.left, focus?.top, focus?.right, focus?.bottom, personaId,
 )
 
 fun ExchangeDto.toModel() = Exchange(
     ExchangeId(id), NotebookId(notebookId), PageId(pageId), heard, answerMarkup,
     ExchangeStatus.entries.getOrElse(status) { ExchangeStatus.Failed }, createdAt, model, promptVersion, latencyMillis,
-    inputTokens, outputTokens, cachedTokens, focusRect(),
+    inputTokens, outputTokens, cachedTokens, focusRect(), persona,
 )
 
 private fun ExchangeDto.focusRect(): PageRect? {

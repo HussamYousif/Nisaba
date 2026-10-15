@@ -41,6 +41,8 @@ import com.nisaba.device.PenTool
 import com.nisaba.domain.ink.StrokeOrigin
 import com.nisaba.domain.lesson.TopicStatus
 import com.nisaba.domain.notebook.PageBackground
+import com.nisaba.domain.persona.PersonaRegistry
+import com.nisaba.persona.VoiceDialogComponent
 import com.nisaba.infra.render.BackgroundRenderer
 import com.nisaba.infra.render.InkRenderer
 import com.nisaba.ui.brand.HandTextComponent
@@ -153,6 +155,7 @@ private fun NotebookOverlays(state: NotebookUiState, vm: NotebookViewModel) {
         }
     }
     if (state.progressOpen) LessonProgressDialog(state, vm::closeProgress)
+    if (state.voiceOpen) VoiceDialogComponent(state.personaId, vm::setVoice, vm::closeVoice)
     if (state.renaming) {
         var name by remember { mutableStateOf(state.title) }
         NisabaDialog("Rename notebook", vm::cancelRename) {
@@ -243,6 +246,7 @@ private fun notebookMenu(state: NotebookUiState, vm: NotebookViewModel, onOpenSe
     }
     if (state.endless) { add(MenuItem("Overview", vm::showOverview)); add(MenuItem("Home", vm::goHome)) }
     if (state.lesson) add(MenuItem("Lesson progress", vm::showProgress))
+    if (state.aiAvailable) add(MenuItem("Voice: ${PersonaRegistry.of(state.personaId).name}", vm::openVoice))
     add(MenuItem("Rename", vm::beginRename))
     add(MenuItem("Settings", onOpenSettings))
 }

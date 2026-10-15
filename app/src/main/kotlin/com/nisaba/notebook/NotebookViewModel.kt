@@ -40,6 +40,8 @@ import com.nisaba.domain.notebook.Page
 import com.nisaba.domain.notebook.PageBackground
 import com.nisaba.domain.notebook.RenameNotebookUseCase
 import com.nisaba.domain.notebook.SetListeningUseCase
+import com.nisaba.domain.notebook.SetPersonaUseCase
+import com.nisaba.domain.persona.PersonaRegistry
 import com.nisaba.domain.settings.AnswerInk
 import com.nisaba.domain.settings.HandStyle
 import com.nisaba.domain.settings.PenSize
@@ -119,6 +121,8 @@ class NotebookDeps(
     val sessions: SessionFactory? = null,
     val hands: (HandStyle) -> GlyphSet = { error("no hand configured") },
     val sources: NotebookSources = NotebookSources(),
+    /** Changes the voice Nisaba answers in here (null: the voice can't be changed, e.g. in plain-ink tests). */
+    val setPersona: SetPersonaUseCase? = null,
 )
 
 /** What answers draw on besides the ink: the document, its printed text, saved exchanges. */
@@ -268,6 +272,16 @@ class NotebookViewModel(
 
     fun openMenu() { hideJob?.cancel(); _state.update { it.copy(menuOpen = true) } }
     fun closeMenu() { _state.update { it.copy(menuOpen = false) }; hideToolbarLater(toolbarUseMillis) }
+
+    fun openVoice() = _state.update { it.copy(voiceOpen = true) }
+    fun closeVoice() = _state.update { it.copy(voiceOpen = false) }
+
+    /** From the next reply on, Nisaba answers in this notebook in the voice [personaId]. */
+    fun setVoice(personaId: String) {
+        closeVoice()
+        val set = deps.setPersona ?: return
+        ownScope.launch { set(deps.notebookId, personaId) }
+    }
 
     fun showProgress() = _state.update { it.copy(progressOpen = true) }
     fun closeProgress() = _state.update { it.copy(progressOpen = false) }
@@ -565,6 +579,7 @@ class NotebookViewModel(
             override suspend fun documentPages(): List<String> = deps.sources.documentPages()
             override val currentDocumentPage: Int? get() = documentPageIndex
             override val teachGoal: String? get() = notebook?.notebook?.teachGoal
+            override val persona get() = PersonaRegistry.of(notebook?.notebook?.personaId)
         }
         val created = factory.create(scribe, ownScope, settings, notebook?.notebook?.listening ?: true, context)
         session = created
@@ -685,7 +700,7 @@ class NotebookViewModel(
                 title = nb.notebook.name, pageIndex = pageIndex, pageCount = nb.pages.size, pageSize = page.size,
                 background = page.background, strokes = e.ink.strokes, canUndo = e.canUndo, canRedo = e.canRedo,
                 listening = nb.notebook.listening, loading = false, endless = page.size.isEndless, viewOrigin = viewOrigin,
-                lesson = nb.notebook.teachGoal != null,
+                lesson = nb.notebook.teachGoal != null, personaId = nb.notebook.personaId,
             )
         }
         if (_state.value.hintPending && e.ink.strokes.isNotEmpty()) {

@@ -1,5 +1,6 @@
 package com.nisaba.domain.notebook
 
+import com.nisaba.domain.persona.PersonaRegistry
 import com.nisaba.domain.shared.DocumentId
 import com.nisaba.domain.shared.NotebookId
 import com.nisaba.domain.shared.Outcome
@@ -36,6 +37,17 @@ class NotebookUseCasesTest {
         val pages = store.get(nb.id)!!.pages
         assertEquals(listOf(PageBackground.DocumentPage(doc, 0), PageBackground.DocumentPage(doc, 1)), pages.map { it.background })
         assertEquals(2500f, pages[1].size.h)
+    }
+
+    @Test fun aNotebookKeepsItsVoiceAndTheVoiceCanChange() = runTest {
+        assertEquals(PersonaRegistry.DEFAULT_ID, CreateNotebookUseCase(store, clock, ids)("Plain old").personaId)
+        val nb = CreateNotebookUseCase(store, clock, ids)("Underworld", personaId = "zagreus")
+        assertEquals("zagreus", store.get(nb.id)!!.notebook.personaId)
+        SetPersonaUseCase(store)(nb.id, "teacher")
+        assertEquals("teacher", store.get(nb.id)!!.notebook.personaId)
+        SetPersonaUseCase(store)(nb.id, "no-such-voice")
+        assertEquals(PersonaRegistry.DEFAULT_ID, store.get(nb.id)!!.notebook.personaId)
+        assertEquals(PersonaRegistry.DEFAULT_ID, CreateNotebookUseCase(store, clock, ids)("Odd", personaId = "gone").personaId)
     }
 
     @Test fun renameKeepsOwnNameAvailableButDedupesBlank() = runTest {

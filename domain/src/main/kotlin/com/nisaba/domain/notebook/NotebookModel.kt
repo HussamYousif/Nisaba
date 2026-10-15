@@ -1,5 +1,6 @@
 package com.nisaba.domain.notebook
 
+import com.nisaba.domain.persona.PersonaRegistry
 import com.nisaba.domain.shared.DocumentId
 import com.nisaba.domain.shared.NotebookId
 import com.nisaba.domain.shared.PageId
@@ -15,6 +16,8 @@ data class Notebook(
     val coverSeed: Int,
     /** Non-null = a lesson notebook: Nisaba teaches the document; the text is the learner's goal ("" = all of it). */
     val teachGoal: String? = null,
+    /** The voice Nisaba answers in here (a [PersonaRegistry] id). */
+    val personaId: String = PersonaRegistry.DEFAULT_ID,
 )
 
 sealed interface PageBackground {
@@ -41,6 +44,7 @@ data class NotebookSummary(
     val endless: Boolean = false,
     /** Nisaba teaches its document. */
     val lesson: Boolean = false,
+    val personaId: String = PersonaRegistry.DEFAULT_ID,
 )
 
 data class NotebookWithPages(val notebook: Notebook, val pages: List<Page>)

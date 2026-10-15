@@ -12,10 +12,11 @@ import com.nisaba.domain.shared.PageSize
 private const val BG_BLANK = 0
 private const val BG_DOCUMENT = 1
 
-fun Notebook.toDto() = NotebookDto(id.value, name, createdAtMillis, updatedAtMillis, documentId?.value, listening, coverSeed, teachGoal)
+fun Notebook.toDto() =
+    NotebookDto(id.value, name, createdAtMillis, updatedAtMillis, documentId?.value, listening, coverSeed, teachGoal, personaId)
 
 fun NotebookDto.toModel() =
-    Notebook(NotebookId(id), name, createdAt, updatedAt, documentId?.let(::DocumentId), listening, coverSeed, teachGoal)
+    Notebook(NotebookId(id), name, createdAt, updatedAt, documentId?.let(::DocumentId), listening, coverSeed, teachGoal, persona)
 
 fun Page.toDto() = PageDto(
     id = id.value, notebookId = notebookId.value, position = position, width = size.w, height = size.h,
@@ -33,4 +34,5 @@ fun PageDto.toModel() = Page(
     },
 )
 
-fun SummaryRowDto.toModel() = NotebookSummary(NotebookId(id), name, updatedAt, pageCount, coverSeed, hasDocument, endless, lesson)
+fun SummaryRowDto.toModel() =
+    NotebookSummary(NotebookId(id), name, updatedAt, pageCount, coverSeed, hasDocument, endless, lesson, persona)

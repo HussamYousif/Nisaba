@@ -41,4 +41,6 @@ class RoomNotebookStore(private val dao: NotebookDao) : NotebookStore {
         dao.reposition(positions.map { (id, pos) -> id.value to pos })
 
     override suspend fun setListening(id: NotebookId, listening: Boolean) = dao.setListening(id.value, listening)
+
+    override suspend fun setPersona(id: NotebookId, personaId: String) = dao.setPersona(id.value, personaId)
 }

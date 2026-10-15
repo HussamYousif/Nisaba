@@ -1,6 +1,7 @@
 package com.nisaba.domain.settings
 
 import com.nisaba.domain.ink.EraseMode
+import com.nisaba.domain.persona.PersonaRegistry
 
 enum class HandSpeed { Slow, Natural, Swift }
 enum class HandStyle { Casual, Formal }
@@ -27,6 +28,8 @@ data class Settings(
     /** The user's own pen: its ink (ARGB) and thickness. */
     val penInk: Int = 0xFF111111.toInt(),
     val penSize: PenSize = PenSize.Medium,
+    /** The voice the last new notebook got; the picker starts there. */
+    val lastPersona: String = PersonaRegistry.DEFAULT_ID,
 ) {
     companion object {
         const val MIN_PAUSE = 2000

@@ -1,6 +1,7 @@
 package com.nisaba.domain.conversation
 
 import com.nisaba.domain.memory.fact
+import com.nisaba.domain.persona.PersonaRegistry
 import com.nisaba.domain.settings.Settings
 import com.nisaba.domain.shared.ExchangeId
 import com.nisaba.domain.shared.NotebookId
@@ -31,12 +32,13 @@ class ConversationContextRulesTest {
     }
 
     @Test fun aLessonNotebookAddsTheHiddenTeachingPromptAndOpensOnABlankPage() {
-        assertEquals(SYSTEM_PROMPT, buildRequest(input(emptyList())).system)
+        val book = systemPrompt(PersonaRegistry.default)
+        assertEquals(book, buildRequest(input(emptyList())).system)
         val blank = PageSnapshot(byteArrayOf(1), null)
         val lesson = buildRequest(
             ContextInput(listOf("Cells"), null, emptyList(), blank, Settings(), teachGoal = "exam Friday", purpose = Purpose.Opening),
         )
-        assertTrue(lesson.system.startsWith(SYSTEM_PROMPT) && lesson.system.contains("# Teaching"))
+        assertTrue(lesson.system.startsWith(book) && lesson.system.contains("# Teaching"))
         assertTrue(lesson.system.contains("\"exam Friday\""))
         assertTrue(lesson.instruction.startsWith(INSTRUCTION_BEGIN_LESSON))
         assertEquals(1, lesson.images.size)
@@ -69,13 +71,39 @@ class ConversationContextRulesTest {
         assertEquals(listOf(ImageDetail.Auto, ImageDetail.High), r.images.map { it.detail })
         assertTrue(r.instruction.contains("p. 2"))
         assertEquals("[p.1] alpha\n\n[p.2] beta", r.documentContext)
-        assertEquals(SYSTEM_PROMPT, r.system)
+        assertEquals(systemPrompt(PersonaRegistry.default), r.system)
+    }
+
+    @Test fun theNotebooksVoiceLeadsTheSystemPromptAndSetsLengthAndTemperature() {
+        val zagreus = PersonaRegistry.of("zagreus")
+        val r = buildRequest(ContextInput(emptyList(), null, emptyList(), snap, Settings(), persona = zagreus))
+        assertTrue(r.system.startsWith(zagreus.voice))
+        assertTrue(r.system.contains("at most ${zagreus.words} words"))
+        assertTrue(!r.system.contains("{words}") && !r.system.contains("Grimoire Weiss"))
+        assertEquals(zagreus.temperature, r.options.temperature)
+        assertTrue(r.instruction.endsWith(voiceReminder(zagreus, lesson = false)))
+        // a tidy copy is the person's notes, not a performance: no voice line, a cool temperature
+        val tidyInput =
+            ContextInput(emptyList(), null, emptyList(), snap, Settings(), purpose = Purpose.Tidy(PageId("p")), persona = zagreus)
+        val tidy = buildRequest(tidyInput)
+        assertEquals(INSTRUCTION_TIDY, tidy.instruction)
+        assertEquals(TIDY_TEMPERATURE, tidy.options.temperature)
+        // a lesson keeps the voice and adds the teaching prompt after it
+        val lesson = buildRequest(ContextInput(listOf("doc"), null, emptyList(), snap, Settings(), teachGoal = "", persona = zagreus))
+        assertTrue(lesson.system.startsWith(systemPrompt(zagreus) + "\n\n# Teaching"))
+        assertTrue(lesson.instruction.endsWith(voiceReminder(zagreus, lesson = true)))
+    }
+
+    @Test fun everyVoiceSharesTheSameReplyContract() {
+        val contracts = PersonaRegistry.all.map { systemPrompt(it).removePrefix(it.voice).replace(Regex("at most \\d+ words"), "") }
+        assertEquals(1, contracts.toSet().size)
+        assertTrue(contracts.first().contains("<heard>") && contracts.first().contains("<remember"))
     }
 
     @Test fun withoutAFocusCropOnlyThePageIsSent() {
         val r = buildRequest(input(emptyList(), s = PageSnapshot(byteArrayOf(1), null)))
         assertEquals(1, r.images.size)
-        assertEquals(INSTRUCTION_PAGE_ONLY, r.instruction)
+        assertTrue(r.instruction.startsWith(INSTRUCTION_PAGE_ONLY))
     }
 
     @Test fun scannedDocumentsSendNoDocumentText() {

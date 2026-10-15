@@ -50,4 +50,7 @@ interface ConversationContextPorts {
 
     /** Non-null in a lesson notebook: the learner's goal (see [teachingPrompt]). */
     val teachGoal: String? get() = null
+
+    /** The notebook's voice, read per request (it can change while the notebook is open). */
+    val persona: com.nisaba.domain.persona.Persona get() = com.nisaba.domain.persona.PersonaRegistry.default
 }

@@ -70,12 +70,20 @@ fun HandInkComponent(text: HandText, penFor: (InkTone) -> Pair<Color, Float>, mo
 
 /**
  * Text written by the app's own hand. Static by default; with [animate] the letters are written stroke by stroke
- * at ~20 fps (discrete steps, e-ink friendly) and [onDone] fires at the end.
+ * at ~20 fps (discrete steps, e-ink friendly) and [onDone] fires at the end. [lineWidth] (page units) = where the hand
+ * wraps; null = the cache's default, for short names.
  */
 @Composable
-fun HandTextComponent(text: String, color: Color, modifier: Modifier = Modifier, animate: Boolean = false, onDone: () -> Unit = {}) {
+fun HandTextComponent(
+    text: String,
+    color: Color,
+    modifier: Modifier = Modifier,
+    animate: Boolean = false,
+    onDone: () -> Unit = {},
+    lineWidth: Float? = null,
+) {
     val cache = LocalHandText.current ?: return
-    val hand = remember(text) { cache.of(text) }
+    val hand = remember(text, lineWidth) { if (lineWidth == null) cache.of(text) else cache.of(text, lineWidth) }
     var t by remember(text, animate) { mutableIntStateOf(if (animate) 0 else hand.durationMs) }
     LaunchedEffect(text, animate) {
         if (!animate) return@LaunchedEffect

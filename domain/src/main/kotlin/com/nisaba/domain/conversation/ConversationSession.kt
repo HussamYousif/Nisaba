@@ -80,6 +80,7 @@ class ConversationSession(
         val startedAt: Long,
         val focus: PageRect?,
         val transcribes: Boolean,
+        val personaId: String,
     ) {
         val markup = StringBuilder()
         var heard = ""
@@ -197,7 +198,10 @@ class ConversationSession(
         val purpose = utt.purpose
         val answersWriting = purpose is Purpose.Writing || purpose is Purpose.Again
         val focus = utt.bounds.takeIf { answersWriting }
-        val record = PendingExchange(reqId, ExchangeId(deps.idGen.next()), utt.pageId, deps.clock.nowMillis(), focus, answersWriting)
+        val persona = deps.context.persona
+        val record = PendingExchange(
+            reqId, ExchangeId(deps.idGen.next()), utt.pageId, deps.clock.nowMillis(), focus, answersWriting, persona.id,
+        )
         record.heard = when (purpose) {
             Purpose.Opening -> OPENING_HEARD
             Purpose.Resume -> RESUME_HEARD
@@ -214,7 +218,7 @@ class ConversationSession(
                 ContextInput(
                     deps.context.documentPages(), deps.context.currentDocumentPage,
                     deps.exchanges.listByNotebook(deps.notebookId), snapshot, appSettings,
-                    deps.memory?.all().orEmpty(), deps.context.teachGoal, purpose, lessonProgress(),
+                    deps.memory?.all().orEmpty(), deps.context.teachGoal, purpose, lessonProgress(), persona,
                 ),
             )
             stream(request, record)
@@ -269,7 +273,7 @@ class ConversationSession(
         val exchange = Exchange(
             p.id, deps.notebookId, p.pageId, p.heard, p.markup.toString(), status, p.startedAt,
             appSettings.model, PROMPT_VERSION, deps.clock.nowMillis() - p.startedAt, p.inputTokens, p.outputTokens,
-            p.cachedTokens, p.focus,
+            p.cachedTokens, p.focus, p.personaId,
         )
         scope.launch(NonCancellable) { // the page may be closing; the exchange is still saved
             deps.exchanges.append(exchange)

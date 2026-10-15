@@ -37,9 +37,21 @@ private fun shift(g: Glyph, dx: Float, sx: Float = 1f): List<GlyphStroke> = g.st
 
 private fun isUpper(base: Char) = base.isUpperCase()
 
-/** Builds a glyph the font lacks from a base letter plus accent strokes, or a couple of special ligatures. */
+/** A tick and a cross, as a hand makes them (x-height units); models like to mark checked steps with them. */
+private val TICK = Glyph(0.95f, listOf(GlyphStroke(floatArrayOf(0.08f, 0.48f, 0.34f, 0.02f, 0.88f, 1.10f), delayed = false)))
+private val CROSS = Glyph(
+    0.85f,
+    listOf(
+        GlyphStroke(floatArrayOf(0.10f, 0.95f, 0.72f, 0.05f), delayed = false),
+        GlyphStroke(floatArrayOf(0.10f, 0.05f, 0.72f, 0.95f), delayed = false),
+    ),
+)
+
+/** Builds a glyph the font lacks from a base letter plus accent strokes, a couple of special ligatures, or a tick/cross. */
 fun composeGlyph(c: Char, set: GlyphSet): Glyph? {
     when (c) {
+        '✓', '✔', '☑' -> return TICK
+        '✗', '✘', '☒' -> return CROSS
         'æ' -> return ligature(set, 'a', 'e')
         'Æ' -> return ligature(set, 'A', 'E')
         'ø' -> return slashed(set, 'o')

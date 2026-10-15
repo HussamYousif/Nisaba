@@ -6,6 +6,7 @@ import com.nisaba.domain.memory.FactCategory
 import com.nisaba.domain.memory.FakeMemoryStore
 import com.nisaba.domain.memory.fact
 import com.nisaba.domain.notebook.FakeIdGen
+import com.nisaba.domain.persona.PersonaRegistry
 import com.nisaba.domain.settings.Settings
 import com.nisaba.domain.shared.DomainError
 import com.nisaba.domain.shared.NetworkKind
@@ -75,6 +76,19 @@ class ConversationSessionTest {
         assertEquals("say hi", saved.heard)
         assertTrue(saved.answerMarkup.contains("Hello there."))
         assertEquals(1500, saved.inputTokens)
+    }
+
+    @Test fun eachRequestSpeaksInTheNotebooksVoiceOfTheMomentAndTheExchangeRecordsIt() = runTest {
+        oracle.chunks = hello
+        val context = FakeContextPorts(persona = PersonaRegistry.of("yukino"))
+        val rig = rig(context = context)
+        rig.write("a"); wait(3600); rig.handDone(); runCurrent()
+        assertTrue(oracle.requests.last().system.startsWith(PersonaRegistry.of("yukino").voice))
+        assertEquals("yukino", store.saved.last().personaId)
+        context.persona = PersonaRegistry.of("zagreus") // the voice changed from the ⋯ menu while the page was open
+        rig.write("b"); wait(3600); rig.handDone(); runCurrent()
+        assertTrue(oracle.requests.last().system.startsWith("You are Zagreus"))
+        assertEquals("zagreus", store.saved.last().personaId)
     }
 
     @Test fun answerStrokesCanPointAtTheSavedExchange() = runTest {

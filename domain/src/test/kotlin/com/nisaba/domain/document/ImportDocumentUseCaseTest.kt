@@ -48,6 +48,14 @@ class ImportDocumentUseCaseTest {
         assertEquals(listOf(PageBackground.Blank), store.get(nb.id)!!.pages.map { it.background })
     }
 
+    @Test fun theImportedNotebookAnswersInThePickedVoice() = runTest {
+        val info = DocumentInfo(DocumentId("d1"), "Thesis", listOf(PageSize(1860f, 2400f)), hasText = true)
+        val result = ImportDocumentUseCase(FakeImporter(Outcome.Ok(info)), create)("x", teachGoal = "", personaId = "yukino")
+        val nb = (result as Outcome.Ok).value
+        assertEquals("yukino", nb.personaId)
+        assertEquals("yukino", store.get(nb.id)!!.notebook.personaId)
+    }
+
     @Test fun aFailedImportCreatesNoNotebook() = runTest {
         val result = ImportDocumentUseCase(FakeImporter(Outcome.Err(DomainError.Invalid("password-protected"))), create)("x")
         assertIs<Outcome.Err>(result)

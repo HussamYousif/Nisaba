@@ -46,6 +46,10 @@ class GlyphSetTest {
         assertTrue(ringBottom < hand.capHeight + 0.4f, "ring floats too high: $ringBottom")
     }
 
+    @Test fun ticksAndCrossesAreWrittenNotQuestioned() { // unknown chars become "?": "4-10+6=0 ?" read as doubt
+        for (c in "✓✔✗✘") assertTrue(HandFixtures.hand().resolve(c)!!.strokes.isNotEmpty(), "no glyph for '$c'")
+    }
+
     @Test fun unknownCharactersCannotBeComposed() {
         assertEquals(null, HandFixtures.hand().resolve('€'))
     }

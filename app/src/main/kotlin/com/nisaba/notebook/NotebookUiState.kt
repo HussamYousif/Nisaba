@@ -8,6 +8,7 @@ import com.nisaba.domain.settings.CodeHighlight
 import com.nisaba.domain.settings.PenSize
 import com.nisaba.domain.lesson.LessonTopic
 import com.nisaba.domain.notebook.PageBackground
+import com.nisaba.domain.persona.PersonaRegistry
 import com.nisaba.domain.shared.ExchangeId
 import com.nisaba.domain.shared.PagePoint
 import com.nisaba.domain.shared.PageSize
@@ -61,6 +62,9 @@ data class NotebookUiState(
     val pageGridScreen: Int = 0,
     /** There is writing Nisaba has not been asked about yet (Ask now would send it). */
     val askable: Boolean = false,
+    /** The voice Nisaba answers in here; [voiceOpen] = its picker is up. */
+    val personaId: String = PersonaRegistry.DEFAULT_ID,
+    val voiceOpen: Boolean = false,
 ) {
     val showHint: Boolean get() = hintPending && !loading && strokes.isEmpty() && background is PageBackground.Blank
 
@@ -68,7 +72,7 @@ data class NotebookUiState(
     val pickerOpen: Boolean get() = menuOpen || pageGridOpen || toolPanel != null
 
     /** Anything drawn over the page, where the pen must not ink. */
-    val overlayOpen: Boolean get() = pickerOpen || overview || answerMenu != null || progressOpen || renaming
+    val overlayOpen: Boolean get() = pickerOpen || overview || answerMenu != null || progressOpen || renaming || voiceOpen
 }
 
 enum class ToolPanel { Pen, Shapes }

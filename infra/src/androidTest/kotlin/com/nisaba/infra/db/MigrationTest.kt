@@ -76,12 +76,26 @@ class MigrationTest {
         db.query("SELECT COUNT(*) FROM lesson_topics").use { c -> c.moveToFirst(); assertEquals(1, c.getInt(0)) }
     }
 
+    @Test fun v5ToV6GivesOldNotebooksTheSassyBookAndExchangesNoVoice() {
+        helper.createDatabase("mig6", 5).apply {
+            execSQL("INSERT INTO notebooks (id,name,createdAt,updatedAt,documentId,listening,coverSeed,teachGoal) VALUES ('n1','Old',1,2,NULL,1,7,NULL)")
+            execSQL(
+                "INSERT INTO exchanges (id,notebookId,pageId,heard,answerMarkup,status,createdAt,model,promptVersion,latencyMillis,inputTokens,outputTokens," +
+                    "cachedTokens) VALUES ('e1','n1','p1','q','a',0,5,'m',1,900,10,20,0)",
+            )
+            close()
+        }
+        val db = helper.runMigrationsAndValidate("mig6", 6, true, MIGRATION_5_6)
+        db.query("SELECT persona FROM notebooks").use { c -> c.moveToFirst(); assertEquals("book", c.getString(0)) }
+        db.query("SELECT persona FROM exchanges").use { c -> c.moveToFirst(); assertTrue(c.isNull(0)) }
+    }
+
     @Test fun v1MigratesAllTheWayToTheCurrentSchema() {
         helper.createDatabase("migAll", 1).apply {
             execSQL("INSERT INTO notebooks (id,name,createdAt,updatedAt,documentId,listening,coverSeed) VALUES ('n1','Old',1,2,NULL,1,7)")
             close()
         }
-        helper.runMigrationsAndValidate("migAll", 5, true, MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+        helper.runMigrationsAndValidate("migAll", 6, true, MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
             .query("SELECT COUNT(*) FROM notebooks").use { c -> c.moveToFirst(); assertEquals(1, c.getInt(0)) }
     }
 }

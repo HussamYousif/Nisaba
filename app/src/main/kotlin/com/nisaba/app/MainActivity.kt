@@ -24,6 +24,7 @@ class MainActivity : ComponentActivity() {
             graph.debugOpenFirst = intent.getBooleanExtra("open_first", false)
             graph.debugImportPdf = intent.getStringExtra("import_pdf")
             graph.debugLearnGoal = intent.getStringExtra("learn_goal") // with import_pdf: a lesson notebook ("" = no goal)
+            graph.debugPersona = intent.getStringExtra("persona") // with import_pdf: its voice (a PersonaRegistry id)
         }
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowInsetsControllerCompat(window, window.decorView).apply {

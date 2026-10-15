@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.nisaba.domain.persona.PersonaRegistry
 import com.nisaba.domain.shared.NotebookId
 import com.nisaba.ui.brand.HandTextComponent
 import com.nisaba.ui.theme.Nisaba
@@ -42,17 +43,20 @@ data class LibraryActions(
     val onOpen: (NotebookId) -> Unit,
     val onNew: () -> Unit,
     val onMenu: (CoverItem) -> Unit,
-    val onCreate: (String, Boolean) -> Unit,
     val onRename: (NotebookId, String) -> Unit,
     val onDelete: (NotebookId) -> Unit,
     val onRenameRequested: (NotebookId, String) -> Unit,
     val onDeleteRequested: (NotebookId, String) -> Unit,
     val onDismiss: () -> Unit,
     val onSettings: () -> Unit = {},
-    val onPickPdf: () -> Unit = {},
     val onSearch: () -> Unit = {},
-    val onPickPdfToLearn: () -> Unit = {},
-    val onLearn: (uri: String, goal: String) -> Unit = { _, _ -> },
+    // "New", step by step (NewNotebookComponent)
+    val onChooseKind: (NotebookKind) -> Unit = {},
+    val onSelectVoice: (String) -> Unit = {},
+    val onConfirmVoice: () -> Unit = {},
+    val onBack: () -> Unit = {},
+    val onCreate: (name: String) -> Unit = {},
+    val onLearn: (goal: String) -> Unit = {},
     val animateWordmark: Boolean = false,
     val onWordmarkDone: () -> Unit = {},
 )
@@ -75,11 +79,7 @@ fun LibraryScreen(state: LibraryUiState, actions: LibraryActions) {
                 Spacer(Modifier.width(12.dp))
                 NisabaButton("Settings", actions.onSettings)
                 Spacer(Modifier.width(12.dp))
-                NisabaButton("Open a PDF", actions.onPickPdf, enabled = state.importing == null)
-                Spacer(Modifier.width(12.dp))
-                NisabaButton("Learn a PDF", actions.onPickPdfToLearn, enabled = state.importing == null)
-                Spacer(Modifier.width(12.dp))
-                NisabaButton("New notebook", actions.onNew, filled = true)
+                NisabaButton("New", actions.onNew, filled = true, enabled = state.importing == null)
             }
             Spacer(Modifier.height(28.dp))
             if (state.notebooks.isEmpty() && !state.loading) {
@@ -96,6 +96,7 @@ fun LibraryScreen(state: LibraryUiState, actions: LibraryActions) {
             }
         }
         LibraryDialogs(state.dialog, actions)
+        NewNotebookComponent(state.dialog, actions)
     }
 }
 
@@ -123,8 +124,8 @@ private fun NotebookGrid(notebooks: List<CoverItem>, actions: LibraryActions) {
                         item.endless -> "Endless canvas"
                         item.lesson -> "Lesson · PDF"
                         else -> "${item.pageCount} page${if (item.pageCount == 1) "" else "s"}" + if (item.hasDocument) " · PDF" else ""
-                    },
-                    style = MaterialTheme.typography.labelSmall, color = c.faint,
+                    } + " · " + PersonaRegistry.of(item.personaId).name,
+                    style = MaterialTheme.typography.labelSmall, color = c.faint, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
             }
         }
@@ -136,21 +137,6 @@ private fun LibraryDialogs(dialog: LibraryDialog, actions: LibraryActions) {
     val onDismiss = actions.onDismiss
     when (val d = dialog) {
         LibraryDialog.None -> Unit
-        LibraryDialog.Create -> {
-            var name by remember { mutableStateOf("") }
-            var endless by remember { mutableStateOf(false) }
-            NisabaDialog("New notebook", onDismiss) {
-                NisabaTextField(name, { name = it }, onDone = { actions.onCreate(name, endless) })
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    NisabaButton("Pages", { endless = false }, filled = !endless)
-                    NisabaButton("Endless canvas", { endless = true }, filled = endless)
-                }
-                NisabaButtonRow {
-                    NisabaButton("Cancel", onDismiss)
-                    NisabaButton("Create", { actions.onCreate(name, endless) }, filled = true)
-                }
-            }
-        }
         is LibraryDialog.Menu -> NisabaDialog(d.name, onDismiss) {
             NisabaButton("Rename", { actions.onRenameRequested(d.id, d.name) }, Modifier.fillMaxWidth())
             NisabaButton("Delete", { actions.onDeleteRequested(d.id, d.name) }, Modifier.fillMaxWidth())
@@ -162,20 +148,6 @@ private fun LibraryDialogs(dialog: LibraryDialog, actions: LibraryActions) {
                 NisabaButtonRow { NisabaButton("Cancel", onDismiss); NisabaButton("Save", { actions.onRename(d.id, name) }, filled = true) }
             }
         }
-        is LibraryDialog.LearnGoal -> {
-            var goal by remember { mutableStateOf("") }
-            NisabaDialog("What would you like to learn?", onDismiss) {
-                Text(
-                    "Optional, e.g. \"the exam on chapter 3\". Leave it empty to learn all of it.",
-                    style = MaterialTheme.typography.bodyLarge,
-                )
-                NisabaTextField(goal, { goal = it }, onDone = { actions.onLearn(d.uri, goal) })
-                NisabaButtonRow {
-                    NisabaButton("Cancel", onDismiss)
-                    NisabaButton("Begin", { actions.onLearn(d.uri, goal) }, filled = true)
-                }
-            }
-        }
         is LibraryDialog.Message -> NisabaDialog("Could not open it", onDismiss) {
             Text(d.text, style = MaterialTheme.typography.bodyLarge)
             NisabaButtonRow { NisabaButton("OK", onDismiss, filled = true) }
@@ -184,5 +156,6 @@ private fun LibraryDialogs(dialog: LibraryDialog, actions: LibraryActions) {
             Text("Its pages and ink will be erased. This cannot be undone.", style = MaterialTheme.typography.bodyLarge)
             NisabaButtonRow { NisabaButton("Keep it", onDismiss); NisabaButton("Delete", { actions.onDelete(d.id) }, filled = true) }
         }
+        else -> Unit // the steps of "New" (NewNotebookComponent)
     }
 }

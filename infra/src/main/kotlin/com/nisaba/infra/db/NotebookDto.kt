@@ -16,6 +16,8 @@ data class NotebookDto(
     val coverSeed: Int,
     /** Lesson notebooks only (v4). */
     val teachGoal: String? = null,
+    /** The voice Nisaba answers in (v6): a `PersonaRegistry` id. */
+    val persona: String,
 )
 
 @Entity(
@@ -54,6 +56,7 @@ data class SummaryRowDto(
     val pageCount: Int,
     val endless: Boolean,
     val lesson: Boolean = false,
+    val persona: String,
 )
 
 @Entity(
@@ -80,6 +83,8 @@ data class ExchangeDto(
     val focusTop: Float? = null,
     val focusRight: Float? = null,
     val focusBottom: Float? = null,
+    // v6
+    val persona: String? = null,
 )
 
 /** The token columns of an exchange, for the usage summary. */

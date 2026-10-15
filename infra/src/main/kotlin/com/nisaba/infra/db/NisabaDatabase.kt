@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.Flow
 interface NotebookDao {
     @Query(
         "SELECT n.id, n.name, n.updatedAt, n.coverSeed, n.documentId IS NOT NULL AS hasDocument, n.teachGoal IS NOT NULL AS lesson, " +
+            "n.persona, " +
             "(SELECT COUNT(*) FROM pages p WHERE p.notebookId = n.id) AS pageCount, " +
             "(SELECT COUNT(*) FROM pages p WHERE p.notebookId = n.id AND p.width >= 100000) > 0 AS endless FROM notebooks n",
     )
@@ -56,6 +57,9 @@ interface NotebookDao {
 
     @Query("UPDATE notebooks SET listening = :listening WHERE id = :id")
     suspend fun setListening(id: String, listening: Boolean)
+
+    @Query("UPDATE notebooks SET persona = :persona WHERE id = :id")
+    suspend fun setPersona(id: String, persona: String)
 
     @Transaction
     suspend fun createWithPages(n: NotebookDto, p: List<PageDto>) {
@@ -142,7 +146,7 @@ interface FactDao {
 
 @Database(
     entities = [NotebookDto::class, PageDto::class, DocumentDto::class, ExchangeDto::class, FactDto::class, LessonTopicDto::class],
-    version = 5,
+    version = 6,
     exportSchema = true,
 )
 abstract class NisabaDatabase : RoomDatabase() {
@@ -157,7 +161,7 @@ abstract class NisabaDatabase : RoomDatabase() {
         /** One connection pool for the whole process (notebooks, exchanges and facts share it). */
         fun shared(context: Context): NisabaDatabase = shared ?: synchronized(this) {
             shared ?: Room.databaseBuilder(context.applicationContext, NisabaDatabase::class.java, "nisaba.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5).build().also { shared = it }
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6).build().also { shared = it }
         }
 
         fun inMemory(context: Context): NisabaDatabase =
@@ -209,5 +213,16 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
         db.execSQL(
             "CREATE UNIQUE INDEX IF NOT EXISTS `index_lesson_topics_notebookId_topicKey` ON `lesson_topics` (`notebookId`, `topicKey`)",
         )
+    }
+}
+
+/**
+ * v5 → v6: every notebook answers in a voice (DESIGN D17). Notebooks from before keep the one they always had (the
+ * sassy book); exchanges record the voice that answered (null = before voices).
+ */
+val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `notebooks` ADD COLUMN `persona` TEXT NOT NULL DEFAULT 'book'")
+        db.execSQL("ALTER TABLE `exchanges` ADD COLUMN `persona` TEXT")
     }
 }

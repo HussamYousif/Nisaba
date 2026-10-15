@@ -35,6 +35,7 @@ import com.nisaba.domain.notebook.Page
 import com.nisaba.domain.notebook.PageBackground
 import com.nisaba.domain.notebook.RenameNotebookUseCase
 import com.nisaba.domain.notebook.SetListeningUseCase
+import com.nisaba.domain.notebook.SetPersonaUseCase
 import com.nisaba.domain.settings.HandStyle
 import com.nisaba.domain.shared.Clock
 import com.nisaba.domain.shared.IdGen
@@ -88,6 +89,9 @@ class AppGraph(private val app: Application) {
     var debugImportPdf: String? = null
     var debugLearnGoal: String? = null
 
+    /** Debug only: the voice of the debug-imported notebook (a PersonaRegistry id). */
+    var debugPersona: String? = null
+
     /** Debug only: open the first notebook automatically. */
     var debugOpenFirst: Boolean = false
 
@@ -138,7 +142,7 @@ class AppGraph(private val app: Application) {
             LibraryViewModel(
                 ListNotebooksUseCase(notebooks), CreateNotebookUseCase(notebooks, clock, idGen),
                 RenameNotebookUseCase(notebooks, clock), DeleteNotebookUseCase(notebooks, inkStore, documents),
-                ImportDocumentUseCase(documents, CreateNotebookUseCase(notebooks, clock, idGen)),
+                ImportDocumentUseCase(documents, CreateNotebookUseCase(notebooks, clock, idGen)), settings,
             )
         }
     }
@@ -184,6 +188,7 @@ class AppGraph(private val app: Application) {
                         { ink, size -> settings.update { it.copy(penInk = ink, penSize = size) } },
                     ),
                     sources = NotebookSources({ documentText(id) }, ::printedOccupancy, exchanges::get, lessons.observe(id)),
+                    setPersona = SetPersonaUseCase(notebooks),
                 ),
                 startPage = startPage,
             )

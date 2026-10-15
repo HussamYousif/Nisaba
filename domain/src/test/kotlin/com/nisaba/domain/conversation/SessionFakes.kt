@@ -81,6 +81,7 @@ class FakeContextPorts(
     var pages: List<String> = emptyList(),
     override var currentDocumentPage: Int? = null,
     override val teachGoal: String? = null,
+    override var persona: com.nisaba.domain.persona.Persona = com.nisaba.domain.persona.PersonaRegistry.default,
 ) : ConversationContextPorts {
     override suspend fun documentPages() = pages
 }

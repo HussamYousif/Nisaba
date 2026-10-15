@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Does the system prompt (read from the Kotlin source) answer everything (statements included) and stay silent only on nothing?
-   usage: prompt_gate.py [--runs N]"""
-import re, sys, importlib.util
-spec = importlib.util.spec_from_file_location("sv", "scripts/spike_vision.py"); sv = importlib.util.module_from_spec(spec); spec.loader.exec_module(sv)
-src = open("domain/src/main/kotlin/com/nisaba/domain/conversation/ConversationPromptRules.kt").read()
-prompt = re.search(r'val SYSTEM_PROMPT: String = """(.*?)""".trim\(\)', src, re.S).group(1).strip().replace("${'$'}", "$")
-sv.SYSTEM = prompt
+   usage: prompt_gate.py [--runs N] [--persona ID]   (default voice: the sassy book)"""
+import sys, importlib.util
+def load(name, path):
+    spec = importlib.util.spec_from_file_location(name, path); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m); return m
+sv = load("sv", "scripts/spike_vision.py"); ps = load("ps", "scripts/prompt_source.py")
+voice = ps.personas()[sys.argv[sys.argv.index("--persona") + 1] if "--persona" in sys.argv else "book"]
+sv.SYSTEM = ps.system_prompt(voice)
 NOTES = []  # v3: nothing readable is silent
 STATEMENTS = ["test", "hello", "What", "hullo", "Buy milk, eggs, call Ola tomorrow", "Meeting 3pm room 4", "TODO: send invoice",
          "- ideas\n- hiking\n- cinema", "note to self: pay rent", "2 + 2 = 4", "Chapter 3 summary", "Oslo",
@@ -17,7 +18,7 @@ runs = int(sys.argv[sys.argv.index("--runs") + 1]) if "--runs" in sys.argv else 
 def check(text, fk, want_silent):
     page, focus = sv.render(text, fk)
     pu, _ = sv.jpeg(page, 1600); fu, _ = sv.jpeg(focus, 1600)
-    out, ttft, tot, _ = sv.ask(pu, fu, "auto")
+    out, ttft, tot, _ = sv.ask(pu, fu, "auto", instruction=ps.instruction(voice), temperature=voice["temperature"])
     silent = "<silent/>" in out[:40]
     return silent, out
 bad = []; n_ok = 0; n = 0

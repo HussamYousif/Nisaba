@@ -1,5 +1,6 @@
 package com.nisaba.domain.notebook
 
+import com.nisaba.domain.persona.PersonaRegistry
 import com.nisaba.domain.shared.Clock
 import com.nisaba.domain.shared.DocumentId
 import com.nisaba.domain.shared.IdGen
@@ -11,6 +12,7 @@ class CreateNotebookUseCase(private val store: NotebookStore, private val clock:
     /**
      * Creates a notebook with one blank page (or one endless canvas); a document notebook gets one page per source page.
      * A lesson notebook ([teachGoal] non-null) keeps its document as hidden context and starts on one blank page.
+     * Nisaba answers in the voice [personaId] (an unknown id gets the default voice).
      */
     suspend operator fun invoke(
         rawName: String?,
@@ -19,11 +21,13 @@ class CreateNotebookUseCase(private val store: NotebookStore, private val clock:
         listening: Boolean = true,
         endless: Boolean = false,
         teachGoal: String? = null,
+        personaId: String = PersonaRegistry.DEFAULT_ID,
     ): Notebook {
         val name = validateNotebookName(rawName, store.allNames())
         val now = clock.nowMillis()
         val id = NotebookId(idGen.next())
-        val notebook = Notebook(id, name, now, now, documentId, listening, coverSeed(name, id), teachGoal?.trim()?.take(MAX_GOAL))
+        val goal = teachGoal?.trim()?.take(MAX_GOAL)
+        val notebook = Notebook(id, name, now, now, documentId, listening, coverSeed(name, id), goal, PersonaRegistry.of(personaId).id)
         val pages = if (documentId != null && documentPages.isNotEmpty() && teachGoal == null) {
             documentPages.mapIndexed { i, size ->
                 Page(PageId(idGen.next()), id, (i + 1) * PAGE_POSITION_STEP, size, PageBackground.DocumentPage(documentId, i))

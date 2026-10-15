@@ -2,6 +2,8 @@ package com.nisaba.domain.conversation
 
 import com.nisaba.domain.memory.Fact
 import com.nisaba.domain.memory.formatMemoryContext
+import com.nisaba.domain.persona.Persona
+import com.nisaba.domain.persona.PersonaRegistry
 import com.nisaba.domain.settings.Settings
 import kotlin.math.ceil
 
@@ -76,6 +78,8 @@ class ContextInput(
     val purpose: Purpose = Purpose.Writing,
     /** Lesson notebooks: what the tutor has recorded (see `formatLessonProgress`). */
     val lessonProgress: String? = null,
+    /** The notebook's voice. */
+    val persona: Persona = PersonaRegistry.default,
 )
 
 fun buildRequest(input: ContextInput): OracleRequest {
@@ -83,7 +87,8 @@ fun buildRequest(input: ContextInput): OracleRequest {
     val memory = formatMemoryContext(input.facts, (TOKEN_BUDGET * MEMORY_SHARE).toInt())
     val (history, trailingNotes) = historyTurns(input.exchanges)
     val imageTokens = IMAGE_TOKENS * (if (input.snapshot.focus != null) 2 else 1)
-    val system = input.teachGoal?.let { SYSTEM_PROMPT + "\n\n" + teachingPrompt(it) } ?: SYSTEM_PROMPT
+    val voiced = systemPrompt(input.persona)
+    val system = input.teachGoal?.let { voiced + "\n\n" + teachingPrompt(it) } ?: voiced
     val room = TOKEN_BUDGET - estimateTokens(system) - (doc?.let(::estimateTokens) ?: 0) -
         (memory?.let(::estimateTokens) ?: 0) - imageTokens
     val kept = trimHistory(history, room.coerceAtLeast(0))
@@ -100,13 +105,16 @@ fun buildRequest(input: ContextInput): OracleRequest {
         input.currentDocumentPage?.let { append(" They are on p. ${it + 1} of the document.") }
         if (trailingNotes.isNotEmpty()) append(" Notes they wrote earlier without asking: ${trailingNotes.joinToString("; ")}.")
         input.lessonProgress?.let { append(" ").append(it) }
+        if (input.purpose !is Purpose.Tidy) append(" ").append(voiceReminder(input.persona, lesson = input.teachGoal != null))
     }
+    val temperature = if (input.purpose is Purpose.Tidy) TIDY_TEMPERATURE else input.persona.temperature
     val images = buildList {
         add(OracleImage(input.snapshot.page, ImageDetail.Auto))
         input.snapshot.focus?.let { add(OracleImage(it, ImageDetail.High)) }
     }
     return OracleRequest(
         system = system, documentContext = doc, history = kept, instruction = instruction, images = images,
-        options = OracleOptions(input.settings.model, input.settings.thinking), memoryContext = memory,
+        options = OracleOptions(input.settings.model, input.settings.thinking, temperature = temperature),
+        memoryContext = memory,
     )
 }

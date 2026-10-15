@@ -44,10 +44,11 @@ def jpeg(img, long_edge):
     s = long_edge / max(img.size); 
     if s < 1: img = img.resize((int(img.width*s), int(img.height*s)), Image.LANCZOS)
     b = io.BytesIO(); img.convert("L").save(b, "JPEG", quality=85); return "data:image/jpeg;base64," + base64.b64encode(b.getvalue()).decode(), len(b.getvalue())
-def ask(page_uri, focus_uri, detail, model="deepseek-flash", thinking=False):
-    body = {"model": model, "stream": True, "max_tokens": 600, "temperature": 0.6, "stream_options": {"include_usage": True},
+def ask(page_uri, focus_uri, detail, model="deepseek-flash", thinking=False, instruction=None, temperature=0.6):
+    instruction = instruction or "First image: the whole page. Second image: the new writing (focus). Answer only the new writing."
+    body = {"model": model, "stream": True, "max_tokens": 600, "temperature": temperature, "stream_options": {"include_usage": True},
             "messages": [{"role": "system", "content": SYSTEM}, {"role": "user", "content": [
-                {"type": "text", "text": "First image: the whole page. Second image: the new writing (focus). Answer only the new writing."},
+                {"type": "text", "text": instruction},
                 {"type": "image_url", "image_url": {"url": page_uri, "detail": detail}},
                 {"type": "image_url", "image_url": {"url": focus_uri, "detail": "high"}}]}]}
     if not thinking: body["thinking"] = {"type": "disabled"}

@@ -22,6 +22,8 @@ import com.nisaba.domain.notebook.InsertPageUseCase
 import com.nisaba.domain.notebook.ObserveNotebookUseCase
 import com.nisaba.domain.notebook.RenameNotebookUseCase
 import com.nisaba.domain.notebook.SetListeningUseCase
+import com.nisaba.domain.notebook.SetPersonaUseCase
+import com.nisaba.domain.persona.PersonaRegistry
 import com.nisaba.domain.shared.NotebookId
 import com.nisaba.domain.shared.PagePoint
 import com.nisaba.domain.ink.InkStore
@@ -55,7 +57,7 @@ class NotebookViewModelTest {
                 LoadPageInkUseCase(ink), CommitStrokeUseCase(ink), CommitStrokesUseCase(ink), EraseUseCase(ink, ids),
                 UndoUseCase(ink), RedoUseCase(ink), EraseAnswerUseCase(ink),
             ),
-            SetListeningUseCase(store), ids,
+            SetListeningUseCase(store), ids, setPersona = SetPersonaUseCase(store),
         )
         val vm = NotebookViewModel(
             deps, scope.backgroundScope, eraserRadius = 6f, toolbarHideMillis = 3000, nowMillis = { scope.testScheduler.currentTime },
@@ -68,6 +70,16 @@ class NotebookViewModelTest {
     private fun line(x0: Float, x1: Float, y: Float) = InkPoints(
         FloatArray(11) { x0 + (x1 - x0) * it / 10f }, FloatArray(11) { y }, FloatArray(11) { .5f }, IntArray(11) { it * 8 },
     )
+
+    @Test fun theVoiceCanBeChangedFromTheMenu() = runTest {
+        val (vm, id) = open(this)
+        assertEquals(PersonaRegistry.DEFAULT_ID, vm.state.value.personaId)
+        vm.openVoice(); assertTrue(vm.state.value.voiceOpen && vm.state.value.overlayOpen) // the pen pauses under it
+        vm.setVoice("writer"); runCurrent()
+        assertFalse(vm.state.value.voiceOpen)
+        assertEquals("writer", store.get(id)!!.notebook.personaId)
+        assertEquals("writer", vm.state.value.personaId)
+    }
 
     @Test fun opensFirstPage() = runTest {
         val (vm, _) = open(this)
