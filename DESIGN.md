@@ -192,7 +192,9 @@ Every bounded context is one package, and **every file ends with one of these su
 | `*Database.kt` | Room database declaration | infra | `*Dto` |
 | `*Colors.kt` `*Type.kt` `*Theme.kt` | Design tokens and theme wiring (Compose) | app | — |
 
-Entry points are the only exempt files: `NisabaApp.kt`, `MainActivity.kt`, `AppGraph.kt`, `Navigation.kt` (all in `com.nisaba.app`) and `ToolsMain.kt` (`:tools`). A Gradle check (`verifyFileRoles`) fails the build on any other file without an allowed suffix.
+Entry points are the only exempt files: `NisabaApp.kt`, `MainActivity.kt`, `AppGraph.kt`, `Navigation.kt` (all in `com.nisaba.app`) and `ToolsMain.kt` (`:tools`). A Gradle check (`verifyFileRoles`) fails the build on any other file without an allowed suffix, **and on any source file over 300 lines** (tests excepted).
+
+Splitting a big class keeps one owner of its state and moves cohesive groups of behaviour into sibling files as extension functions, named with a qualifier: `NotebookViewModel.kt` + `NotebookInkViewModel.kt`, `NotebookAnswerViewModel.kt`, `NotebookToolbarViewModel.kt`, `NotebookDebugViewModel.kt`; `PageView.kt` + `PageGestureView.kt`, `PageRegionView.kt`; `ConversationSession.kt` + `ConversationRecordSession.kt`. Logic with a life of its own moves into its own tested class instead (`InkEditSession`). Two app-side uses of domain suffixes are deliberate: `*Session` for a stateful per-page UI orchestrator (`AnswerScribeSession`), `*Ports` for a ViewModel's dependency bundle (`NotebookViewModelPorts.kt`).
 
 Test files mirror their subject: `ConversationRulesTest.kt`.
 

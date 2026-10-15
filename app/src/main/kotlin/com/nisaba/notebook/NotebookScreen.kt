@@ -32,6 +32,9 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.nisaba.canvas.PageView
+import com.nisaba.canvas.jumpTo
+import com.nisaba.canvas.prepareAnswerAt
+import com.nisaba.canvas.showResumeMark
 import com.nisaba.canvas.ScribeAnimator
 import com.nisaba.canvas.answerPen
 import com.nisaba.device.EinkDevice
@@ -231,30 +234,6 @@ private fun ScribeWiring(
     }
 }
 
-@Composable
-private fun FailureChip(text: String, onRetry: () -> Unit) {
-    val c = Nisaba.colors
-    Row(
-        Modifier.padding(12.dp).background(c.paper).border(BorderStroke(2.dp, c.lapis)).clickable(onClick = onRetry).padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Text("?", style = MaterialTheme.typography.titleLarge, color = c.lapis)
-        Text("$text · tap to retry", style = MaterialTheme.typography.bodyLarge)
-    }
-}
-
-@Composable
-private fun MemoryChip(text: String, onDismiss: () -> Unit, mark: String = "✎") {
-    val c = Nisaba.colors
-    Row(
-        Modifier.padding(12.dp).background(c.paper).border(BorderStroke(2.dp, c.lapis)).clickable(onClick = onDismiss).padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Text(mark, style = MaterialTheme.typography.titleLarge, color = c.lapis)
-        Text(text, style = MaterialTheme.typography.bodyLarge)
-    }
-}
-
 /** The ⋯ menu for this page. */
 private fun notebookMenu(state: NotebookUiState, vm: NotebookViewModel, onOpenSettings: () -> Unit): List<MenuItem> = buildList {
     if (!state.endless) add(MenuItem("+ Page after this one", vm::insertBlankPage))
@@ -267,32 +246,6 @@ private fun notebookMenu(state: NotebookUiState, vm: NotebookViewModel, onOpenSe
     add(MenuItem("Rename", vm::beginRename))
     add(MenuItem("Settings", onOpenSettings))
 }
-
-/** What the tutor has recorded: learned topics, then the shaky ones it will come back to. */
-@Composable
-private fun LessonProgressDialog(state: NotebookUiState, onClose: () -> Unit) {
-    NisabaDialog("Lesson progress", onClose) {
-        val learned = state.lessonTopics.filter { it.status == TopicStatus.Learned }
-        val shaky = state.lessonTopics.filter { it.status == TopicStatus.Shaky }
-        val body = MaterialTheme.typography.bodyLarge
-        if (state.lessonTopics.isEmpty()) Text("Nothing recorded yet. Answer a question or two.", style = body)
-        if (learned.isNotEmpty()) Text("Learned: " + learned.joinToString(", ") { it.topic }, style = body)
-        if (shaky.isNotEmpty()) Text("To go over again: " + shaky.joinToString(", ") { it.topic }, style = body)
-        NisabaButtonRow { NisabaButton("Close", onClose, filled = true) }
-    }
-}
-
-/** The small Nisaba star in the corner while the bar is hidden: tap it to bring the bar back. */
-@Composable
-private fun ToolbarHandle(modifier: Modifier, onTap: () -> Unit) {
-    androidx.compose.foundation.Image(
-        androidx.compose.ui.res.painterResource(com.nisaba.R.drawable.ic_mark), "Show the toolbar",
-        modifier.padding(HANDLE_MARGIN.dp).size(HANDLE_SIZE.dp).clickable(onClick = onTap),
-    )
-}
-
-const val HANDLE_SIZE = 44
-const val HANDLE_MARGIN = 16
 
 /** The pen must not write under the bar, nor under the star handle that replaces it. */
 @Composable

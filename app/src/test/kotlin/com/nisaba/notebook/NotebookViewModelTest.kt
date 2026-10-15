@@ -7,6 +7,7 @@ import com.nisaba.domain.ink.CommitStrokesUseCase
 import com.nisaba.domain.ink.EraseAnswerUseCase
 import com.nisaba.domain.ink.EraseUseCase
 import com.nisaba.domain.ink.InkPoints
+import com.nisaba.domain.ink.InkUseCases
 import com.nisaba.domain.ink.ShapeKind
 import com.nisaba.domain.settings.PenSize
 import com.nisaba.domain.ink.StrokeOrigin

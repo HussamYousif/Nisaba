@@ -3,11 +3,8 @@ package com.nisaba.domain.conversation
 import com.nisaba.domain.answer.AnswerParser
 import com.nisaba.domain.answer.ParseEvent
 import com.nisaba.domain.lesson.LessonStore
-import com.nisaba.domain.lesson.formatLessonProgress
-import com.nisaba.domain.lesson.parseTopics
 import com.nisaba.domain.memory.ApplyMemoryUseCase
 import com.nisaba.domain.memory.MemoryStore
-import com.nisaba.domain.memory.memoryNote
 import com.nisaba.domain.settings.Settings
 import com.nisaba.domain.shared.Clock
 import com.nisaba.domain.shared.DomainError
@@ -54,26 +51,26 @@ class ConversationDeps(
  * (timer, request job, surface calls, exchange persistence, memory tags). One session per page; [close] when leaving it.
  */
 class ConversationSession(
-    private val deps: ConversationDeps,
-    private val scope: CoroutineScope,
+    internal val deps: ConversationDeps,
+    internal val scope: CoroutineScope,
     settings: Settings = Settings(),
     listening: Boolean = true,
 ) {
-    private val _status = MutableStateFlow(ConvStatus())
-    val status: StateFlow<ConvStatus> = _status.asStateFlow()
+    internal val statusFlow = MutableStateFlow(ConvStatus())
+    val status: StateFlow<ConvStatus> = statusFlow.asStateFlow()
 
-    private val lock = Mutex()
-    private var cfg = ConvSettings(settings.pauseMillis.toLong(), listening)
-    private var appSettings = settings
-    private var timerJob: Job? = null
-    private var requestJob: Job? = null
-    private val pending = HashMap<Int, PendingExchange>()
-    private val applyMemory = deps.memory?.let { ApplyMemoryUseCase(it, deps.clock) }
-    private var closed = false
+    internal val lock = Mutex()
+    internal var cfg = ConvSettings(settings.pauseMillis.toLong(), listening)
+    internal var appSettings = settings
+    internal var timerJob: Job? = null
+    internal var requestJob: Job? = null
+    internal val pending = HashMap<Int, PendingExchange>()
+    internal val applyMemory = deps.memory?.let { ApplyMemoryUseCase(it, deps.clock) }
+    internal var closed = false
 
     /** Book-keeping for one request so the exchange can be saved once both its outcome and its stream are final. */
     /** [transcribes] = the reply's `<heard>` is a transcription of new writing (not of a whole page Nisaba was asked about). */
-    private class PendingExchange(
+    internal class PendingExchange(
         val reqId: Int,
         val id: ExchangeId,
         val pageId: PageId,
@@ -140,7 +137,7 @@ class ConversationSession(
     fun tidy(source: PageId, pageId: PageId) =
         dispatch(ConvEvent.Begin(Utterance(pageId, emptySet(), at(LESSON_TOP), Purpose.Tidy(source))))
 
-    private fun at(y: Float) = PageRect(ANSWER_MARGIN, y, ANSWER_MARGIN, y)
+    internal fun at(y: Float) = PageRect(ANSWER_MARGIN, y, ANSWER_MARGIN, y)
 
     /**
      * Leaves the page. An answer that already started is kept as Interrupted (its ink stays on the page); one that
@@ -160,19 +157,19 @@ class ConversationSession(
         }
     }
 
-    private fun dispatch(e: ConvEvent) {
+    internal fun dispatch(e: ConvEvent) {
         if (closed) return
         scope.launch {
             lock.withLock {
                 if (closed) return@withLock
-                val (next, effects) = reduce(_status.value, e, cfg)
-                _status.value = next
+                val (next, effects) = reduce(statusFlow.value, e, cfg)
+                statusFlow.value = next
                 effects.forEach(::run)
             }
         }
     }
 
-    private fun run(fx: ConvEffect) {
+    internal fun run(fx: ConvEffect) {
         when (fx) {
             is ConvEffect.StartTimer -> startTimer(fx.atMillis)
             ConvEffect.CancelTimer -> timerJob?.cancel()
@@ -190,7 +187,7 @@ class ConversationSession(
         }
     }
 
-    private fun startTimer(at: Long) {
+    internal fun startTimer(at: Long) {
         timerJob?.cancel()
         timerJob = scope.launch {
             delay((at - deps.clock.nowMillis()).coerceAtLeast(0))
@@ -198,7 +195,7 @@ class ConversationSession(
         }
     }
 
-    private suspend fun runRequest(utt: Utterance, reqId: Int) {
+    internal suspend fun runRequest(utt: Utterance, reqId: Int) {
         val purpose = utt.purpose
         val answersWriting = purpose is Purpose.Writing || purpose is Purpose.Again
         val focus = utt.bounds.takeIf { answersWriting }
@@ -257,7 +254,7 @@ class ConversationSession(
         }
     }
 
-    private suspend fun stream(request: OracleRequest, record: PendingExchange) {
+    internal suspend fun stream(request: OracleRequest, record: PendingExchange) {
         val parser = AnswerParser()
         fun forward(events: List<ParseEvent>) = events.forEach { ev ->
             when (ev) {
@@ -278,84 +275,7 @@ class ConversationSession(
         forward(parser.finish())
     }
 
-    /**
-     * The reply is in but the hand may write for a while yet: save it now as Interrupted (what it is if the app dies
-     * before the hand finishes). The final save replaces it. Queued like an event (after the reply's blocks, before its
-     * end) and saved under [lock], so it can never land after the final save.
-     */
-    private fun checkpoint(p: PendingExchange) {
-        scope.launch {
-            lock.withLock {
-                val writing = (_status.value.state as? ConvState.Scribing)?.reqId == p.reqId
-                if (closed || p.status != null || !writing) return@withLock
-                try {
-                    deps.exchanges.append(exchangeOf(p, ExchangeStatus.Interrupted))
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
-                    deps.logger?.e("Session", "checkpoint save failed", e)
-                }
-            }
-        }
-    }
-
-    private fun exchangeOf(p: PendingExchange, status: ExchangeStatus) = Exchange(
-        p.id, deps.notebookId, p.pageId, p.heard, p.markup.toString(), status, p.startedAt,
-        appSettings.model, PROMPT_VERSION, deps.clock.nowMillis() - p.startedAt, p.inputTokens, p.outputTokens,
-        p.cachedTokens, p.focus, p.personaId,
-    )
-
-    /** Saves the exchange once its status is decided AND its stream is over (heard text arrives last). */
-    private fun maybeFinalize(p: PendingExchange) {
-        val status = p.status ?: return
-        if (!p.streamFinished || pending.remove(p.reqId) == null) return
-        val exchange = exchangeOf(p, status)
-        scope.launch(NonCancellable) { // the page may be closing; the exchange is still saved
-            try {
-                deps.exchanges.append(exchange)
-            } catch (@Suppress("TooGenericExceptionCaught") e: Exception) { // a full disk must not take the page down
-                deps.logger?.e("Session", "saving exchange ${exchange.id.value} failed", e)
-                return@launch
-            }
-            if (p.replyComplete && (status == ExchangeStatus.Complete || status == ExchangeStatus.Interrupted)) {
-                remember(exchange); recordTopics(exchange)
-            }
-        }
-    }
-
-    private suspend fun lessonProgress(): String? {
-        val store = deps.lessons ?: return null
-        if (deps.context.teachGoal == null) return null
-        return formatLessonProgress(store.topics(deps.notebookId))
-    }
-
-    /** Records the reply's `<topic>` tags in a lesson notebook; like memory, a hiccup never disturbs the page. */
-    private suspend fun recordTopics(exchange: Exchange) {
-        val store = deps.lessons ?: return
-        if (deps.context.teachGoal == null) return
-        val topics = parseTopics(exchange.answerMarkup, deps.clock.nowMillis()).takeIf { it.isNotEmpty() } ?: return
-        try {
-            store.upsert(deps.notebookId, topics)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
-            deps.logger?.e("Session", "lesson progress update failed", e)
-        }
-    }
-
-    /** Applies the reply's `<remember>`/`<forget>` tags; a memory hiccup never disturbs the page. */
-    private suspend fun remember(exchange: Exchange) {
-        val apply = applyMemory ?: return
-        try {
-            apply(exchange.answerMarkup, exchange.id)?.let(::memoryNote)?.let(deps.surface::showMemoryNote)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
-            deps.logger?.e("Session", "memory update failed", e)
-        }
-    }
-
-    private companion object {
+    internal companion object {
         const val FOCUS_MARGIN = 0.1f
         const val FOCUS_MIN = 100f
         const val LESSON_TOP = 160f

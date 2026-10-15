@@ -1,0 +1,232 @@
+package com.nisaba.notebook
+
+import com.nisaba.canvas.BlockRef
+import com.nisaba.canvas.answerPen
+import com.nisaba.domain.conversation.ConvState
+import com.nisaba.domain.conversation.ConversationContextPorts
+import com.nisaba.domain.conversation.failureMessage
+import com.nisaba.domain.ink.InkPoints
+import com.nisaba.domain.ink.Stroke
+import com.nisaba.domain.ink.StrokeOrigin
+import com.nisaba.domain.ink.answerAt
+import com.nisaba.domain.notebook.Page
+import com.nisaba.domain.persona.PersonaRegistry
+import com.nisaba.domain.settings.Settings
+import com.nisaba.domain.shared.DomainError
+import com.nisaba.domain.shared.ExchangeId
+import com.nisaba.domain.shared.PageId
+import com.nisaba.domain.shared.PagePoint
+import com.nisaba.domain.shared.StrokeId
+import com.nisaba.domain.shared.toPage
+import com.nisaba.notebook.NotebookViewModel.Companion.ANSWER_HIT
+import com.nisaba.notebook.NotebookViewModel.Companion.CUT_SHORT_NOTICE
+import com.nisaba.notebook.NotebookViewModel.Companion.MEMORY_NOTE_MILLIS
+import com.nisaba.notebook.NotebookViewModel.Companion.SPILL_SETTLE_MILLIS
+import com.nisaba.notebook.NotebookViewModel.Companion.STROKE_WIDTH
+import com.nisaba.scribe.motion.TimedStroke
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+
+
+// The ask loop seen from the notebook: sessions, the hand's callbacks, one answer's actions (erase, ask again), tidy, notes.
+fun NotebookViewModel.toggleListening() {
+    usedToolbar()
+    val nb = notebook?.notebook ?: return
+    ownScope.launch { deps.setListening(nb.id, !nb.listening) }
+}
+
+fun NotebookViewModel.askNow() { session?.onAskNow() }
+
+/** A clean, structured copy of this page's notes, written on a new page right after it (the original stays). */
+fun NotebookViewModel.tidyPage() {
+    val nb = notebook ?: return
+    val source = currentPage() ?: return
+    if (source.size.isEndless || deps.sessions == null) return
+    ownScope.launch {
+        if (!insertPageAfter(nb, source.id)) return@launch
+        openPage(pageIndex + 1, full = true)
+        currentPage()?.let { session?.tidy(source.id, it.id) }
+    }
+}
+/** A finger held on the page: if it is on an answer, offer what can be done with it. */
+fun NotebookViewModel.onLongPress(viewX: Float, viewY: Float) {
+    val page = currentPage() ?: return
+    val ex = answerAt(edit?.ink?.strokes.orEmpty(), affine.toPage(viewX, viewY), ANSWER_HIT) ?: return
+    ownScope.launch {
+        val saved = deps.sources.exchange(ex)
+        val again = deps.sessions != null && saved?.focus != null && saved.pageId == page.id
+        mutableState.update { it.copy(answerMenu = AnswerMenu(ex, canAskAgain = again)) }
+    }
+}
+
+fun NotebookViewModel.dismissAnswerMenu() = mutableState.update { it.copy(answerMenu = null) }
+
+fun NotebookViewModel.eraseAnswer(ex: ExchangeId) {
+    dismissAnswerMenu()
+    ownScope.launch { eraseAnswerEverywhere(ex); effectSink.emit(NotebookEffect.Refresh(full = false)) }
+}
+
+/** Erases the answer and asks the same writing again (only offered on the page it was asked on). */
+fun NotebookViewModel.askAgain(ex: ExchangeId) {
+    dismissAnswerMenu()
+    ownScope.launch {
+        val saved = deps.sources.exchange(ex) ?: return@launch
+        eraseAnswerEverywhere(ex)
+        effectSink.emit(NotebookEffect.Refresh(full = false))
+        currentPage()?.takeIf { it.id == saved.pageId }?.let { session?.askAgain(saved, it.id) }
+    }
+}
+
+/** An answer may have spilled onto the pages after the one it started on: erase it there too. */
+internal suspend fun NotebookViewModel.eraseAnswerEverywhere(ex: ExchangeId) {
+    val pages = notebook?.pages ?: return
+    val here = pageIndex
+    for (i in here downTo 0) if (!eraseAnswerOn(pages[i].id, ex) && i < here) break
+    for (i in here + 1 until pages.size) if (!eraseAnswerOn(pages[i].id, ex)) break
+}
+
+internal suspend fun NotebookViewModel.eraseAnswerOn(pageId: PageId, ex: ExchangeId): Boolean {
+    var changed = false
+    editAnyPage(pageId) { s -> deps.ink.eraseAnswer(s, ex).also { changed = it !== s } }
+    return changed
+}
+fun NotebookViewModel.retry() { session?.onTapRetry() }
+fun NotebookViewModel.continueScribe() { mutableState.update { it.copy(resumeMark = null) }; session?.onTapContinue() }
+
+/**
+ * The hand finished everything planned so far (up to block [ref]) on [pageId]. Commits what it wrote as ONE undoable
+ * command and returns the new stroke ids synchronously so the view does not draw them a second time.
+ */
+fun NotebookViewModel.onScribeDrained(written: List<TimedStroke>, ref: BlockRef?, pageId: PageId?): List<StrokeId> {
+    val strokes = answerStrokes(written, ref)
+    ownScope.launch {
+        commitAnswer(pageId, strokes)
+        if (ref != null && ref.session == sessionGen) session?.onScribeFinished(ref.reqId, ref.seq)
+    }
+    return strokes.map { it.id }
+}
+
+/** The hand was stopped by the pen: keep what it wrote and offer to continue where it stopped. */
+fun NotebookViewModel.onScribeStopped(written: List<TimedStroke>, ref: BlockRef?, pageId: PageId?): List<StrokeId> {
+    val strokes = answerStrokes(written, ref)
+    val last = written.lastOrNull()?.points?.let { PagePoint(it.xs.last(), it.ys.last()) }
+    ownScope.launch {
+        commitAnswer(pageId, strokes)
+        if (pageId == currentPage()?.id) mutableState.update { it.copy(resumeMark = last) }
+    }
+    return strokes.map { it.id }
+}
+
+/** The hand was dropped (the page turned under it): keep what it wrote, nothing to continue. */
+fun NotebookViewModel.onScribeAbandoned(written: List<TimedStroke>, ref: BlockRef?, pageId: PageId?) {
+    val strokes = answerStrokes(written, ref)
+    ownScope.launch { commitAnswer(pageId, strokes) }
+}
+
+/**
+ * The notebook screen went away (Settings, back) while the view model lives on. What the hand wrote is kept; a
+ * question in flight or an answer being written is interrupted as if the pen touched the page, since nobody is
+ * there to draw the rest. [onScreenShown] picks the page up again.
+ */
+fun NotebookViewModel.onScreenLeft(written: List<TimedStroke>, ref: BlockRef?, pageId: PageId?) {
+    onScribeAbandoned(written, ref, pageId)
+    mutableState.update { it.copy(resumeMark = null) }
+    session?.onPenDown()
+}
+
+/** Back on the page: an unanswered utterance gets its pause again. */
+fun NotebookViewModel.onScreenShown() { session?.onPenAborted() }
+
+/** The app went to the background: the hand stops as at a pen-down (the Stop that follows commits its ink). */
+fun NotebookViewModel.onAppHidden() { session?.onPenDown() }
+
+/** Back in front: a pause cut short by [onAppHidden] runs again. */
+fun NotebookViewModel.onAppShown() { session?.onPenAborted() }
+
+/** A block of a longer answer is written: commit it now (merges with the answer's earlier blocks into one undo step). */
+fun NotebookViewModel.onScribeBlockWritten(written: List<TimedStroke>, ref: BlockRef?, pageId: PageId?): List<StrokeId> {
+    val strokes = answerStrokes(written, ref)
+    ownScope.launch { commitAnswer(pageId, strokes) }
+    return strokes.map { it.id }
+}
+
+internal fun NotebookViewModel.answerStrokes(written: List<TimedStroke>, ref: BlockRef?): List<Stroke> {
+    val exchange = ref?.exchangeId ?: ExchangeId(deps.idGen.next())
+    return written.map { t ->
+        val pen = answerPen(t.tone, settings.answerInk, settings.codeHighlight)
+        val p = t.points
+        val t0 = p.ts.first()
+        val points = InkPoints(p.xs, p.ys, p.ps, IntArray(p.size) { p.ts[it] - t0 })
+        Stroke(StrokeId(deps.idGen.next()), points, STROKE_WIDTH * pen.widthScale, pen.color, StrokeOrigin.Oracle(exchange))
+    }
+}
+
+/**
+ * The answer is longer than the page: keep what was written, add a blank page right after this one, turn to it and
+ * let the hand carry on. Returns the ids of the committed strokes synchronously (the view must not redraw them).
+ */
+fun NotebookViewModel.onScribePageBreak(written: List<TimedStroke>, toPage: Int, ref: BlockRef?, pageId: PageId?): List<StrokeId> {
+    val strokes = answerStrokes(written, ref)
+    ownScope.launch {
+        commitAnswer(pageId, strokes)
+        val nb = notebook
+        val from = nb?.pages?.indexOfFirst { it.id == pageId } ?: -1
+        if (nb == null || from < 0 || from != pageIndex) return@launch // the user turned away; the hand was reset
+        if (!insertPageAfter(nb, pageId)) {
+            session?.onPenDown() // could not add the page: end the answer here, as interrupted
+            return@launch
+        }
+        openPage(from + 1, full = true, keepAnswer = true)
+        delay(SPILL_SETTLE_MILLIS) // let the view lay out the new page before the hand touches it
+        currentPage()?.let { scribeSink.emit(ScribeCommand.PageReady(toPage, it.id)) }
+    }
+    return strokes.map { it.id }
+}
+
+internal suspend fun NotebookViewModel.commitAnswer(pageId: PageId?, strokes: List<Stroke>) {
+    if (pageId == null || strokes.isEmpty()) return
+    editAnyPage(pageId) { deps.ink.commitMany(it, strokes) }
+    deps.changes.touch(deps.notebookId)
+}
+
+internal fun NotebookViewModel.failure(error: DomainError?) = mutableState.update { it.copy(failure = error?.let(::failureMessage)) }
+
+internal fun NotebookViewModel.memoryNote(note: String) {
+    mutableState.update { it.copy(memoryNote = note) }
+    memoryNoteJob?.cancel()
+    memoryNoteJob = ownScope.launch { delay(MEMORY_NOTE_MILLIS); mutableState.update { it.copy(memoryNote = null) } }
+}
+
+fun NotebookViewModel.dismissMemoryNote() { memoryNoteJob?.cancel(); mutableState.update { it.copy(memoryNote = null) } }
+
+fun NotebookViewModel.dismissNotice() = mutableState.update { it.copy(notice = null) }
+
+internal fun NotebookViewModel.startSession(page: Page) {
+    session?.close(); session = null; answerScribe?.close(); answerScribe = null
+    val factory = deps.sessions ?: return
+    val scribe = AnswerScribeSession(
+        ++sessionGen, page.id, deps.hands, { settings }, { currentPage()?.size ?: page.size }, { edit?.ink?.strokes.orEmpty() },
+        { printedOccupancy },
+        { scribeSink.tryEmit(it) }, ::failure, ::memoryNote, onCutShort = { mutableState.update { it.copy(notice = CUT_SHORT_NOTICE) } },
+    )
+    answerScribe = scribe
+    val context = object : ConversationContextPorts {
+        override suspend fun documentPages(): List<String> = deps.sources.documentPages()
+        override val currentDocumentPage: Int? get() = documentPageIndex
+        override val teachGoal: String? get() = notebook?.notebook?.teachGoal
+        override val persona get() = PersonaRegistry.of(notebook?.notebook?.personaId)
+    }
+    val created = factory.create(scribe, ownScope, settings, notebook?.notebook?.listening ?: true, context)
+    session = created
+    statusJob?.cancel()
+    statusJob = ownScope.launch {
+        created.status.collect { st ->
+            val waiting = st.state is ConvState.Pausing || st.state is ConvState.Held
+            mutableState.update { if (it.askable == waiting) it else it.copy(askable = waiting) }
+        }
+    }
+    // a lesson notebook: Nisaba opens a fresh lesson, or recaps when they come back after a while (the session decides)
+    if (notebook?.notebook?.teachGoal != null) created.beginLesson(page.id, edit?.ink?.strokes?.maxOfOrNull { it.bounds.bottom })
+}

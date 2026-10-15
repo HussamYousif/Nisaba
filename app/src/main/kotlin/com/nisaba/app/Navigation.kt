@@ -27,6 +27,7 @@ import com.nisaba.memory.MemoryScreen
 import com.nisaba.memory.MemoryViewModel
 import com.nisaba.notebook.NotebookScreen
 import com.nisaba.notebook.NotebookViewModel
+import com.nisaba.notebook.debugWriteAsUser
 import com.nisaba.settings.SettingsScreen
 import com.nisaba.settings.SettingsViewModel
 import com.nisaba.welcome.WelcomeScreen

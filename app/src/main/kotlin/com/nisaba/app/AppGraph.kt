@@ -59,7 +59,7 @@ import com.nisaba.infra.settings.KeystoreSecretStore
 import com.nisaba.infra.snapshot.PageSnapshotRenderer
 import com.nisaba.library.LibraryViewModel
 import com.nisaba.memory.MemoryViewModel
-import com.nisaba.notebook.InkUseCases
+import com.nisaba.domain.ink.InkUseCases
 import com.nisaba.notebook.NotebookDeps
 import com.nisaba.notebook.NotebookViewModel
 import com.nisaba.notebook.NotebookSources
