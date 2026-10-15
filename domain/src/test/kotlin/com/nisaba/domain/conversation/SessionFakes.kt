@@ -74,7 +74,7 @@ class RecordingSurface : ConversationSurface {
     override fun showInkwell(utt: Utterance) { log += "ink+" }
     override fun hideInkwell(dry: Boolean) { log += if (dry) "ink-dry" else "ink-handoff" }
     val exchangeIds = mutableListOf<ExchangeId>()
-    override fun planBlock(reqId: Int, block: Block, exchangeId: ExchangeId) {
+    override fun planBlock(reqId: Int, block: Block, exchangeId: ExchangeId, personaId: String) {
         log += "plan$reqId"; blocks += block; exchangeIds += exchangeId
     }
     override fun stopScribe(reqId: Int) { log += "stop$reqId" }

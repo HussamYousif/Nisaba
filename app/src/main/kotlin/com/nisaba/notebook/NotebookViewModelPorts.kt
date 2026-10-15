@@ -80,6 +80,8 @@ class NotebookSources(
     val lessonTopics: Flow<List<LessonTopic>> = emptyFlow(),
     /** Whether the device has a network; a question that failed offline is asked again when it comes back. */
     val online: Flow<Boolean> = emptyFlow(),
+    /** Every voice as it is now, their own included. */
+    val voices: () -> com.nisaba.domain.persona.Voices = { com.nisaba.domain.persona.Voices() },
 )
 
 /** What the app remembers for the user between visits: the first-run hint, where each endless canvas was left, the pen. */

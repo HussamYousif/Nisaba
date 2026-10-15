@@ -30,7 +30,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.nisaba.domain.persona.PersonaRegistry
+import androidx.compose.ui.geometry.Offset
+import com.nisaba.persona.LocalVoices
+import com.nisaba.persona.drawSigil
+import com.nisaba.persona.inkOf
 import com.nisaba.domain.shared.NotebookId
 import com.nisaba.ui.brand.HandTextComponent
 import com.nisaba.ui.theme.Nisaba
@@ -105,6 +108,7 @@ fun LibraryScreen(state: LibraryUiState, actions: LibraryActions) {
 @Composable
 private fun NotebookGrid(notebooks: List<CoverItem>, actions: LibraryActions) {
     val c = Nisaba.colors
+    val voices = LocalVoices.current
     LazyVerticalGrid(
         GridCells.Fixed(3),
         horizontalArrangement = Arrangement.spacedBy(28.dp), verticalArrangement = Arrangement.spacedBy(32.dp),
@@ -112,7 +116,11 @@ private fun NotebookGrid(notebooks: List<CoverItem>, actions: LibraryActions) {
         items(notebooks, key = { it.id.value }) { item ->
             Column(Modifier.combinedClickable(onClick = { actions.onOpen(item.id) }, onLongClick = { actions.onMenu(item) })) {
                 Box(Modifier.fillMaxWidth().aspectRatio(0.75f).background(c.paper)) {
-                    Canvas(Modifier.fillMaxSize()) { drawCover(item.seed, c.ink, c.lapis) }
+                    val voice = voices.of(item.personaId)
+                    Canvas(Modifier.fillMaxSize()) {
+                        drawCover(item.seed, c.ink, c.lapis)
+                        drawSigil(voice, inkOf(voice, c.lapis), Offset(size.width * SIGIL_X, size.width * SIGIL_Y), size.width * SIGIL_R)
+                    }
                     HandTextComponent(
                         item.name, c.ink,
                         Modifier.align(Alignment.BottomCenter).padding(bottom = 22.dp).fillMaxWidth(coverNameWidth(item.name)),
@@ -125,7 +133,7 @@ private fun NotebookGrid(notebooks: List<CoverItem>, actions: LibraryActions) {
                         item.endless -> "Endless canvas"
                         item.lesson -> "Lesson · PDF"
                         else -> "${item.pageCount} page${if (item.pageCount == 1) "" else "s"}" + if (item.hasDocument) " · PDF" else ""
-                    } + " · " + PersonaRegistry.of(item.personaId).name,
+                    } + " · " + voices.of(item.personaId).name,
                     style = MaterialTheme.typography.labelSmall, color = c.faint, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
             }
@@ -160,3 +168,8 @@ private fun LibraryDialogs(dialog: LibraryDialog, actions: LibraryActions) {
         else -> Unit // the steps of "New" (NewNotebookComponent)
     }
 }
+
+/** The voice's sign in the cover's top right corner (fractions of the cover's width). */
+private const val SIGIL_X = 0.88f
+private const val SIGIL_Y = 0.12f
+private const val SIGIL_R = 0.065f // clear of the rosette's longest wedge

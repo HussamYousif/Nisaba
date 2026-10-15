@@ -128,6 +128,12 @@ private fun HandPane(s: Settings, vm: SettingsViewModel) {
     Choice(HandSpeed.entries.map { it to it.name }, s.handSpeed, vm::setSpeed)
     Text("Style", style = MaterialTheme.typography.labelLarge)
     Choice(listOf(HandStyle.Casual to "Joined (clear)", HandStyle.Formal to "Full cursive (pretty)"), s.handStyle, vm::setStyle)
+    Text("Voices", style = MaterialTheme.typography.labelLarge)
+    Choice(listOf(true to "Each its own hand", false to "All alike"), s.voiceHands, vm::setVoiceHands)
+    Text(
+        "Each voice writes in its own ink, slant and neatness; a swift voice writes faster while Speed is Natural.",
+        style = MaterialTheme.typography.labelSmall, color = Nisaba.colors.faint,
+    )
 }
 
 private val PREVIEW_CODE = listOf("def greet(name):  # say hi", "    return \"Hi \" + name")

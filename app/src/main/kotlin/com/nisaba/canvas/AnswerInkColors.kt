@@ -16,11 +16,12 @@ private const val COMMENT_WIDTH = 0.7f // a pencil, not a pen
 private const val BOLD_WIDTH = 1.5f
 
 /**
- * The pens the hand writes with: the answer ink, and inside code a pen per highlighter tone. [style] = how code is
- * marked: coloured pens; weight only (keywords bold, comments a thin grey pencil); or not at all.
+ * The pens the hand writes with: the answer ink (or the voice's own, [voiceInk]), and inside code a pen per
+ * highlighter tone. [style] = how code is marked: coloured pens; weight only (keywords bold, comments a thin grey
+ * pencil); or not at all.
  */
-fun answerPen(tone: InkTone, ink: AnswerInk, style: CodeHighlight = CodeHighlight.Colour): AnswerPen {
-    val plain = AnswerPen(if (ink == AnswerInk.Black) InkColor.BLACK else InkColor.LAPIS, 1f)
+fun answerPen(tone: InkTone, ink: AnswerInk, style: CodeHighlight = CodeHighlight.Colour, voiceInk: Int? = null): AnswerPen {
+    val plain = AnswerPen(voiceInk?.let(::InkColor) ?: if (ink == AnswerInk.Black) InkColor.BLACK else InkColor.LAPIS, 1f)
     return when (style) {
         CodeHighlight.Off -> plain
         CodeHighlight.Weight -> when (tone) {

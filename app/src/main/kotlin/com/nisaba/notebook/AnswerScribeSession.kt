@@ -8,6 +8,9 @@ import com.nisaba.domain.conversation.answerAnchor
 import com.nisaba.domain.ink.Stroke
 import com.nisaba.domain.ink.StrokeOrigin
 import com.nisaba.domain.ink.estimateXHeight
+import com.nisaba.domain.persona.Persona
+import com.nisaba.domain.persona.PersonaRegistry
+import com.nisaba.domain.persona.handFor
 import com.nisaba.domain.settings.HandStyle
 import com.nisaba.domain.settings.Settings
 import com.nisaba.domain.shared.DomainError
@@ -47,6 +50,13 @@ sealed interface ScribeCommand {
     data class AnswerAt(val at: PagePoint) : ScribeCommand
 }
 
+/** What the hand reports besides failures: a memory note, a cut-short answer, a block it couldn't lay out. */
+class ScribeNotices(
+    val onMemoryNote: (String) -> Unit = {},
+    val onCutShort: () -> Unit = {},
+    val onLayoutError: (Throwable) -> Unit = { android.util.Log.w("Nisaba/Scribe", "block skipped", it) },
+)
+
 /**
  * The conversation's window onto the page: turns "an answer block arrived" into planned pen strokes near the question
  * and tells the view what to show. One instance per open page ([session] tells instances apart); after [close] it is mute.
@@ -63,9 +73,9 @@ class AnswerScribeSession(
     private val printed: () -> Occupancy?,
     private val emit: (ScribeCommand) -> Unit,
     private val onFailure: (DomainError?) -> Unit,
-    private val onMemoryNote: (String) -> Unit = {},
-    private val onLayoutError: (Throwable) -> Unit = { android.util.Log.w("Nisaba/Scribe", "block skipped", it) },
-    private val onCutShort: () -> Unit = {},
+    private val notices: ScribeNotices = ScribeNotices(),
+    /** Any voice by id (each writes in its own hand: Settings → The hand). */
+    private val voices: (String) -> Persona = PersonaRegistry::of,
     /** Where the hand's planning runs: one block after another, off the main thread (layout must not stall frames). */
     private val planScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default.limitedParallelism(1)),
 ) : ConversationSurface {
@@ -73,7 +83,7 @@ class AnswerScribeSession(
     private var anchor: PagePoint? = null
 
     /** One answer's planner and where it got to; only ever touched inside [planScope] once created. */
-    private class PlanRun(val planner: ScribePlanUseCase) { var state: ScribePlanState = planner.start() }
+    private class PlanRun(val planner: ScribePlanUseCase, val ink: Int?) { var state: ScribePlanState = planner.start() }
     private var run: PlanRun? = null
     private var currentReq = 0
     private var blocks = 0
@@ -93,25 +103,25 @@ class AnswerScribeSession(
 
     override fun hideInkwell(dry: Boolean) = Unit // nothing was shown
 
-    override fun planBlock(reqId: Int, block: Block, exchangeId: ExchangeId) {
+    override fun planBlock(reqId: Int, block: Block, exchangeId: ExchangeId, personaId: String) {
         if (closed) return
-        if (reqId != currentReq || run == null) startAnswer(reqId) // reads the page as it is now, on the caller's thread
+        if (reqId != currentReq || run == null) startAnswer(reqId, personaId) // reads the page as it is now, on the caller's thread
         val r = run ?: return
-        val ref = BlockRef(session, reqId, ++blocks, exchangeId)
+        val ref = BlockRef(session, reqId, ++blocks, exchangeId, r.ink)
         val page = answerPage
         planScope.launch {
             // a block the hand can't lay out is skipped, never fatal: the answer carries on and still finishes
             val strokes = try {
                 r.planner(r.state, block).also { r.state = it.state }.strokes
             } catch (@Suppress("TooGenericExceptionCaught") e: RuntimeException) {
-                onLayoutError(e); emptyList()
+                notices.onLayoutError(e); emptyList()
             }
             // strokes carry their page; the animator pauses at each break. Sent even when empty so the block counts.
             emitIfOpen(ScribeCommand.Play(strokes, ref, page))
         }
     }
 
-    private fun startAnswer(reqId: Int) {
+    private fun startAnswer(reqId: Int, personaId: String) {
         currentReq = reqId
         blocks = 0
         val page = pageSize()
@@ -129,11 +139,14 @@ class AnswerScribeSession(
         val region = LayoutRegion.below(page, a.x, a.y, xHeight)
         val occupancy = (printed()?.copy() ?: emptyOccupancy(page, region))
             .also { o -> ink().forEach { s -> o.mark(s.bounds.inflate(INK_PAD)) } }
+        val hand = voices(personaId).handFor(s) // each voice its own slant, neatness, pace and ink
+        val human = (if (s.handStyle == HandStyle.Formal) HumanParams.FORMAL else HumanParams.CASUAL).voiced(hand.slantDeg, hand.tidiness)
         run = PlanRun(
             ScribePlanUseCase(
                 hands(s.handStyle), region, OccupancyLookup { if (it == 0) occupancy else null }, seedFor(reqId, u),
-                if (s.handStyle == HandStyle.Formal) HumanParams.FORMAL else HumanParams.CASUAL, speedProfile(s.handSpeed),
+                human, speedProfile(hand.speed ?: s.handSpeed),
             ),
+            hand.ink,
         )
     }
 
@@ -157,6 +170,6 @@ class AnswerScribeSession(
     override fun resumeScribe(reqId: Int) = emitIfOpen(ScribeCommand.Resume)
     override fun showFailure(error: DomainError) = onFailure(error)
     override fun clearFailure() = onFailure(null)
-    override fun showMemoryNote(note: String) = onMemoryNote(note)
-    override fun showCutShort() = onCutShort()
+    override fun showMemoryNote(note: String) = notices.onMemoryNote(note)
+    override fun showCutShort() = notices.onCutShort()
 }

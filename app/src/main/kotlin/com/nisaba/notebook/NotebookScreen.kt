@@ -44,7 +44,7 @@ import com.nisaba.device.PenTool
 import com.nisaba.domain.ink.StrokeOrigin
 import com.nisaba.domain.lesson.TopicStatus
 import com.nisaba.domain.notebook.PageBackground
-import com.nisaba.domain.persona.PersonaRegistry
+import com.nisaba.persona.LocalVoices
 import com.nisaba.persona.VoiceDialogComponent
 import com.nisaba.infra.render.BackgroundRenderer
 import com.nisaba.infra.render.InkRenderer
@@ -106,7 +106,8 @@ fun NotebookScreen(
             update = { v -> v.setPage(state.pageSize, state.background, state.viewOrigin, state.pageId); v.setStrokes(state.strokes) },
         )
         if (state.showHint) {
-            HandTextComponent("Write, then pause.", Nisaba.colors.faint, Modifier.align(Alignment.Center).fillMaxWidth(HINT_WIDTH))
+            val hint = LocalVoices.current.of(state.personaId).hint // in the notebook's voice
+            HandTextComponent(hint, Nisaba.colors.faint, Modifier.align(Alignment.Center).fillMaxWidth(HINT_WIDTH))
         }
         Column(Modifier.align(Alignment.TopStart)) {
             if (state.toolbarVisible) NotebookToolbarComponent(state, vm, onBack)
@@ -115,7 +116,8 @@ fun NotebookScreen(
             state.notice?.let { MemoryChip(it, vm::dismissNotice, mark = "!") }
         }
         if (!state.toolbarVisible) ToolbarHandle(Modifier.align(Alignment.BottomEnd), starBadge(state), vm::showToolbar)
-        if (state.menuOpen) NotebookMenuComponent(state.title, notebookMenu(state, vm, onOpenSettings), vm::closeMenu)
+        val voice = LocalVoices.current.of(state.personaId)
+        if (state.menuOpen) NotebookMenuComponent(state.title, notebookMenu(state, voice.name, vm, onOpenSettings), vm::closeMenu)
         NotebookOverlays(state, vm)
     }
 }
@@ -182,7 +184,7 @@ private fun ScribeWiring(
     eink: EinkDevice,
 ) {
     if (view == null || animator == null) return
-    animator.penFor = { answerPen(it, state.answerInk, state.codeHighlight) }
+    animator.penFor = { tone, ref -> answerPen(tone, state.answerInk, state.codeHighlight, ref?.ink) }
     view.showResumeMark(state.resumeMark)
     DisposableEffect(animator) {
         animator.onActiveChanged = { active -> if (active) { pen.suspendRawInk(); eink.fast() } else { pen.resumeRawInk(); eink.normal() } }
@@ -219,14 +221,19 @@ private fun ScribeWiring(
 }
 
 /** The ⋯ menu for this page. */
-private fun notebookMenu(state: NotebookUiState, vm: NotebookViewModel, onOpenSettings: () -> Unit): List<MenuItem> = buildList {
+private fun notebookMenu(
+    state: NotebookUiState,
+    voice: String,
+    vm: NotebookViewModel,
+    onOpenSettings: () -> Unit,
+): List<MenuItem> = buildList {
     if (!state.endless) add(MenuItem("+ Page after this one", vm::insertBlankPage))
     if (!state.endless && state.aiAvailable && state.strokes.any { it.origin is StrokeOrigin.User }) {
         add(MenuItem("Tidy this page (a clean copy on a new page)", vm::tidyPage))
     }
     if (state.endless) { add(MenuItem("Overview", vm::showOverview)); add(MenuItem("Home", vm::goHome)) }
     if (state.lesson) add(MenuItem("Lesson progress", vm::showProgress))
-    if (state.aiAvailable) add(MenuItem("Voice: ${PersonaRegistry.of(state.personaId).name}", vm::openVoice))
+    if (state.aiAvailable) add(MenuItem("Voice: $voice", vm::openVoice))
     add(MenuItem("Rename", vm::beginRename))
     add(MenuItem("Settings", onOpenSettings))
 }

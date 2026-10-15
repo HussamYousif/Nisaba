@@ -30,7 +30,7 @@ class CreateNotebookUseCase(private val store: NotebookStore, private val clock:
         val goal = teachGoal?.trim()?.take(MAX_GOAL)
         val notebook = Notebook(
             id, name, now, now, documentId, listening && style.mode != AnswerMode.WhenAsked, coverSeed(name, id), goal,
-            PersonaRegistry.of(personaId).id, style.mode == AnswerMode.QuestionsOnly, style.length,
+            PersonaRegistry.normalize(personaId), style.mode == AnswerMode.QuestionsOnly, style.length,
         )
         val pages = if (documentId != null && documentPages.isNotEmpty() && teachGoal == null) {
             documentPages.mapIndexed { i, size ->

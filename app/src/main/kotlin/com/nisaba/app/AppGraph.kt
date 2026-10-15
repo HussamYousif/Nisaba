@@ -43,6 +43,13 @@ import com.nisaba.domain.shared.IdGen
 import com.nisaba.domain.shared.NotebookId
 import com.nisaba.infra.db.RoomExchangeStore
 import com.nisaba.infra.db.RoomFactStore
+import com.nisaba.domain.persona.DraftVoiceUseCase
+import com.nisaba.domain.persona.ForgetVoiceUseCase
+import com.nisaba.domain.persona.KeepVoiceUseCase
+import com.nisaba.domain.persona.Voices
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import com.nisaba.infra.db.RoomLessonStore
 import com.nisaba.infra.db.RoomNotebookStore
 import com.nisaba.infra.deepseek.DeepSeekClient
@@ -118,6 +125,7 @@ class AppGraph(private val app: Application) {
     private val exchanges by lazy { RoomExchangeStore.open(app) }
     private val facts by lazy { RoomFactStore.open(app) }
     private val lessons by lazy { RoomLessonStore.open(app) }
+    private val ownVoices by lazy { com.nisaba.infra.db.RoomOwnVoiceStore.open(app) }
     private val inkStore by lazy { InkFileStore(File(app.filesDir, "ink"), io, logger) }
     private val docsDir = File(app.filesDir, "docs")
     private val rasterDir = File(app.cacheDir, "raster")
@@ -154,6 +162,20 @@ class AppGraph(private val app: Application) {
         else -> FallbackPenDevice.onyx { logger.w("Pen", "the Onyx pen could not start: using the standard pen") }
     }
 
+    /** Every voice, their own included, kept current for lookups anywhere (pickers, covers, the hand, the session). */
+    val voices: kotlinx.coroutines.flow.StateFlow<Voices> by lazy {
+        ownVoices.observe().map { Voices(it) }.stateIn(io, kotlinx.coroutines.flow.SharingStarted.Eagerly, Voices())
+    }
+
+    fun ownVoiceFactory(): ViewModelProvider.Factory = viewModelFactory {
+        initializer {
+            com.nisaba.persona.OwnVoiceViewModel(
+                DraftVoiceUseCase(oracle), KeepVoiceUseCase(ownVoices, idGen), ForgetVoiceUseCase(ownVoices), voices,
+                { settings.observe().first().model },
+            )
+        }
+    }
+
     fun libraryFactory(): ViewModelProvider.Factory = viewModelFactory {
         initializer {
             LibraryViewModel(
@@ -164,26 +186,7 @@ class AppGraph(private val app: Application) {
         }
     }
 
-    private val viewPrefs by lazy { app.getSharedPreferences("views", android.content.Context.MODE_PRIVATE) }
-    private val lastPagePrefs by lazy { app.getSharedPreferences("last_page", android.content.Context.MODE_PRIVATE) }
-    private val pendingPrefs by lazy { app.getSharedPreferences("pending_questions", android.content.Context.MODE_PRIVATE) }
-
-    private fun savePending(page: PageId, utt: com.nisaba.domain.conversation.Utterance?) = pendingPrefs.edit().apply {
-        if (utt == null) remove(page.value) else putString(page.value, encodePending(utt))
-    }.apply()
-
-    /** "l,t,r,b|strokeId;strokeId": a page's unanswered question (its strokes are on the page). */
-    private fun encodePending(u: com.nisaba.domain.conversation.Utterance) =
-        "${u.bounds.left},${u.bounds.top},${u.bounds.right},${u.bounds.bottom}|" + u.strokeIds.joinToString(";") { it.value }
-
-    private fun decodePending(page: PageId, s: String): com.nisaba.domain.conversation.Utterance? = runCatching {
-        val (box, ids) = s.split('|', limit = 2)
-        val n = box.split(',').map { it.toFloat() }
-        com.nisaba.domain.conversation.Utterance(
-            page, ids.split(';').filter { it.isNotBlank() }.mapTo(HashSet()) { com.nisaba.domain.shared.StrokeId(it) },
-            com.nisaba.domain.shared.PageRect(n[0], n[1], n[2], n[3]),
-        )
-    }.getOrNull()
+    private val prefs by lazy { NotebookPrefsStore(app) }
 
     /** Whether there is a network at all (a question that failed offline is asked again when it comes back). */
     val online: kotlinx.coroutines.flow.StateFlow<Boolean> by lazy {
@@ -198,11 +201,6 @@ class AppGraph(private val app: Application) {
         flow
     }
     private val touchNotebook by lazy { com.nisaba.domain.notebook.TouchNotebookUseCase(notebooks, clock) }
-
-    private fun loadView(page: PageId): PagePoint? =
-        viewPrefs.getString(page.value, null)?.split(',')?.let { if (it.size == 2) PagePoint(it[0].toFloat(), it[1].toFloat()) else null }
-
-    private fun saveView(page: PageId, at: PagePoint) = viewPrefs.edit().putString(page.value, "${at.x},${at.y}").apply()
 
     fun settingsFactory(): ViewModelProvider.Factory = viewModelFactory {
         initializer {
@@ -234,14 +232,13 @@ class AppGraph(private val app: Application) {
                     setListening = SetListeningUseCase(notebooks), idGen = idGen,
                     settings = settings.observe(), sessions = sessionFactory(id), hands = ::hand,
                     memory = NotebookMemory(
-                        { settings.update { it.copy(hintSeen = true) } }, ::loadView, ::saveView,
+                        { settings.update { it.copy(hintSeen = true) } }, prefs::loadView, prefs::saveView,
                         { ink, size -> settings.update { it.copy(penInk = ink, penSize = size) } },
-                        { nb -> lastPagePrefs.getString(nb.value, null)?.let(::PageId) },
-                        { nb, page -> lastPagePrefs.edit().putString(nb.value, page.value).apply() },
-                        { page -> pendingPrefs.getString(page.value, null)?.let { decodePending(page, it) } },
-                        ::savePending,
+                        prefs::lastPage, prefs::saveLastPage, prefs::loadPending, prefs::savePending,
                     ),
-                    sources = NotebookSources({ documentText(id) }, ::printedOccupancy, exchanges::get, lessons.observe(id), online),
+                    sources = NotebookSources(
+                        { documentText(id) }, ::printedOccupancy, exchanges::get, lessons.observe(id), online, voices = { voices.value },
+                    ),
                     changes = com.nisaba.notebook.NotebookChanges(
                         SetPersonaUseCase(notebooks), { touchNotebook(it) },
                         com.nisaba.domain.notebook.SetAnswerStyleUseCase(notebooks)::invoke,

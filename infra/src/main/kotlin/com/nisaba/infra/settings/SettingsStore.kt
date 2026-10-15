@@ -33,6 +33,7 @@ private object Keys {
     val penSize = stringPreferencesKey("penSize")
     val lastPersona = stringPreferencesKey("lastPersona")
     val standardPen = booleanPreferencesKey("standardPen")
+    val voiceHands = booleanPreferencesKey("voiceHands")
     val styleMode = stringPreferencesKey("answerMode")
     val styleLength = stringPreferencesKey("answerLength")
 }
@@ -55,7 +56,7 @@ class DataStoreSettingsStore(context: Context) : SettingsStore {
             it[Keys.styleMode] = next.lastStyle.mode.name; it[Keys.styleLength] = next.lastStyle.length.name
             it[Keys.onboarded] = next.onboarded; it[Keys.hintSeen] = next.hintSeen
             it[Keys.codeHighlight] = next.codeHighlight.name; it[Keys.penInk] = next.penInk; it[Keys.penSize] = next.penSize.name
-            it[Keys.lastPersona] = next.lastPersona; it[Keys.standardPen] = next.standardPen
+            it[Keys.lastPersona] = next.lastPersona; it[Keys.standardPen] = next.standardPen; it[Keys.voiceHands] = next.voiceHands
         }
     }
 
@@ -73,7 +74,7 @@ class DataStoreSettingsStore(context: Context) : SettingsStore {
             onboarded = this[Keys.onboarded] ?: d.onboarded, hintSeen = this[Keys.hintSeen] ?: d.hintSeen,
             codeHighlight = this[Keys.codeHighlight].toEnum(d.codeHighlight), penInk = this[Keys.penInk] ?: d.penInk,
             penSize = this[Keys.penSize].toEnum(d.penSize), lastPersona = this[Keys.lastPersona] ?: d.lastPersona,
-            standardPen = this[Keys.standardPen] ?: d.standardPen,
+            standardPen = this[Keys.standardPen] ?: d.standardPen, voiceHands = this[Keys.voiceHands] ?: d.voiceHands,
         )
     }
 }

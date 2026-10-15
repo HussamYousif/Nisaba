@@ -32,6 +32,8 @@ data class Settings(
     val lastStyle: com.nisaba.domain.notebook.AnswerStyle = com.nisaba.domain.notebook.AnswerStyle(),
     /** Plain stylus events instead of the Boox's fast pen (if writing ever stops working after an update). */
     val standardPen: Boolean = false,
+    /** Each voice writes in its own ink, slant and pace (off: every voice writes like the settings above). */
+    val voiceHands: Boolean = true,
 ) {
     companion object {
         const val MIN_PAUSE = 2000

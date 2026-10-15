@@ -61,6 +61,13 @@ data class HumanParams(
     /** Join adjacent letters with a soft link (semi-cursive) — for print-style fonts. */
     val joinLetters: Boolean = false,
 ) {
+    /** This hand as a voice writes it: its own [slant] (null = this one), every irregularity scaled by [tidiness]. */
+    fun voiced(slant: Float?, tidiness: Float): HumanParams = copy(
+        slantDeg = slant ?: slantDeg, slantJitterDeg = slantJitterDeg * tidiness, scaleJitter = scaleJitter * tidiness,
+        rotJitterDeg = rotJitterDeg * tidiness, offsetJitter = offsetJitter * tidiness, wobble = wobble * tidiness,
+        baselineWander = baselineWander * tidiness, baseSlopeDeg = baseSlopeDeg * tidiness,
+    )
+
     companion object {
         val CASUAL = HumanParams(12f, 1.6f, 0.03f, 1f, 0.018f, 0.008f, 0.05f, 0.6f, joinLetters = true)
         val FORMAL = HumanParams(10f, 0.8f, 0.02f, 0.5f, 0.012f, 0.005f, 0.03f, 0.3f)

@@ -36,7 +36,12 @@ interface ConversationSurface {
     fun showInkwell(utt: Utterance)
     fun hideInkwell(dry: Boolean)
     /** [exchangeId] = the id the answer will be saved under, so its strokes can point at it. */
-    fun planBlock(reqId: Int, block: com.nisaba.domain.answer.Block, exchangeId: com.nisaba.domain.shared.ExchangeId)
+    fun planBlock(
+        reqId: Int,
+        block: com.nisaba.domain.answer.Block,
+        exchangeId: com.nisaba.domain.shared.ExchangeId,
+        personaId: String = com.nisaba.domain.persona.PersonaRegistry.DEFAULT_ID,
+    )
     fun stopScribe(reqId: Int)
     fun resumeScribe(reqId: Int)
     fun showFailure(error: com.nisaba.domain.shared.DomainError)
@@ -59,5 +64,8 @@ interface ConversationContextPorts {
 
     /** The notebook's voice and answering habits, read per request (they can change while the notebook is open). */
     val persona: com.nisaba.domain.persona.Persona get() = com.nisaba.domain.persona.PersonaRegistry.default
+
+    /** Any voice by id, their own ones included (a second opinion); unknown → the default voice. */
+    fun voice(id: String): com.nisaba.domain.persona.Persona = com.nisaba.domain.persona.PersonaRegistry.of(id)
     val style: com.nisaba.domain.notebook.AnswerStyle get() = com.nisaba.domain.notebook.AnswerStyle()
 }

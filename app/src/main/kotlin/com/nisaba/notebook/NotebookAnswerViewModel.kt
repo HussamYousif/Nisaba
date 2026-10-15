@@ -18,7 +18,6 @@ import com.nisaba.domain.ink.Stroke
 import com.nisaba.domain.ink.StrokeOrigin
 import com.nisaba.domain.ink.answerAt
 import com.nisaba.domain.notebook.Page
-import com.nisaba.domain.persona.PersonaRegistry
 import com.nisaba.domain.settings.Settings
 import com.nisaba.domain.shared.DomainError
 import com.nisaba.domain.shared.ExchangeId
@@ -90,7 +89,7 @@ fun NotebookViewModel.askAgain(ex: ExchangeId, how: AgainHow = AgainHow.Afresh) 
 
 /** The second opinion: pick the other voice first (another than this notebook's). */
 fun NotebookViewModel.pickOtherVoice() = mutableState.update { s ->
-    val other = PersonaRegistry.all.first { it.id != s.personaId }.id
+    val other = deps.sources.voices().all.first { it.id != s.personaId }.id
     s.copy(answerMenu = s.answerMenu?.copy(pickVoice = true, otherVoice = other))
 }
 
@@ -192,7 +191,7 @@ fun NotebookViewModel.onScribeBlockWritten(written: List<TimedStroke>, ref: Bloc
 internal fun NotebookViewModel.answerStrokes(written: List<TimedStroke>, ref: BlockRef?): List<Stroke> {
     val exchange = ref?.exchangeId ?: ExchangeId(deps.idGen.next())
     return written.map { t ->
-        val pen = answerPen(t.tone, settings.answerInk, settings.codeHighlight)
+        val pen = answerPen(t.tone, settings.answerInk, settings.codeHighlight, ref?.ink)
         val p = t.points
         val t0 = p.ts.first()
         val points = InkPoints(p.xs, p.ys, p.ps, IntArray(p.size) { p.ts[it] - t0 })
@@ -228,7 +227,12 @@ internal suspend fun NotebookViewModel.commitAnswer(pageId: PageId?, strokes: Li
     deps.changes.touch(deps.notebookId)
 }
 
-internal fun NotebookViewModel.failure(error: DomainError?) = mutableState.update { it.copy(failure = error?.let(::failureMessage)) }
+internal fun NotebookViewModel.failure(error: DomainError?) = mutableState.update {
+    it.copy(failure = error?.let { e -> failureMessage(e, voice().oops) }) // "Bah. The ink wouldn't flow…"
+}
+
+/** The voice Nisaba answers in here (their own voices included). */
+internal fun NotebookViewModel.voice() = deps.sources.voices().of(notebook?.notebook?.personaId)
 
 internal fun NotebookViewModel.memoryNote(note: String) {
     mutableState.update { it.copy(memoryNote = note) }
@@ -248,14 +252,17 @@ internal fun NotebookViewModel.startSession(page: Page) {
     val scribe = AnswerScribeSession(
         ++sessionGen, page.id, deps.hands, { settings }, { currentPage()?.size ?: page.size }, { edit?.ink?.strokes.orEmpty() },
         { printedOccupancy },
-        { scribeSink.tryEmit(it) }, ::failure, ::memoryNote, onCutShort = { mutableState.update { it.copy(notice = CUT_SHORT_NOTICE) } },
+        { scribeSink.tryEmit(it) }, ::failure,
+        ScribeNotices(::memoryNote, onCutShort = { mutableState.update { it.copy(notice = CUT_SHORT_NOTICE) } }),
+        voices = { deps.sources.voices().of(it) },
     )
     answerScribe = scribe
     val context = object : ConversationContextPorts {
         override suspend fun documentPages(): List<String> = deps.sources.documentPages()
         override val currentDocumentPage: Int? get() = documentPageIndex
         override val teachGoal: String? get() = notebook?.notebook?.teachGoal
-        override val persona get() = PersonaRegistry.of(notebook?.notebook?.personaId)
+        override val persona get() = voice()
+        override fun voice(id: String) = deps.sources.voices().of(id)
         override val style get() = notebook?.notebook?.style ?: com.nisaba.domain.notebook.AnswerStyle()
     }
     val created = factory.create(scribe, ownScope, settings, notebook?.notebook?.listening ?: true, context)

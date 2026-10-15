@@ -10,6 +10,16 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.runtime.CompositionLocalProvider
 import com.nisaba.ui.brand.LocalHandText
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.nisaba.persona.LocalOwnVoices
+import com.nisaba.persona.LocalVoices
+import com.nisaba.persona.OwnVoiceHost
+import com.nisaba.persona.OwnVoiceViewModel
 import com.nisaba.ui.theme.NisabaTheme
 
 class MainActivity : ComponentActivity() {
@@ -36,7 +46,18 @@ class MainActivity : ComponentActivity() {
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
         setContent {
-            NisabaTheme { CompositionLocalProvider(LocalHandText provides graph.handText) { NisabaNavHost(graph) } }
+            val voices by graph.voices.collectAsState()
+            val ownVoices: OwnVoiceViewModel = viewModel(factory = graph.ownVoiceFactory())
+            NisabaTheme {
+                CompositionLocalProvider(
+                    LocalHandText provides graph.handText, LocalVoices provides voices, LocalOwnVoices provides ownVoices,
+                ) {
+                    Box(Modifier.fillMaxSize()) {
+                        NisabaNavHost(graph)
+                        OwnVoiceHost(ownVoices) // above any dialog that asked for it
+                    }
+                }
+            }
         }
     }
 

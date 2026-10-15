@@ -128,7 +128,7 @@ class ConversationSession(
             is ConvEffect.CancelRequest -> requestJob?.cancel()
             is ConvEffect.ShowInkwell -> deps.surface.showInkwell(fx.utt)
             is ConvEffect.HideInkwell -> deps.surface.hideInkwell(fx.dry)
-            is ConvEffect.PlanBlock -> pending[fx.reqId]?.let { deps.surface.planBlock(fx.reqId, fx.block, it.id) }
+            is ConvEffect.PlanBlock -> pending[fx.reqId]?.let { deps.surface.planBlock(fx.reqId, fx.block, it.id, it.personaId) }
             is ConvEffect.StopScribe -> deps.surface.stopScribe(fx.reqId)
             is ConvEffect.ResumeScribe -> deps.surface.resumeScribe(fx.reqId)
             is ConvEffect.ShowFailure -> deps.surface.showFailure(fx.error)
@@ -151,7 +151,7 @@ class ConversationSession(
         val answersWriting = purpose is Purpose.Writing || purpose is Purpose.Again
         val focus = utt.bounds.takeIf { answersWriting }
         val other = ((purpose as? Purpose.Again)?.how as? AgainHow.OtherVoice)?.personaId
-        val persona = other?.let(com.nisaba.domain.persona.PersonaRegistry::of) ?: deps.context.persona
+        val persona = other?.let(deps.context::voice) ?: deps.context.persona
         val record = PendingExchange(
             reqId, ExchangeId(deps.idGen.next()), utt.pageId, deps.clock.nowMillis(), focus, answersWriting, persona.id,
         )

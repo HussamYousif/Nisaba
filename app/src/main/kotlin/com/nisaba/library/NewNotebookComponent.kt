@@ -16,7 +16,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.nisaba.domain.persona.PersonaRegistry
+import com.nisaba.persona.LocalVoices
 import com.nisaba.persona.AnswerStyleComponent
 import com.nisaba.persona.PersonaPickerComponent
 import com.nisaba.ui.theme.Nisaba
@@ -87,4 +87,4 @@ private fun KindRow(kind: NotebookKind, onClick: () -> Unit) {
 
 @Composable
 private fun VoiceLine(personaId: String) =
-    Text("Answered by ${PersonaRegistry.of(personaId).name}", style = MaterialTheme.typography.labelSmall, color = Nisaba.colors.faint)
+    Text("Answered by ${LocalVoices.current.of(personaId).name}", style = MaterialTheme.typography.labelSmall, color = Nisaba.colors.faint)

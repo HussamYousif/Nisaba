@@ -1,6 +1,13 @@
 package com.nisaba.persona
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.graphics.Color
+import com.nisaba.domain.persona.Persona
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -38,31 +45,78 @@ private const val SAMPLE_LINE = 1800f
 private const val SAMPLE_HEIGHT = 84
 
 /**
- * Every voice, one row each (no scrolling on e-ink), the picked one filled in ink. Below, the hand writes a line in
- * the picked voice, so the person hears it before choosing.
+ * Every voice in two columns (no scrolling on e-ink), each with its sign, the picked one filled in ink; then "a voice
+ * of your own" while there is room. Below, the hand writes a line in the picked voice, so they hear it before choosing.
  */
 @Composable
 fun PersonaPickerComponent(selected: String, onSelect: (String) -> Unit, modifier: Modifier = Modifier) {
     val c = Nisaba.colors
+    val voices = LocalVoices.current
+    val own = LocalOwnVoices.current
+    val kept = own?.state?.collectAsState()?.value?.kept
+    LaunchedEffect(kept) { if (kept != null) { onSelect(kept); own.consumeKept() } }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        for (p in PersonaRegistry.all) {
-            val on = p.id == selected
-            Column(
-                Modifier.fillMaxWidth().then(if (on) Modifier.background(c.ink) else Modifier)
-                    .border(BorderStroke(1.5.dp, c.ink)).clickable { onSelect(p.id) }.padding(horizontal = 16.dp, vertical = 8.dp),
-            ) {
-                Text(p.name, style = MaterialTheme.typography.titleMedium, color = if (on) c.paper else c.ink)
-                Text(p.tagline, style = MaterialTheme.typography.labelSmall, color = if (on) c.paper else c.faint)
+        val cells: List<Persona?> = voices.all + if (own != null && voices.canAddOwn) listOf(null) else emptyList()
+        for (row in cells.chunked(2)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                for (p in row) {
+                    val cell = Modifier.weight(1f)
+                    if (p == null) OwnVoiceCell(cell) { own?.open() } else VoiceCell(p, p.id == selected, cell) { onSelect(p.id) }
+                }
+                if (row.size == 1) Spacer(Modifier.weight(1f))
             }
         }
-        val sample = PersonaRegistry.of(selected).sample
-        val width = LocalHandText.current?.of(sample, SAMPLE_LINE)?.width ?: SAMPLE_LINE // same letter size, short or long
-        Box(Modifier.fillMaxWidth().height(SAMPLE_HEIGHT.dp).padding(top = 10.dp)) {
-            val fit = Modifier.fillMaxWidth((width / SAMPLE_LINE).coerceIn(0.1f, 1f))
-            HandTextComponent(sample, c.lapis, fit, animate = true, lineWidth = SAMPLE_LINE)
+        val picked = voices.of(selected)
+        VoiceSampleComponent(picked.sample, inkOf(picked, c.lapis))
+        if (own != null && PersonaRegistry.isOwn(selected) && voices.own.any { it.id == selected }) {
+            Text(
+                "Forget this voice", style = MaterialTheme.typography.labelSmall, color = c.faint,
+                modifier = Modifier.clickable { own.forget(selected); onSelect(PersonaRegistry.DEFAULT_ID) }.padding(vertical = 4.dp),
+            )
         }
     }
 }
+
+/** The hand writes a voice's [sample] line in its [ink]: the same letter size whether the line is short or long. */
+@Composable
+fun VoiceSampleComponent(sample: String, ink: Color) {
+    val width = LocalHandText.current?.of(sample, SAMPLE_LINE)?.width ?: SAMPLE_LINE
+    Box(Modifier.fillMaxWidth().height(SAMPLE_HEIGHT.dp).padding(top = 10.dp)) {
+        val fit = Modifier.fillMaxWidth((width / SAMPLE_LINE).coerceIn(0.1f, 1f))
+        HandTextComponent(sample, ink, fit, animate = true, lineWidth = SAMPLE_LINE)
+    }
+}
+
+/** The ink a voice writes in (the answer ink when it has none of its own). */
+fun inkOf(voice: Persona, answerInk: Color): Color = voice.hand.ink?.let { Color(it) } ?: answerInk
+
+@Composable
+private fun VoiceCell(p: Persona, on: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    val c = Nisaba.colors
+    Row(
+        modifier.then(if (on) Modifier.background(c.ink) else Modifier).border(BorderStroke(1.5.dp, c.ink))
+            .clickable(onClick = onClick).padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        val sign = if (on) c.paper else inkOf(p, c.lapis)
+        Canvas(Modifier.size(SIGIL.dp)) { drawSigil(p, sign, center, size.minDimension / 2f) }
+        Column {
+            Text(p.name, style = MaterialTheme.typography.titleMedium, color = if (on) c.paper else c.ink, maxLines = 1)
+            Text(p.tagline, style = MaterialTheme.typography.labelSmall, color = if (on) c.paper else c.faint, maxLines = 2)
+        }
+    }
+}
+
+@Composable
+private fun OwnVoiceCell(modifier: Modifier, onClick: () -> Unit) {
+    val c = Nisaba.colors
+    Column(modifier.border(BorderStroke(1.5.dp, c.faint)).clickable(onClick = onClick).padding(horizontal = 10.dp, vertical = 8.dp)) {
+        Text("+ A voice of your own", style = MaterialTheme.typography.titleMedium)
+        Text("Describe someone; Nisaba finds their voice.", style = MaterialTheme.typography.labelSmall, color = c.faint, maxLines = 2)
+    }
+}
+
+private const val SIGIL = 28
 
 /** When Nisaba answers and how long its answers are: two short rows of choices (small buttons, no scrolling). */
 @Composable

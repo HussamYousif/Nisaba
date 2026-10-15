@@ -3,8 +3,11 @@ package com.nisaba.domain.conversation
 import com.nisaba.domain.shared.DomainError
 import com.nisaba.domain.shared.NetworkKind
 
-/** The notebook's voice when the ink won't flow: one short line, never a stack trace. */
-fun failureMessage(error: DomainError): String = when (error) {
+/** The notebook's voice when the ink won't flow: one short line, never a stack trace; [opener] = the voice's "Bah." */
+fun failureMessage(error: DomainError, opener: String = ""): String =
+    if (opener.isBlank()) failureLine(error) else "${opener.trim()} ${failureLine(error)}"
+
+private fun failureLine(error: DomainError): String = when (error) {
     is DomainError.Network -> when (error.kind) {
         NetworkKind.Offline -> "The ink wouldn't flow: no connection"
         NetworkKind.Timeout -> "The ink ran dry: it took too long"

@@ -94,4 +94,15 @@ class HandHumanizeRulesTest {
         assertTrue(xs.all { abs(it) < 44f * 0.6f })
         assertEquals(0f, lineWander(11, 2, 500f, 0f, 44f, HumanParams.PERFECT))
     }
+
+    @Test fun aVoiceCanWriteNeaterOrLooserAndLeanItsOwnWay() {
+        val neat = HumanParams.CASUAL.voiced(slant = 2f, tidiness = 0.5f)
+        assertEquals(2f, neat.slantDeg)
+        assertEquals(HumanParams.CASUAL.wobble * 0.5f, neat.wobble)
+        assertEquals(HumanParams.CASUAL.joinLetters, neat.joinLetters)
+        assertEquals(HumanParams.CASUAL.slantDeg, HumanParams.CASUAL.voiced(slant = null, tidiness = 1f).slantDeg)
+        assertEquals(HumanParams.CASUAL, HumanParams.CASUAL.voiced(null, 1f))
+        val wobbly = lineWander(11, 2, 500f, 0f, 44f, HumanParams.CASUAL.voiced(null, 1.5f))
+        assertTrue(abs(wobbly) >= abs(lineWander(11, 2, 500f, 0f, 44f, HumanParams.CASUAL)))
+    }
 }

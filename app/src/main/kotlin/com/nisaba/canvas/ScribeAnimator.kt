@@ -32,9 +32,9 @@ class ChoreographerFrames : ScribeFrames {
 
 /**
  * Which answer block strokes came from: the page session that asked ([session]), its request, the block's 1-based
- * number within it, and the exchange the answer is saved under.
+ * number within it, and the exchange the answer is saved under. [ink] = the answering voice's own ink (ARGB), if any.
  */
-data class BlockRef(val session: Int, val reqId: Int, val seq: Int, val exchangeId: ExchangeId)
+data class BlockRef(val session: Int, val reqId: Int, val seq: Int, val exchangeId: ExchangeId, val ink: Int? = null)
 
 /**
  * Plays timed pen strokes onto a [ScribeCanvas] at ~20 fps, one letter at a time. Blocks can be [enqueue]d while playing
@@ -83,8 +83,8 @@ class ScribeAnimator(private val view: ScribeCanvas, private val frames: ScribeF
     /** The next stroke belongs to a later page: hand over what was written; the caller turns the page, then [pageReady]. */
     var onPageBreak: (written: List<TimedStroke>, toPage: Int) -> Unit = { _, _ -> }
 
-    /** The pen for each stroke's tone (answer ink; highlighter tones in code). */
-    var penFor: (InkTone) -> AnswerPen = { AnswerPen(com.nisaba.domain.ink.InkColor.LAPIS, 1f) }
+    /** The pen for each stroke's tone (answer ink; highlighter tones in code) in the block being written. */
+    var penFor: (InkTone, BlockRef?) -> AnswerPen = { _, _ -> AnswerPen(com.nisaba.domain.ink.InkColor.LAPIS, 1f) }
     val isActive: Boolean get() = active
 
     private val idle get() = !playing && !awaitingPage && strokeIdx >= queue.size
@@ -212,7 +212,7 @@ class ScribeAnimator(private val view: ScribeCanvas, private val frames: ScribeF
     }
 
     private fun draw(s: TimedStroke, from: Int, toExclusive: Int) {
-        val pen = penFor(s.tone)
+        val pen = penFor(s.tone, blockEnds.firstOrNull()?.second ?: lastRef) // the first block not yet finished is this one
         view.drawSegment(s.points, maxOf(0, from - 1), toExclusive, pen.color.argb, pen.widthScale)
         pointIdx = toExclusive
         val p = s.points

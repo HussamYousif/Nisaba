@@ -114,14 +114,29 @@ class MigrationTest {
         }
     }
 
+    @Test fun v8ToV9AddsOwnVoicesAndKeepsNotebooks() {
+        helper.createDatabase("mig9", 8).apply {
+            execSQL(
+                "INSERT INTO notebooks (id,name,createdAt,updatedAt,documentId,listening,coverSeed,teachGoal,persona,questionsOnly,answerLength) " +
+                    "VALUES ('n1','Old',1,2,NULL,1,7,NULL,'yukino',0,'Normal')",
+            )
+            close()
+        }
+        val db = helper.runMigrationsAndValidate("mig9", 9, true, MIGRATION_8_9)
+        db.query("SELECT persona FROM notebooks").use { c -> c.moveToFirst(); assertEquals("yukino", c.getString(0)) }
+        db.execSQL(
+            "INSERT INTO own_voices (id,name,tagline,sample,voice,words,temperature,ink,hint,oops,createdAt) " +
+                "VALUES ('own-1','Pirate','Arr','Arr.','You are Nisaba, a pirate.',50,0.75,NULL,'Write, then pause.','Blast.',3)",
+        )
+        db.query("SELECT name FROM own_voices").use { c -> c.moveToFirst(); assertEquals("Pirate", c.getString(0)) }
+    }
+
     @Test fun v1MigratesAllTheWayToTheCurrentSchema() {
         helper.createDatabase("migAll", 1).apply {
             execSQL("INSERT INTO notebooks (id,name,createdAt,updatedAt,documentId,listening,coverSeed) VALUES ('n1','Old',1,2,NULL,1,7)")
             close()
         }
-        helper.runMigrationsAndValidate(
-            "migAll", 8, true, MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8,
-        )
+        helper.runMigrationsAndValidate("migAll", 9, true, *MIGRATIONS)
             .query("SELECT COUNT(*) FROM notebooks").use { c -> c.moveToFirst(); assertEquals(1, c.getInt(0)) }
     }
 }
