@@ -65,6 +65,10 @@ fun NisabaIconButton(
     }
 }
 
+/** Just the drawn glyph of [icon], without a button (a badge, a status mark). */
+@Composable
+fun NisabaIconGlyph(icon: NisabaIcon, color: Color, modifier: Modifier = Modifier) = Canvas(modifier) { drawIcon(icon, color) }
+
 private fun DrawScope.drawIcon(icon: NisabaIcon, ink: Color) {
     val k = size.minDimension / GRID
     val line = Stroke(width = 1.8f * k, cap = StrokeCap.Round, join = StrokeJoin.Round)

@@ -1,5 +1,6 @@
 package com.nisaba.notebook
 
+import com.nisaba.domain.conversation.retryIfOffline
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nisaba.domain.conversation.ConversationSession
@@ -66,11 +67,13 @@ class NotebookViewModel(
     internal var printedOccupancy: Occupancy? = null
     internal var printedJob: Job? = null
     internal var sessionGen = 0
+    internal var turnsSinceFlash = 0
     internal var statusJob: Job? = null
 
     init {
         ownScope.launch { deps.settings.collect { s -> settings = s; onSettings(s) } }
         ownScope.launch { deps.sources.lessonTopics.collect { t -> mutableState.update { it.copy(lessonTopics = t) } } }
+        ownScope.launch { deps.sources.online.collect { up -> if (up) session?.retryIfOffline() } }
         ownScope.launch {
             deps.observe(deps.notebookId).collect { nb ->
                 notebook = nb
@@ -185,7 +188,8 @@ class NotebookViewModel(
             startSession(page)
         }
         publish()
-        effectSink.emit(NotebookEffect.Refresh(full))
+        // a full-screen flash on opening and every few turns clears the ghosting; other turns get a clean pass
+        effectSink.emit(NotebookEffect.Refresh(full && turnsSinceFlash++ % FLASH_EVERY == 0))
     }
 
     /** Loads the pages either side of [index] in the background and forgets the ones further away. */
@@ -218,6 +222,7 @@ class NotebookViewModel(
 
     companion object {
         const val STROKE_WIDTH = 3.5f
+        internal const val FLASH_EVERY = 5
         const val ERASER_RADIUS = 16f
         internal const val ANSWER_HIT = 40f
         internal const val PAGE_GRID_SIZE = 36

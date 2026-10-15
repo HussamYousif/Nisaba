@@ -177,6 +177,17 @@ class ConversationContextRulesTest {
         assertTrue(r.instruction.contains("\"Because 2+2.\"") && !r.instruction.contains("<remember") && !r.instruction.contains("**"))
     }
 
+    @Test fun shorterDeeperAndExampleAskForWhatTheySayAndOnlyAfreshThinks() {
+        fun req(how: AgainHow): OracleRequest {
+            val again = Purpose.Again("q", "<answer>\nA.\n</answer>", how)
+            return buildRequest(ContextInput(emptyList(), null, emptyList(), snap, Settings(), purpose = again))
+        }
+        assertTrue(req(AgainHow.Shorter).instruction.contains("one or two lines") && !req(AgainHow.Shorter).options.thinking)
+        assertTrue(req(AgainHow.Deeper).instruction.contains("go deeper"))
+        assertTrue(req(AgainHow.Example).instruction.contains("concrete, worked example"))
+        assertTrue(req(AgainHow.Afresh).options.thinking)
+    }
+
     @Test fun erasedAndCancelledExchangesLeaveTheHistory() {
         val (turns, _) = historyTurns(
             listOf(ex(1, "a", "A"), ex(2, "b", "B", ExchangeStatus.Erased), ex(3, "c", "", ExchangeStatus.Cancelled)),

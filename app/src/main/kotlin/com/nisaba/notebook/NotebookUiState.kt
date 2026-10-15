@@ -66,6 +66,8 @@ data class NotebookUiState(
     val pageGridScreen: Int = 0,
     /** There is writing Nisaba has not been asked about yet (Ask now would send it). */
     val askable: Boolean = false,
+    /** Nisaba is thinking about or writing an answer (the corner star says so while the bar is hidden). */
+    val working: Boolean = false,
     /** The voice Nisaba answers in here; [voiceOpen] = its picker is up. */
     val personaId: String = PersonaRegistry.DEFAULT_ID,
     val style: com.nisaba.domain.notebook.AnswerStyle = com.nisaba.domain.notebook.AnswerStyle(),
@@ -82,7 +84,13 @@ data class NotebookUiState(
 
 enum class ToolPanel { Pen, Shapes }
 
-data class AnswerMenu(val exchangeId: ExchangeId, val canAskAgain: Boolean)
+/** [pickVoice] = choosing the voice for a second opinion ([otherVoice] = the one picked first). */
+data class AnswerMenu(
+    val exchangeId: ExchangeId,
+    val canAskAgain: Boolean,
+    val pickVoice: Boolean = false,
+    val otherVoice: String = "teacher",
+)
 
 /** One-shot instructions for the view layer. */
 sealed interface NotebookEffect {
@@ -94,4 +102,10 @@ sealed interface NotebookEffect {
 
     /** Repaint the page from its committed ink (live ink drawn under the pen was replaced, e.g. by a clean shape). */
     data object Repaint : NotebookEffect
+
+    /** Put [text] on the clipboard. */
+    data class Copy(val text: String) : NotebookEffect
+
+    /** Offer [text] to another app (the share sheet). */
+    data class Share(val subject: String, val text: String) : NotebookEffect
 }

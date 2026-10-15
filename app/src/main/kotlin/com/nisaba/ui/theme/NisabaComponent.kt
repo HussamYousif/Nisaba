@@ -70,12 +70,15 @@ fun NisabaTextField(
     }
 }
 
-/** Modal card drawn in-place (no window, no animation): scrim + bordered card. */
+/**
+ * Modal card drawn in-place (no window, no animation). No veil over the page: on e-ink a veil repaints the whole screen,
+ * so only the card is drawn; a tap outside it still dismisses.
+ */
 @Composable
 fun NisabaDialog(title: String, onDismiss: () -> Unit, content: @Composable () -> Unit) {
     val c = Nisaba.colors
     Box(
-        Modifier.fillMaxSize().background(c.paper.copy(alpha = 0.94f)).clickable(onClick = onDismiss),
+        Modifier.fillMaxSize().clickable(onClick = onDismiss),
         contentAlignment = Alignment.Center,
     ) {
         Column(

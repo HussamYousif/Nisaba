@@ -152,7 +152,7 @@ private fun instructionFor(input: ContextInput, trailingNotes: List<String>) = b
             Purpose.Opening -> INSTRUCTION_BEGIN_LESSON
             Purpose.Resume -> INSTRUCTION_RESUME_LESSON
             is Purpose.Tidy -> INSTRUCTION_TIDY
-            is Purpose.Again -> INSTRUCTION_WITH_FOCUS + " " + againInstruction(p.previousAnswer)
+            is Purpose.Again -> INSTRUCTION_WITH_FOCUS + " " + againInstruction(p.previousAnswer, p.how)
             Purpose.Writing -> if (input.snapshot.focus != null) INSTRUCTION_WITH_FOCUS else INSTRUCTION_PAGE_ONLY
         },
     )
@@ -174,7 +174,7 @@ fun buildRequest(input: ContextInput): OracleRequest {
     val kept = trimHistory(history, room.coerceAtLeast(0))
     val instruction = instructionFor(input, trailingNotes)
     val temperature = if (input.purpose is Purpose.Tidy) TIDY_TEMPERATURE else input.persona.temperature
-    val thinking = input.settings.thinking || input.purpose is Purpose.Again
+    val thinking = input.settings.thinking || (input.purpose as? Purpose.Again)?.how == AgainHow.Afresh
     val images = buildList {
         add(OracleImage(input.snapshot.page, ImageDetail.Auto))
         input.snapshot.focus?.let { add(OracleImage(it, ImageDetail.High)) }

@@ -69,7 +69,6 @@ class ConversationSession(
     internal val consolidate = deps.memory?.let { com.nisaba.domain.memory.ConsolidateMemoryUseCase(it, deps.oracle, deps.clock) }
     internal var closed = false
 
-
     fun updateSettings(settings: Settings, listening: Boolean) {
         appSettings = settings
         cfg = ConvSettings(settings.pauseMillis.toLong(), listening)
@@ -90,38 +89,6 @@ class ConversationSession(
     fun onTapContinue() = dispatch(ConvEvent.TapContinue)
     fun onTapRetry() = dispatch(ConvEvent.TapRetry)
     fun onAskNow() = dispatch(ConvEvent.AskNow)
-
-    /**
-     * A lesson notebook's [pageId] was opened; [belowY] = the bottom of the ink on it (null: the page is blank).
-     * A fresh lesson on a blank page: Nisaba opens it from the top. Back after [RESUME_AFTER_MILLIS]: it recaps and
-     * re-checks below the last ink. Otherwise nothing happens.
-     */
-    fun beginLesson(pageId: PageId, belowY: Float? = null) {
-        if (closed) return
-        scope.launch {
-            val last = deps.exchanges.listByNotebook(deps.notebookId)
-                .filter { it.status == ExchangeStatus.Complete || it.status == ExchangeStatus.Interrupted }
-                .maxOfOrNull { it.createdAtMillis }
-            val purpose = when {
-                last == null -> Purpose.Opening.takeIf { belowY == null }
-                deps.clock.nowMillis() - last >= RESUME_AFTER_MILLIS -> Purpose.Resume
-                else -> null
-            } ?: return@launch
-            dispatch(ConvEvent.Begin(Utterance(pageId, emptySet(), at(belowY ?: LESSON_TOP), purpose)))
-        }
-    }
-
-    /** Re-asks [previous] (its answer was just erased) on [pageId]. */
-    fun askAgain(previous: Exchange, pageId: PageId) {
-        val focus = previous.focus ?: return
-        dispatch(ConvEvent.Begin(Utterance(pageId, emptySet(), focus, Purpose.Again(previous.heard, previous.answerMarkup))))
-    }
-
-    /** Writes a clean copy of [source]'s notes on [pageId] (a fresh page), from the top. */
-    fun tidy(source: PageId, pageId: PageId) =
-        dispatch(ConvEvent.Begin(Utterance(pageId, emptySet(), at(LESSON_TOP), Purpose.Tidy(source))))
-
-    internal fun at(y: Float) = PageRect(ANSWER_MARGIN, y, ANSWER_MARGIN, y)
 
     /**
      * Leaves the page. An answer that already started is kept as Interrupted (its ink stays on the page); one that
@@ -183,7 +150,8 @@ class ConversationSession(
         val purpose = utt.purpose
         val answersWriting = purpose is Purpose.Writing || purpose is Purpose.Again
         val focus = utt.bounds.takeIf { answersWriting }
-        val persona = deps.context.persona
+        val other = ((purpose as? Purpose.Again)?.how as? AgainHow.OtherVoice)?.personaId
+        val persona = other?.let(com.nisaba.domain.persona.PersonaRegistry::of) ?: deps.context.persona
         val record = PendingExchange(
             reqId, ExchangeId(deps.idGen.next()), utt.pageId, deps.clock.nowMillis(), focus, answersWriting, persona.id,
         )
@@ -237,7 +205,7 @@ class ConversationSession(
     }
 
     /** The reply stopped: in full (saved at once, the hand may still be writing) or cut short (ink stays, nothing learned). */
-    private fun streamEnded(record: PendingExchange) {
+    internal fun streamEnded(record: PendingExchange) {
         if (record.ended != null && record.ended != EndReason.Finished) {
             deps.logger?.w("Session", "request ${record.reqId} ended early: ${record.ended}")
             dispatch(ConvEvent.OracleFailed(record.reqId, DomainError.Invalid(CUT_SHORT)))

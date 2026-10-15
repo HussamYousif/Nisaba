@@ -9,6 +9,7 @@ import com.nisaba.domain.notebook.FakeIdGen
 import com.nisaba.domain.persona.PersonaRegistry
 import com.nisaba.domain.settings.Settings
 import com.nisaba.domain.shared.DomainError
+import com.nisaba.domain.shared.ExchangeId
 import com.nisaba.domain.shared.NetworkKind
 import com.nisaba.domain.shared.NotebookId
 import com.nisaba.domain.shared.PageId
@@ -115,6 +116,41 @@ class ConversationSessionTest {
         val billed = store.saved.single()
         assertEquals(ExchangeStatus.Cancelled, billed.status)
         assertTrue(billed.inputTokens > 1000) // the system prompt + two images, estimated
+    }
+
+    @Test fun aQuestionThatFailedOfflineIsAskedAgainWhenTheConnectionIsBack() = runTest {
+        oracle.failure = OracleException(DomainError.Network(NetworkKind.Offline))
+        val rig = rig()
+        rig.write("a"); wait(3600)
+        assertTrue(rig.session.status.value.state is ConvState.Failed)
+        assertEquals(setOf(StrokeId("a")), rig.session.pendingUtterance()!!.strokeIds) // kept if the page is left now
+        oracle.failure = null; oracle.chunks = hello
+        rig.session.retryIfOffline(); runCurrent()
+        assertEquals(2, oracle.started)
+    }
+
+    @Test fun aKeptQuestionIsAskedWhenItsPageIsBack() = runTest {
+        oracle.chunks = hello
+        val rig = rig()
+        rig.session.askPending(Utterance(page, setOf(StrokeId("a")), PageRect(100f, 200f, 300f, 260f))); runCurrent()
+        assertEquals(1, oracle.started)
+        assertEquals(setOf(StrokeId("a")), snapshotter.fresh.single())
+    }
+
+    @Test fun anotherVoiceAnswersBelowWithoutErasingAndIsRecordedAsItself() = runTest {
+        oracle.chunks = hello
+        val rig = rig()
+        val first = Exchange(
+            ExchangeId("e0"), NotebookId("n"), page, "q", "<answer>\nOld.\n</answer>", ExchangeStatus.Complete, 1, "m", 1, 0, 0, 0,
+            focus = PageRect(100f, 200f, 300f, 260f),
+        )
+        rig.session.askAgain(first, page, AgainHow.OtherVoice("zagreus"), answerBounds = PageRect(100f, 280f, 900f, 400f)); runCurrent()
+        val req = oracle.requests.single()
+        assertTrue(req.system.startsWith("You are Zagreus") && req.instruction.contains("second opinion"))
+        val focus = snapshotter.focuses.single()!!
+        assertTrue(focus.top <= 200f && focus.bottom >= 400f && focus.right >= 900f, "the focus holds the question and the old answer")
+        rig.handDone(); runCurrent(); wait(100); rig.handDone(); runCurrent()
+        assertEquals("zagreus", store.saved.last().personaId)
     }
 
     @Test fun aReplyCutShortKeepsItsInkLearnsNothingAndSaysSo() = runTest {

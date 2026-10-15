@@ -1,5 +1,7 @@
 package com.nisaba.notebook
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -60,14 +62,28 @@ internal fun LessonProgressDialog(state: NotebookUiState, onClose: () -> Unit) {
     }
 }
 
-/** The small Nisaba star in the corner while the bar is hidden: tap it to bring the bar back. */
+/** What the star in the corner says while the bar is hidden: nothing, writing an answer, it failed, or muted. */
+internal enum class StarBadge { Working, Failed, Muted }
+
+/** The small Nisaba star in the corner while the bar is hidden: tap it to bring the bar back. Its badge is one glance. */
 @Composable
-internal fun ToolbarHandle(modifier: Modifier, onTap: () -> Unit) {
-    androidx.compose.foundation.Image(
-        androidx.compose.ui.res.painterResource(com.nisaba.R.drawable.ic_mark), "Show the toolbar",
-        modifier.padding(HANDLE_MARGIN.dp).size(HANDLE_SIZE.dp).clickable(onClick = onTap),
-    )
+internal fun ToolbarHandle(modifier: Modifier, badge: StarBadge?, onTap: () -> Unit) {
+    val c = Nisaba.colors
+    Box(modifier.padding(HANDLE_MARGIN.dp).size(HANDLE_SIZE.dp).clickable(onClick = onTap)) {
+        androidx.compose.foundation.Image(
+            androidx.compose.ui.res.painterResource(com.nisaba.R.drawable.ic_mark), "Show the toolbar", Modifier.fillMaxSize(),
+        )
+        val corner = Modifier.align(Alignment.TopStart).size(BADGE.dp).background(c.paper)
+        when (badge) {
+            StarBadge.Working -> Text("…", corner, style = MaterialTheme.typography.labelLarge, color = c.lapis)
+            StarBadge.Failed -> Text("?", corner, style = MaterialTheme.typography.labelLarge, color = c.ink)
+            StarBadge.Muted -> com.nisaba.ui.theme.NisabaIconGlyph(com.nisaba.ui.theme.NisabaIcon.Muted, c.ink, corner)
+            null -> Unit
+        }
+    }
 }
+
+private const val BADGE = 18
 
 const val HANDLE_SIZE = 44
 const val HANDLE_MARGIN = 16

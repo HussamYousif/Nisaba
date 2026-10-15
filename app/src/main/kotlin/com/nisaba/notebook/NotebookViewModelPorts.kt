@@ -78,6 +78,8 @@ class NotebookSources(
     val exchange: suspend (ExchangeId) -> Exchange? = { null },
     /** A lesson notebook's progress as the tutor records it. */
     val lessonTopics: Flow<List<LessonTopic>> = emptyFlow(),
+    /** Whether the device has a network; a question that failed offline is asked again when it comes back. */
+    val online: Flow<Boolean> = emptyFlow(),
 )
 
 /** What the app remembers for the user between visits: the first-run hint, where each endless canvas was left, the pen. */
@@ -89,4 +91,7 @@ class NotebookMemory(
     /** The page a notebook was left on, to open it there next time. */
     val lastPage: (NotebookId) -> PageId? = { null },
     val saveLastPage: (NotebookId, PageId) -> Unit = { _, _ -> },
+    /** A page's unanswered question, kept across page turns and restarts (null clears it). */
+    val loadPending: (PageId) -> com.nisaba.domain.conversation.Utterance? = { null },
+    val savePending: (PageId, com.nisaba.domain.conversation.Utterance?) -> Unit = { _, _ -> },
 )

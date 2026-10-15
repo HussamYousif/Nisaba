@@ -74,17 +74,7 @@ fun NotebookScreen(
     var pageView by remember { mutableStateOf<PageView?>(null) }
     val animator = remember(pageView) { pageView?.let { ScribeAnimator(it) } }
 
-    // panel refresh requests from the ViewModel
-    LaunchedEffect(vm, pageView) {
-        val v = pageView ?: return@LaunchedEffect
-        vm.effects.collect { fx ->
-            when (fx) {
-                is NotebookEffect.Refresh -> if (fx.full) eink.fullRefresh(v) else eink.cleanPass(v, null)
-                is NotebookEffect.PanTo -> v.jumpTo(fx.origin)
-                NotebookEffect.Repaint -> { pen.suspendRawInk(); v.forgetLiveInk(); v.reloadBackground(); pen.resumeRawInk() }
-            }
-        }
-    }
+    NotebookEffects(vm, pageView, pen, eink)
     // a PDF page's picture is rendered in the background, then the page repaints itself
     LaunchedEffect(state.background, pageView) {
         val v = pageView ?: return@LaunchedEffect
@@ -124,7 +114,7 @@ fun NotebookScreen(
             state.memoryNote?.let { MemoryChip(it, vm::dismissMemoryNote) }
             state.notice?.let { MemoryChip(it, vm::dismissNotice, mark = "!") }
         }
-        if (!state.toolbarVisible) ToolbarHandle(Modifier.align(Alignment.BottomEnd), vm::showToolbar)
+        if (!state.toolbarVisible) ToolbarHandle(Modifier.align(Alignment.BottomEnd), starBadge(state), vm::showToolbar)
         if (state.menuOpen) NotebookMenuComponent(state.title, notebookMenu(state, vm, onOpenSettings), vm::closeMenu)
         NotebookOverlays(state, vm)
     }
@@ -166,13 +156,7 @@ private fun NotebookOverlays(state: NotebookUiState, vm: NotebookViewModel) {
         null -> Unit
     }
     if (state.overview) CanvasOverviewComponent(state, vm.visibleArea(), vm::jumpTo, vm::goHome, vm::closeOverview)
-    state.answerMenu?.let { m ->
-        NisabaDialog("This answer", vm::dismissAnswerMenu) {
-            NisabaButton("Erase answer", { vm.eraseAnswer(m.exchangeId) }, Modifier.fillMaxWidth())
-            if (m.canAskAgain) NisabaButton("Ask again", { vm.askAgain(m.exchangeId) }, Modifier.fillMaxWidth())
-            NisabaButton("Cancel", vm::dismissAnswerMenu, Modifier.fillMaxWidth())
-        }
-    }
+    state.answerMenu?.let { AnswerMenuComponent(it, vm) }
     if (state.progressOpen) LessonProgressDialog(state, vm::closeProgress)
     if (state.voiceOpen) VoiceDialogComponent(state.personaId, state.style, vm::setVoice, vm::closeVoice)
     if (state.renaming) {
@@ -256,4 +240,37 @@ private fun PenExclusions(toolbarVisible: Boolean, pageView: PageView?, toolbarP
         val handle = Rect(v.width - handlePx, v.height - handlePx, v.width, v.height)
         v.setExclusions(if (toolbarVisible) listOf(Rect(0, 0, 10_000, toolbarPx)) else listOf(handle))
     }
+}
+
+/** What the ViewModel asks of the screen: refreshes, jumps, the clipboard, the share sheet, repaints. */
+@Composable
+private fun NotebookEffects(vm: NotebookViewModel, pageView: PageView?, pen: PenDevice, eink: EinkDevice) {
+    val context = LocalContext.current
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+    LaunchedEffect(vm, pageView) {
+        val v = pageView ?: return@LaunchedEffect
+        vm.effects.collect { fx ->
+            when (fx) {
+                is NotebookEffect.Refresh -> if (fx.full) eink.fullRefresh(v) else eink.cleanPass(v, null)
+                is NotebookEffect.PanTo -> v.jumpTo(fx.origin)
+                is NotebookEffect.Copy -> clipboard.setText(androidx.compose.ui.text.AnnotatedString(fx.text))
+                is NotebookEffect.Share -> context.startActivity(shareIntent(fx.subject, fx.text))
+                NotebookEffect.Repaint -> { pen.suspendRawInk(); v.forgetLiveInk(); v.reloadBackground(); pen.resumeRawInk() }
+            }
+        }
+    }
+}
+
+private fun shareIntent(subject: String, text: String) = android.content.Intent.createChooser(
+    android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain")
+        .putExtra(android.content.Intent.EXTRA_SUBJECT, subject).putExtra(android.content.Intent.EXTRA_TEXT, text),
+    subject,
+)
+
+/** The corner star's badge: a failure first, then work in progress, then muted. */
+private fun starBadge(state: NotebookUiState): StarBadge? = when {
+    state.failure != null -> StarBadge.Failed
+    state.working -> StarBadge.Working
+    !state.listening -> StarBadge.Muted
+    else -> null
 }

@@ -19,11 +19,25 @@ sealed interface Purpose {
     /** The person came back to a lesson after a while: recap and re-check what was shaky. */
     data object Resume : Purpose
 
-    /** They erased an answer and asked again: answer the same writing afresh. */
-    data class Again(val previousHeard: String, val previousAnswer: String) : Purpose
+    /** Another go at the same writing: afresh (the old answer was erased), or more of it in one of the [how] ways. */
+    data class Again(val previousHeard: String, val previousAnswer: String, val how: AgainHow = AgainHow.Afresh) : Purpose
 
     /** Write a clean copy of the notes on [sourcePageId] (on this, new, page). */
     data class Tidy(val sourcePageId: PageId) : Purpose
+}
+
+/** What another go at an answer is for. Afresh and Shorter replace it; the rest go below it. */
+sealed interface AgainHow {
+    data object Afresh : AgainHow
+    data object Shorter : AgainHow
+    data object Deeper : AgainHow
+    data object Example : AgainHow
+
+    /** A second opinion from another voice. */
+    data class OtherVoice(val personaId: String) : AgainHow
+
+    /** The earlier answer stays on the page; the new one is written under it. */
+    val keepsOld: Boolean get() = this is Deeper || this is Example || this is OtherVoice
 }
 
 /**

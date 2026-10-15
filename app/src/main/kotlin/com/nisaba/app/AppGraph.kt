@@ -166,6 +166,37 @@ class AppGraph(private val app: Application) {
 
     private val viewPrefs by lazy { app.getSharedPreferences("views", android.content.Context.MODE_PRIVATE) }
     private val lastPagePrefs by lazy { app.getSharedPreferences("last_page", android.content.Context.MODE_PRIVATE) }
+    private val pendingPrefs by lazy { app.getSharedPreferences("pending_questions", android.content.Context.MODE_PRIVATE) }
+
+    private fun savePending(page: PageId, utt: com.nisaba.domain.conversation.Utterance?) = pendingPrefs.edit().apply {
+        if (utt == null) remove(page.value) else putString(page.value, encodePending(utt))
+    }.apply()
+
+    /** "l,t,r,b|strokeId;strokeId": a page's unanswered question (its strokes are on the page). */
+    private fun encodePending(u: com.nisaba.domain.conversation.Utterance) =
+        "${u.bounds.left},${u.bounds.top},${u.bounds.right},${u.bounds.bottom}|" + u.strokeIds.joinToString(";") { it.value }
+
+    private fun decodePending(page: PageId, s: String): com.nisaba.domain.conversation.Utterance? = runCatching {
+        val (box, ids) = s.split('|', limit = 2)
+        val n = box.split(',').map { it.toFloat() }
+        com.nisaba.domain.conversation.Utterance(
+            page, ids.split(';').filter { it.isNotBlank() }.mapTo(HashSet()) { com.nisaba.domain.shared.StrokeId(it) },
+            com.nisaba.domain.shared.PageRect(n[0], n[1], n[2], n[3]),
+        )
+    }.getOrNull()
+
+    /** Whether there is a network at all (a question that failed offline is asked again when it comes back). */
+    val online: kotlinx.coroutines.flow.StateFlow<Boolean> by lazy {
+        val flow = kotlinx.coroutines.flow.MutableStateFlow(false)
+        val cm = app.getSystemService(android.net.ConnectivityManager::class.java)
+        runCatching {
+            cm.registerDefaultNetworkCallback(object : android.net.ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: android.net.Network) { flow.value = true }
+                override fun onLost(network: android.net.Network) { flow.value = false }
+            })
+        }
+        flow
+    }
     private val touchNotebook by lazy { com.nisaba.domain.notebook.TouchNotebookUseCase(notebooks, clock) }
 
     private fun loadView(page: PageId): PagePoint? =
@@ -207,8 +238,10 @@ class AppGraph(private val app: Application) {
                         { ink, size -> settings.update { it.copy(penInk = ink, penSize = size) } },
                         { nb -> lastPagePrefs.getString(nb.value, null)?.let(::PageId) },
                         { nb, page -> lastPagePrefs.edit().putString(nb.value, page.value).apply() },
+                        { page -> pendingPrefs.getString(page.value, null)?.let { decodePending(page, it) } },
+                        ::savePending,
                     ),
-                    sources = NotebookSources({ documentText(id) }, ::printedOccupancy, exchanges::get, lessons.observe(id)),
+                    sources = NotebookSources({ documentText(id) }, ::printedOccupancy, exchanges::get, lessons.observe(id), online),
                     changes = com.nisaba.notebook.NotebookChanges(
                         SetPersonaUseCase(notebooks), { touchNotebook(it) },
                         com.nisaba.domain.notebook.SetAnswerStyleUseCase(notebooks)::invoke,

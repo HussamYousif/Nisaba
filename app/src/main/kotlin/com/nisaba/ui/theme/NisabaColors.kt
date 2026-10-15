@@ -8,7 +8,7 @@ data class NisabaColors(
     val ink: Color = Color(0xFF111111),
     val lapis: Color = Color(0xFF27407A),
     val ochre: Color = Color(0xFFB7892F),
-    val faint: Color = Color(0xFF8C877E),
+    val faint: Color = Color(0xFF66625B), // ~5.5:1 on paper: secondary text must read with the frontlight off
 )
 
 val LocalNisabaColors = staticCompositionLocalOf { NisabaColors() }

@@ -99,10 +99,20 @@ const val INSTRUCTION_TIDY = "The image is a page of their handwritten notes. Ne
 
 private const val MAX_PREVIOUS = 600
 
-/** Asking again: the previous answer (as plain words, no markup or tags), so the new one can differ. */
-fun againInstruction(previous: String): String =
-    "They erased your previous answer to this and asked again: answer it afresh, clearer or more correct, not the same way. " +
-        "Your previous answer was: \"" + com.nisaba.domain.search.plainText(previous).take(MAX_PREVIOUS) + "\""
+/** Another go at an answer: what they want this time, and the previous answer as plain words (no markup or tags). */
+fun againInstruction(previous: String, how: AgainHow = AgainHow.Afresh): String {
+    val ask = when (how) {
+        AgainHow.Afresh -> "They erased your previous answer to this and asked again: answer it afresh, clearer or more correct, " +
+            "not the same way."
+        AgainHow.Shorter -> "They erased your previous answer to this as too long: give the heart of it in one or two lines."
+        AgainHow.Deeper -> "They want more on this: go deeper (the why, the next level of detail), written below your previous answer, " +
+            "without repeating it."
+        AgainHow.Example -> "They want an example: one concrete, worked example of your previous answer, written below it."
+        is AgainHow.OtherVoice -> "A second opinion: answer the same writing in your own voice, below the previous answer, which another " +
+            "voice wrote. You may disagree with it."
+    }
+    return ask + " Your previous answer was: \"" + com.nisaba.domain.search.plainText(previous).take(MAX_PREVIOUS) + "\""
+}
 
 const val INSTRUCTION_WITH_FOCUS = "First image: the whole page. Second image: the new writing (focus), in dark ink; " +
     "faded ink is older, and blue ink is your own earlier answers. Answer only the new writing."

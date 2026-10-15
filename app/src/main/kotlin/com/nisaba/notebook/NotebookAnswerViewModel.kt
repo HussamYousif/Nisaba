@@ -1,5 +1,13 @@
 package com.nisaba.notebook
 
+import com.nisaba.domain.conversation.askPending
+import com.nisaba.domain.conversation.pendingUtterance
+import com.nisaba.domain.conversation.beginLesson
+import com.nisaba.domain.conversation.tidy
+import com.nisaba.domain.conversation.askAgain
+import com.nisaba.domain.ink.utteranceBounds
+import com.nisaba.domain.search.plainText
+import com.nisaba.domain.conversation.AgainHow
 import com.nisaba.canvas.BlockRef
 import com.nisaba.canvas.answerPen
 import com.nisaba.domain.conversation.ConvState
@@ -69,13 +77,41 @@ fun NotebookViewModel.eraseAnswer(ex: ExchangeId) {
 }
 
 /** Erases the answer and asks the same writing again (only offered on the page it was asked on). */
-fun NotebookViewModel.askAgain(ex: ExchangeId) {
+fun NotebookViewModel.askAgain(ex: ExchangeId, how: AgainHow = AgainHow.Afresh) {
     dismissAnswerMenu()
     ownScope.launch {
         val saved = deps.sources.exchange(ex) ?: return@launch
-        eraseAnswerEverywhere(ex)
-        effectSink.emit(NotebookEffect.Refresh(full = false))
-        currentPage()?.takeIf { it.id == saved.pageId }?.let { session?.askAgain(saved, it.id) }
+        val page = currentPage()?.takeIf { it.id == saved.pageId } ?: return@launch
+        val answer = edit?.ink?.strokes.orEmpty().filter { (it.origin as? StrokeOrigin.Oracle)?.exchangeId == ex }
+        if (!how.keepsOld) { eraseAnswerEverywhere(ex); effectSink.emit(NotebookEffect.Refresh(full = false)) }
+        session?.askAgain(saved, page.id, how, utteranceBounds(answer))
+    }
+}
+
+/** The second opinion: pick the other voice first (another than this notebook's). */
+fun NotebookViewModel.pickOtherVoice() = mutableState.update { s ->
+    val other = PersonaRegistry.all.first { it.id != s.personaId }.id
+    s.copy(answerMenu = s.answerMenu?.copy(pickVoice = true, otherVoice = other))
+}
+
+/** The answer's words, as plain text, on the clipboard. */
+fun NotebookViewModel.copyAnswer(ex: ExchangeId) {
+    dismissAnswerMenu()
+    ownScope.launch {
+        val saved = deps.sources.exchange(ex) ?: return@launch
+        effectSink.emit(NotebookEffect.Copy(plainText(saved.answerMarkup)))
+        mutableState.update { it.copy(notice = "Copied the answer's words.") }
+    }
+}
+
+/** Something wrong with an answer: the question and answer go to the share sheet, to send wherever they choose. */
+fun NotebookViewModel.reportAnswer(ex: ExchangeId) {
+    dismissAnswerMenu()
+    ownScope.launch {
+        val saved = deps.sources.exchange(ex) ?: return@launch
+        val who = "${saved.personaId ?: "book"}, prompt v${saved.promptVersion}"
+        val text = "Question: ${saved.heard}\nAnswer ($who): ${plainText(saved.answerMarkup)}"
+        effectSink.emit(NotebookEffect.Share("Nisaba answer report", text))
     }
 }
 
@@ -205,6 +241,8 @@ fun NotebookViewModel.dismissMemoryNote() { memoryNoteJob?.cancel(); mutableStat
 fun NotebookViewModel.dismissNotice() = mutableState.update { it.copy(notice = null) }
 
 internal fun NotebookViewModel.startSession(page: Page) {
+    // writing still waiting for an answer is kept for its page, and asked when the page is back
+    session?.let { old -> old.pendingUtterance()?.let { deps.memory.savePending(it.pageId, it) } }
     session?.close(); session = null; answerScribe?.close(); answerScribe = null
     val factory = deps.sessions ?: return
     val scribe = AnswerScribeSession(
@@ -226,9 +264,13 @@ internal fun NotebookViewModel.startSession(page: Page) {
     statusJob = ownScope.launch {
         created.status.collect { st ->
             val waiting = st.state is ConvState.Pausing || st.state is ConvState.Held
-            mutableState.update { if (it.askable == waiting) it else it.copy(askable = waiting) }
+            val working = st.state is ConvState.Thinking || st.state is ConvState.Scribing
+            mutableState.update {
+                if (it.askable == waiting && it.working == working) it else it.copy(askable = waiting, working = working)
+            }
         }
     }
+    deps.memory.loadPending(page.id)?.let { utt -> deps.memory.savePending(page.id, null); created.askPending(utt) }
     // a lesson notebook: Nisaba opens a fresh lesson, or recaps when they come back after a while (the session decides)
     if (notebook?.notebook?.teachGoal != null) created.beginLesson(page.id, edit?.ink?.strokes?.maxOfOrNull { it.bounds.bottom })
 }
