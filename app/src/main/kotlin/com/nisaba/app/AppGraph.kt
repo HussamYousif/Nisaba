@@ -133,8 +133,9 @@ class AppGraph(private val app: Application) {
     fun hand(style: HandStyle): GlyphSet = synchronized(hands) {
         hands.getOrPut(style) {
             val name = if (style == HandStyle.Formal) "formal" else "casual"
+            val t0 = android.os.SystemClock.uptimeMillis()
             val text = GlyphSet::class.java.classLoader!!.getResourceAsStream("hands/$name.json")!!.bufferedReader().use { it.readText() }
-            GlyphSetParser.parse(text)
+            GlyphSetParser.parse(text).also { logger.i("Hand", "$name parsed in ${android.os.SystemClock.uptimeMillis() - t0} ms") }
         }
     }
 
@@ -146,7 +147,9 @@ class AppGraph(private val app: Application) {
 
     /** Every voice, their own included, kept current for lookups anywhere (pickers, covers, the hand, the session). */
     val voices: kotlinx.coroutines.flow.StateFlow<Voices> by lazy {
-        ownVoices.observe().map { Voices(it) }.stateIn(io, kotlinx.coroutines.flow.SharingStarted.Eagerly, Voices())
+        val builtIn = com.nisaba.domain.persona.PersonaRegistry.offered(BuildConfig.CHARACTER_VOICES)
+        val start = Voices(builtIn = builtIn)
+        ownVoices.observe().map { Voices(it, builtIn) }.stateIn(io, kotlinx.coroutines.flow.SharingStarted.Eagerly, start)
     }
 
     fun ownVoiceFactory(): ViewModelProvider.Factory = viewModelFactory {
@@ -287,7 +290,7 @@ class AppGraph(private val app: Application) {
                 exchanges = exchanges, surface = surface, context = context, clock = clock, idGen = idGen, logger = logger,
                 memory = facts, lessons = lessons,
             ),
-            scope, s, listening,
+            scope, s, listening, compute = Dispatchers.Default,
         )
     }
 

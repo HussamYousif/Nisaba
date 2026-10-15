@@ -29,6 +29,14 @@ class PersonaRegistryTest {
         }
     }
 
+    @Test fun releaseBuildsOfferNoCharactersButOldNotebooksKeepTheirs() {
+        val offered = PersonaRegistry.offered(characters = false).map { it.id }
+        assertTrue("yukino" !in offered && "zagreus" !in offered)
+        assertTrue(PersonaRegistry.default.id in offered)
+        assertEquals(PersonaRegistry.all, PersonaRegistry.offered(characters = true))
+        assertEquals("zagreus", PersonaRegistry.of("zagreus").id) // a notebook made in a debug build still answers in it
+    }
+
     @Test fun theCharactersAreThemselves() {
         assertTrue(systemPrompt(PersonaRegistry.of("yukino")).startsWith("You are Yukinoshita Yukino"))
         assertTrue(systemPrompt(PersonaRegistry.of("zagreus")).startsWith("You are Zagreus"))

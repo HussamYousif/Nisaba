@@ -54,6 +54,8 @@ class ConversationSession(
     internal val scope: CoroutineScope,
     settings: Settings = Settings(),
     listening: Boolean = true,
+    /** Where requests are built (a PDF's text windowed and trimmed); null = where the session runs (tests). */
+    private val compute: kotlinx.coroutines.CoroutineDispatcher? = null,
 ) {
     internal val statusFlow = MutableStateFlow(ConvStatus())
     val status: StateFlow<ConvStatus> = statusFlow.asStateFlow()
@@ -183,15 +185,15 @@ class ConversationSession(
         try {
             val snapshot = snapshotFor(utt)
             val private = deps.context.isPrivate // a private notebook neither sees memory nor teaches it
-            val request = buildRequest(
-                ContextInput(
-                    deps.context.documentPages(), deps.context.currentDocumentPage,
-                    deps.exchanges.listByNotebook(deps.notebookId), snapshot, appSettings,
-                    if (private) emptyList() else deps.memory?.all().orEmpty(), deps.context.teachGoal, purpose, lessonProgress(),
-                    persona, deps.context.style, now = nowInWords(deps.clock.nowMillis(), java.time.ZoneId.systemDefault()),
-                    isPrivate = private,
-                ),
+            val input = ContextInput(
+                deps.context.documentPages(), deps.context.currentDocumentPage,
+                deps.exchanges.listByNotebook(deps.notebookId), snapshot, appSettings,
+                if (private) emptyList() else deps.memory?.all().orEmpty(), deps.context.teachGoal, purpose, lessonProgress(),
+                persona, deps.context.style, now = nowInWords(deps.clock.nowMillis(), java.time.ZoneId.systemDefault()),
+                isPrivate = private,
             )
+            // a whole PDF's text is windowed, estimated and trimmed here: never on the thread that draws the page
+            val request = compute?.let { withContext(it) { buildRequest(input) } } ?: buildRequest(input)
             sent = request
             stream(request, record)
             streamEnded(record)

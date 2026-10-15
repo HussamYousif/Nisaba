@@ -11,6 +11,8 @@ import com.nisaba.domain.notebook.FakeIdGen
 import com.nisaba.domain.notebook.FakeInkStore
 import com.nisaba.domain.notebook.FakeNotebookStore
 import com.nisaba.domain.notebook.ListNotebooksUseCase
+import com.nisaba.domain.notebook.NotebookStore
+import com.nisaba.domain.notebook.NotebookSummary
 import com.nisaba.domain.notebook.RenameNotebookUseCase
 import com.nisaba.domain.persona.PersonaRegistry
 import com.nisaba.domain.settings.Settings
@@ -20,8 +22,13 @@ import com.nisaba.domain.shared.NotebookId
 import com.nisaba.domain.shared.Outcome
 import com.nisaba.domain.shared.PageSize
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -131,6 +138,21 @@ class LibraryViewModelTest {
         assertEquals(NotebookKind.Pdf, (vm.state.value.dialog as LibraryDialog.ChooseVoice).kind)
         vm.confirmVoice(opened::add) { error("no system picker for a PDF handed over") }; runCurrent()
         assertEquals("Thesis", store.get(opened.single())!!.notebook.name)
+    }
+
+    @Test fun theDebugCleanupWaitsForTheListToLoad() = runTest {
+        create("check-1"); create("check-2"); create("Keep")
+        val slow = object : NotebookStore by store { // Room answers after the first frame
+            override fun observeAll(): Flow<List<NotebookSummary>> = flow { delay(10); emitAll(store.observeAll()) }
+        }
+        val vm = LibraryViewModel(
+            ListNotebooksUseCase(slow), create, RenameNotebookUseCase(store, FakeClock()),
+            DeleteNotebookUseCase(store, FakeInkStore(), FakeDocumentStore()), ImportDocumentUseCase(importer, create),
+            settings, backgroundScope,
+        )
+        vm.debugDeleteNamed("check-") // asked for before the list is in
+        advanceTimeBy(20); runCurrent() // background work: advanceUntilIdle would not wait for it
+        assertEquals(listOf("Keep"), vm.state.value.notebooks.map { it.name })
     }
 
     @Test fun timesReadLikeAPersonSaysThem() {

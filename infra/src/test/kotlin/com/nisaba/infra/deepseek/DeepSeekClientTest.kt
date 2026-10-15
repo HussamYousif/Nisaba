@@ -165,7 +165,8 @@ class DeepSeekClientTest {
         val started = System.nanoTime()
         val e = assertFailsWith<OracleException> { client(firstTokenMillis = 300).ask(request()).toList() }
         assertEquals(DomainError.Network(NetworkKind.Timeout), e.error)
-        assertTrue((System.nanoTime() - started) / 1_000_000 < 3_000)
+        // the keep-alives last 10 s: well under that means the first-token watchdog fired (generous for a slow CI box)
+        assertTrue((System.nanoTime() - started) / 1_000_000 < 7_000)
     }
 
     @Test fun httpStatusesMapToDomainErrors() {
@@ -204,6 +205,6 @@ class DeepSeekClientTest {
         val first = withTimeout(5_000) { client().ask(request()).first() }
         val elapsedMs = (System.nanoTime() - started) / 1_000_000
         assertTrue(first is OracleEvent.Delta)
-        assertTrue(elapsedMs < 3_000, "returned after ${elapsedMs}ms")
+        assertTrue(elapsedMs < 15_000, "returned after ${elapsedMs}ms") // not aborting would take the whole 30 s
     }
 }

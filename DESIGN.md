@@ -25,9 +25,9 @@ Status: **v1 design, 2026-09-29** · Fresh start (prior attempt lives in git his
 | D12 | Kotlin; **Compose** for library/settings chrome; a custom **View** for the page (Onyx TouchHelper needs a View) | Compose Canvas can't host the Onyx raw-drawing layer |
 | D13 | Manual constructor DI via one composition root (`AppGraph`). No Hilt/Koin | Explicit, fast builds, nothing magic |
 | D14 | Bring-your-own API key (entered in Settings, stored Keystore-encrypted). Debug builds may read `.env` | Required for Play Store; no key ever ships in a release |
-| D15 | PDF only. No export, no sync, no backup in v1 | Your spec |
+| D15 | PDF only. Export (PDF, Markdown) and a backup zip came in M17; no sync | Your spec; backup and export by the improvement programme |
 | D16 | **Long-term memory across notebooks** (§4.5): a SQLite `facts` table the model writes via `<remember>`/`<forget>` tags; all facts ride in every request (stage 1). No embeddings, no vector DB | Your ask (2026-10-02); keyword/LLM selection covers it at notebook scale |
-| D17 | **Voices (personas), per notebook** (§5.3a): picked in "New" right after the kind; changeable in ⋯ → Voice. The sassy book (default, the Weiss persona every older notebook keeps) · The wise teacher · The writer's companion · The idea explorer · The flirt · Yukinoshita Yukino · Zagreus · Plain. A voice = one prompt paragraph + a word budget + a temperature; the reply contract is shared | Your ask (2026-10-14). The two characters are fan homages: fine for personal use, rename or drop them before a Play release (IP) |
+| D17 | **Voices (personas), per notebook** (§5.3a): picked in "New" right after the kind; changeable in ⋯ → Voice. The sassy book (default, the Weiss persona every older notebook keeps) · The wise teacher · The writer's companion · The idea explorer · The flirt · Yukinoshita Yukino · Zagreus · Plain. A voice = one prompt paragraph + a word budget + a temperature; the reply contract is shared | Your ask (2026-10-14). The two characters are fan homages: fine for personal use, rename or drop them before a Play release (IP). M18: they appear only in debug builds (`Persona.character`, `BuildConfig.CHARACTER_VOICES`) |
 
 ---
 
@@ -165,7 +165,7 @@ States (pure state machine, §4.4):
 | Pause end → first answer stroke | ≤ 2.5 s (flash, thinking off) |
 | Hand frame budget | ≤ 8 ms CPU per frame (stroke planning is precomputed) |
 | Page turn | ≤ 150 ms to ink |
-| Cold start → library | ≤ 900 ms |
+| Cold start → library | ≤ 900 ms (measured M18: 331–334 ms release, 566 ms first launch after install; ~1.2 s debug) |
 | Save | Stroke durable ≤ 1 s after pen-up; kill-safe (atomic writes) |
 
 ---
@@ -473,6 +473,7 @@ Since prompt v11 the system prompt is `systemPrompt(persona)` = the voice's own 
 
 ### 5.5 Privacy (Play Store)
 The page images, the PDF text, the transcriptions and the remembered facts go to DeepSeek. First-run notice + privacy policy. Nothing else leaves the device. No analytics in v1.
+The policy is `docs/privacy.md` (host it, link it from the listing); the Play data-safety answers are `docs/data-safety.md`. Private notebooks send no memory. Backups leave the sealed key out.
 
 ---
 
@@ -496,7 +497,7 @@ AnswerDocument blocks ──(BlockLayoutRegistry)──▶ laid glyphs in page s
 
 ## 7. Device layer (Onyx) — `:app/device`
 
-- **SDK:** `com.onyx.android.sdk:onyxsdk-pen` (≈ 1.5.4.x; confirm the version in spike S1) from `http://repo.boox.com/repository/maven-public/`. It likely also needs `onyxsdk-device`/`onyxsdk-base` and `org.lsposed.hiddenapibypass` on Android 11+ (verify).
+- **SDK:** `com.onyx.android.sdk:onyxsdk-pen` (≈ 1.5.4.x; confirm the version in spike S1) from `http://repo.boox.com/repository/maven-public/`. It likely also needs `onyxsdk-device`/`onyxsdk-base` and `org.lsposed.hiddenapibypass` on Android 11+ (verify). M18: the exemption is narrowed from everything (`""`) to what the SDK reaches: `android.onyx.*`, `View.invalidate`/`postInvalidate`, `InputManager`, `ActivityManager`, `Environment`, `PowerManager` (`NisabaApp.ONYX_HIDDEN_APIS`; widen it there if a firmware needs more).
 - **`OnyxPenDevice`:** `TouchHelper.create(pageView, callback)`, `setLimitRect(pageRect, excludeRects = toolbar)`, `openRawDrawing()`, `setRawDrawingEnabled(true)`, `setStrokeStyle(FOUNTAIN)`. On `onRawDrawingTouchPointListReceived` it emits a completed `Stroke`. Eraser callbacks → erase events. Committed strokes are rendered with the same pressure→width curve as the raw layer, so ink doesn't shift at handover.
 - **Raw layer vs our animations:** raw drawing locks screen refresh. Before the hand writes, pause raw drawing (`setRawDrawingRenderEnabled(false)` or `setRawDrawingEnabled(false)`), keep pen-*down detection* alive to interrupt, and restore it after. **This is spike S2, the biggest technical risk.**
 - **`OnyxEinkDevice`:** the per-app refresh waveform via the framework OEC binder (`oec_service` → `IOECService.setAppScopeRefreshMode(mode, false)`). Proven on this device in the prior attempt. Classic `EPDController` is **absent** on the Air 5C Android 15 firmware. Modes: FAST while writing/scribing, NORMAL at idle + clean pass. Everything is reflective and defensive: failure = no-op.
@@ -533,12 +534,14 @@ AnswerDocument blocks ──(BlockLayoutRegistry)──▶ laid glyphs in page s
 | `:domain` | JVM unit: state machine invariants (§4.4), erase/split, undo/redo, context budgeting, `AnswerParser` (streamed in random chunk sizes → same result), `MathParser` |
 | `:scribe` | JVM unit + golden SVGs: layout, flow-around, spill, deterministic plans; the legibility gate (§6) |
 | `:infra` | MockWebServer: SSE parsing, cancellation aborts the socket, error mapping; Room migration tests; ink file round-trip + corruption safety |
-| `:app` | A few instrumented tests on the device: open notebook, stroke persists, page turn |
+| `:app` | JVM: view models, `AnswerScribeSession`, `ScribeAnimator`, redraw bookkeeping (`PageRedrawRules`); a few instrumented tests on the device: open notebook, stroke persists, page turn |
 | Manual | Device checklist per milestone (latency, ghosting, lit/unlit contrast) |
 
-Tooling: ktlint + detekt, `verifyFileRoles` (§3.3), lint `abortOnError` (Android imports in `:domain`/`:scribe` can't compile — they're JVM modules), and CI on push (unit tests + assemble). The Android SDK and Gradle live in `.tools/` (gitignored).
+Tooling: ktlint + detekt, `verifyFileRoles` (§3.3), lint `abortOnError` (Android imports in `:domain`/`:scribe` can't compile — they're JVM modules), and CI on push (unit tests + assemble; since M18 also the `:infra` instrumented suite (migrations, backup, PDF, settings) on an API 34 emulator). No test asserts tight wall-clock times. The Android SDK and Gradle live in `.tools/` (gitignored).
 
 **Definition of done** for any change: tests green, lint clean, the file-role convention respected, verified on the device if it touches input/rendering.
+
+**Release build (M18).** AGP 8.10.1, compile/target SDK 36. R8 shrinks and minifies release builds; keep rules in `app/proguard-rules.pro` (kotlinx.serialization, PdfBox, `com.onyx.**`, `android.onyx.**`, HiddenApiBypass; Room keeps its own). Signing reads `keystore.properties` at the repo root (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`; gitignored with `*.jks`); without it a release is signed with the debug key, so `assembleRelease` always builds but is not uploadable. Release builds carry no dev key and no character voices. Off the main thread: request building (`ConversationSession(compute = Dispatchers.Default)`: PDF text, history, images) and hand planning; the hand's glyph file is parsed lazily (251 ms, after the first frame); a page redraw that only adds strokes draws just those (`PageRedrawRules.redrawOf`).
 
 ---
 
@@ -566,10 +569,10 @@ Tooling: ktlint + detekt, `verifyFileRoles` (§3.3), lint `abortOnError` (Androi
 | **M4** | Rich blocks: tables, math, diagrams; flow-around; page spill | Sample "explain X with a table and a formula" renders beautifully |
 | **M5** | PDF notebooks: import, render, whole-document context, flow around printed text | Ask about p. 40 while on p. 3 and get it right |
 | **M6** | Brand & polish: splash, mark, generated covers, settings, first-run, privacy notice | Screenshots you'd put on a store page |
-| **M7** | Play Store readiness: signing, R8, target SDK, data-safety form, 512 px icon | Internal-testing track upload succeeds |
+| **M7** | Play Store readiness: signing, R8, target SDK, data-safety form, 512 px icon (the build side done in M18: SDK 36, R8 + keep rules, signing from `keystore.properties`) | Internal-testing track upload succeeds |
 
 ---
 
 ## 13. Out of scope (v1) / later
 
-Export, sync/backup, EPUB/DOCX/TXT, right-to-left hands (Arabic), lasso select/move, zoom, voice, other AI providers (the `Oracle` port is ready), handwriting-to-text search, memory stage 2 (`recall` tool + FTS, §4.5).
+Sync (export and a backup zip exist since M17; lasso since M15), EPUB/DOCX/TXT, right-to-left hands (Arabic), zoom, voice, other AI providers (the `Oracle` port is ready), handwriting-to-text search, memory stage 2 (`recall` tool + FTS, §4.5).

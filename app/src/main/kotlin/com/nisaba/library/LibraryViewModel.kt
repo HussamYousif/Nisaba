@@ -17,6 +17,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -178,9 +179,9 @@ class LibraryViewModel(
         scope.launch { onCreated(create(name, endless = kind == NotebookKind.Canvas, personaId = personaId, style = style).id) }
     }
 
-    /** Debug harness: removes the test notebooks whose names start with [prefix]. */
+    /** Debug harness: removes the test notebooks whose names start with [prefix] (once the list has loaded). */
     fun debugDeleteNamed(prefix: String) {
-        scope.launch { _state.value.notebooks.filter { it.name.startsWith(prefix) }.forEach { delete(it.id) } }
+        scope.launch { state.first { !it.loading }.notebooks.filter { it.name.startsWith(prefix) }.forEach { delete(it.id) } }
     }
 
     /** The goal for the PDF being learned is in ("" = all of it): import it as a lesson notebook. */

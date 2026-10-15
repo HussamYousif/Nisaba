@@ -11,6 +11,11 @@ local.properties
 # Development secrets (API keys — see .env.example)
 .env
 
+# Release signing (you create these; see PROGRESS §3)
+keystore.properties
+*.jks
+*.keystore
+
 # Log/OS Files
 *.log
 

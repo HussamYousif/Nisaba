@@ -124,17 +124,15 @@ class PageView(
         recomputeTransform(); rebuild(); invalidate()
     }
 
-    /** On an endless canvas, only the strokes that reach [area] (view px; the whole view when null): the canvas is huge. */
-    /** Applies new ink: incremental when exactly one stroke was appended, full rebuild otherwise. */
+    /** Applies new ink: only the appended strokes are painted ([redrawOf]); anything else rebuilds the layer. */
     fun setStrokes(next: List<Stroke>) {
         val prev = strokes
         strokes = next
         val canvas = layerCanvas
         if (canvas == null) { invalidate(); return }
-        val appendedOnly = next.size >= prev.size && prev.indices.all { next[it] === prev[it] }
-        val freshPage = prev.isEmpty() && next.size > 1 // a page just opened: one pass (and only what's in view on a canvas)
-        if (!appendedOnly || freshPage) { drawnByHand.clear(); liveStrokesAwaitingCommit = 0; rebuild(); invalidate(); return }
-        for (s in next.subList(prev.size, next.size)) {
+        val redraw = redrawOf(prev, next)
+        if (redraw !is Redraw.Append) { drawnByHand.clear(); liveStrokesAwaitingCommit = 0; rebuild(); invalidate(); return }
+        for (s in next.subList(redraw.from, next.size)) {
             if (alreadyPainted(s)) continue
             withPageTransform(canvas) { ink.drawStroke(canvas, s) }
             invalidate(dirtyOf(s.bounds, s.width * 2f + 4f))
