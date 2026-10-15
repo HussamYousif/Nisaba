@@ -45,8 +45,14 @@ class FakeSnapshotter : PageSnapshotter {
     val focuses = mutableListOf<PageRect?>()
     val pages = mutableListOf<PageId>()
     val fresh = mutableListOf<Set<com.nisaba.domain.shared.StrokeId>>()
-    override suspend fun snapshot(pageId: PageId, focus: PageRect?, fresh: Set<com.nisaba.domain.shared.StrokeId>): PageSnapshot {
-        focuses += focus; pages += pageId; this.fresh += fresh
+    val labels = mutableListOf<List<SnapshotLabel>>()
+    override suspend fun snapshot(
+        pageId: PageId,
+        focus: PageRect?,
+        fresh: Set<com.nisaba.domain.shared.StrokeId>,
+        labels: List<SnapshotLabel>,
+    ): PageSnapshot {
+        focuses += focus; pages += pageId; this.fresh += fresh; this.labels += labels
         return PageSnapshot(byteArrayOf(1), byteArrayOf(2))
     }
 }

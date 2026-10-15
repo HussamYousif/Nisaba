@@ -64,7 +64,10 @@ internal fun NotebookViewModel.goTo(origin: PagePoint) {
     ownScope.launch { effectSink.emit(NotebookEffect.PanTo(origin)); effectSink.emit(NotebookEffect.Refresh(full = true)) }
 }
 
-fun NotebookViewModel.setTool(tool: PenTool) { mutableState.update { it.copy(tool = tool) }; usedToolbar() }
+fun NotebookViewModel.setTool(tool: PenTool) {
+    mutableState.update { it.copy(tool = tool, selection = if (tool == PenTool.Lasso) it.selection else null) }
+    usedToolbar()
+}
 /** The pen button: picks the pen, or (when it already is) opens its colours and sizes. */
 fun NotebookViewModel.tapPen() = if (mutableState.value.tool == PenTool.Pen) openPanel(ToolPanel.Pen) else setTool(PenTool.Pen)
 

@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import com.nisaba.domain.conversation.PageSnapshot
 import com.nisaba.domain.conversation.PageSnapshotter
+import com.nisaba.domain.conversation.SnapshotLabel
 import com.nisaba.domain.ink.InkColor
 import com.nisaba.domain.ink.InkStore
 import com.nisaba.domain.ink.Stroke
@@ -36,17 +37,22 @@ class PageSnapshotRenderer(
     private val rasters: com.nisaba.infra.document.DocumentRasterCache? = null,
 ) : PageSnapshotter {
 
-    override suspend fun snapshot(pageId: PageId, focus: PageRect?, fresh: Set<StrokeId>): PageSnapshot = withContext(Dispatchers.Default) {
+    override suspend fun snapshot(
+        pageId: PageId,
+        focus: PageRect?,
+        fresh: Set<StrokeId>,
+        labels: List<SnapshotLabel>,
+    ): PageSnapshot = withContext(Dispatchers.Default) {
         val page = notebooks.get(notebookId)?.pages?.firstOrNull { it.id == pageId }
         val size = page?.size ?: PageSize.PORTRAIT
         (page?.background as? com.nisaba.domain.notebook.PageBackground.DocumentPage)?.let { rasters?.ensure(it.documentId, it.index) }
         val strokes = ink.load(pageId).strokes
         val whole = if (size.isEndless) endlessWindow(focus ?: strokes.lastOrNull()?.bounds) else PageRect(0f, 0f, size.w, size.h)
         val argbOf = inkFor(fresh)
-        val pageJpeg = render(whole, size, page?.background, strokes, LONG_EDGE, 1f, argbOf)
+        val pageJpeg = render(whole, size, page?.background, strokes, LONG_EDGE, 1f, argbOf, labels)
         val focusJpeg = focus?.let { f ->
             val clipped = PageRect(max(0f, f.left), max(0f, f.top), min(size.w, f.right), min(size.h, f.bottom))
-            render(clipped, size, page?.background, strokes, LONG_EDGE, MIN_FOCUS_EDGE.toFloat(), argbOf)
+            render(clipped, size, page?.background, strokes, LONG_EDGE, MIN_FOCUS_EDGE.toFloat(), argbOf, labels)
         }
         PageSnapshot(pageJpeg, focusJpeg)
     }
@@ -73,6 +79,7 @@ class PageSnapshotRenderer(
         maxEdge: Int,
         minEdge: Float,
         argbOf: (Stroke) -> Int,
+        labels: List<SnapshotLabel> = emptyList(),
     ): ByteArray {
         val w = max(1f, area.width); val h = max(1f, area.height)
         var scale = min(1f, maxEdge / max(w, h))
@@ -86,13 +93,24 @@ class PageSnapshotRenderer(
             it.right >= area.left - PAD && it.left <= area.right + PAD && it.bottom >= area.top - PAD && it.top <= area.bottom + PAD
         } }
         inkRenderer.drawAll(canvas, inView, argbOf)
+        for (l in labels) { // line numbers for checking work: left of the line, kept inside the picture
+            val x = max(area.left + LABEL_GAP, l.at.x - labelPaint.measureText(l.text) - LABEL_GAP)
+            canvas.drawText(l.text, x, l.at.y + labelPaint.textSize / 3, labelPaint)
+        }
         val out = ByteArrayOutputStream()
         color.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out) // in colour: blue answers vs the person's ink
         color.recycle()
         return out.toByteArray()
     }
 
+    private val labelPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        color = LABEL_RED; textSize = LABEL_SIZE; typeface = android.graphics.Typeface.DEFAULT_BOLD
+    }
+
     private companion object {
+        const val LABEL_RED = 0xFFD0201A.toInt()
+        const val LABEL_SIZE = 30f
+        const val LABEL_GAP = 12f
         const val LONG_EDGE = 1600
         const val PAD = 16f // widest ink, so strokes just outside the area still show their edge
         const val WINDOW_SIDE = 400f

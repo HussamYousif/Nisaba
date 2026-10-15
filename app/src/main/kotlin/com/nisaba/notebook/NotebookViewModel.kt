@@ -174,7 +174,10 @@ class NotebookViewModel(
         affine = viewOrigin?.let { Affine(1f, -it.x, -it.y) } ?: affine
         val setAside = edit?.ink?.setAside == true
         mutableState.update {
-            it.copy(failure = null, resumeMark = if (keepAnswer) it.resumeMark else null, notice = if (setAside) SET_ASIDE_NOTICE else null)
+            it.copy(
+                failure = null, resumeMark = if (keepAnswer) it.resumeMark else null, notice = if (setAside) SET_ASIDE_NOTICE else null,
+                selection = null,
+            )
         }
         printedJob?.cancel(); printedOccupancy = null
         if (!keepAnswer) {

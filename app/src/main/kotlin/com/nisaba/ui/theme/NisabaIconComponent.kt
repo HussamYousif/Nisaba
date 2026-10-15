@@ -25,7 +25,7 @@ import androidx.compose.ui.unit.dp
 
 /** The toolbar's glyphs, drawn as monoline ink like the rest of the brand (24-unit grid). */
 enum class NisabaIcon {
-    Back, Pen, Shape, Eraser, AreaEraser, Undo, Redo, Listening, Muted, AskNow, More,
+    Back, Pen, Shape, Eraser, AreaEraser, Lasso, Undo, Redo, Listening, Muted, AskNow, More,
     ShapeAuto, ShapeLine, ShapeArrow, ShapeRectangle, ShapeEllipse, ShapeTriangle,
 }
 
@@ -93,6 +93,13 @@ private fun DrawScope.drawIcon(icon: NisabaIcon, ink: Color) {
                     style = Stroke(width = 1.2f * k, pathEffect = PathEffect.dashPathEffect(floatArrayOf(2.5f * k, 2.5f * k))),
                 )
             }
+        }
+        NisabaIcon.Lasso -> {                                 // a dashed loop with its tail
+            drawOval(
+                ink, androidx.compose.ui.geometry.Offset(3f * k, 3f * k), androidx.compose.ui.geometry.Size(18f * k, 12.5f * k),
+                style = Stroke(width = 1.6f * k, pathEffect = PathEffect.dashPathEffect(floatArrayOf(2.6f * k, 2f * k))),
+            )
+            path { m(8f, 15f); q(6f, 19f, 9.5f, 21.5f) }
         }
         NisabaIcon.Undo -> path { m(9f, 6f); l(4f, 11f); l(9f, 16f); m(4f, 11f); l(14f, 11f); q(20f, 11f, 20f, 17f); l(20f, 19f) }
         NisabaIcon.Redo -> path { m(15f, 6f); l(20f, 11f); l(15f, 16f); m(20f, 11f); l(10f, 11f); q(4f, 11f, 4f, 17f); l(4f, 19f) }

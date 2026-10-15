@@ -67,3 +67,23 @@ fun ConversationSession.tidy(source: PageId, pageId: PageId) =
     dispatch(ConvEvent.Begin(Utterance(pageId, emptySet(), at(LESSON_TOP), Purpose.Tidy(source))))
 
 internal fun ConversationSession.at(y: Float) = PageRect(ANSWER_MARGIN, y, ANSWER_MARGIN, y)
+
+/** Checks the work in [strokes] (their handwriting on [pageId]): a ✓ or ✗ beside each line. False: nothing to check. */
+fun ConversationSession.check(pageId: PageId, strokes: List<com.nisaba.domain.ink.Stroke>): Boolean {
+    val lines = com.nisaba.domain.ink.inkLines(strokes.filter { it.origin is com.nisaba.domain.ink.StrokeOrigin.User })
+    if (lines.isEmpty()) return false
+    val ids = lines.flatMap { l -> l.strokes.map { it.id } }.toSet()
+    val area = lines.map { it.bounds }.reduce { a, b -> a.union(b) }
+    dispatch(ConvEvent.Begin(Utterance(pageId, ids, area, Purpose.Check(lines.map { it.bounds }))))
+    return true
+}
+
+/** Redraws the sketch in [strokes] cleanly, below it. */
+fun ConversationSession.redraw(pageId: PageId, strokes: List<com.nisaba.domain.ink.Stroke>) {
+    val area = com.nisaba.domain.ink.utteranceBounds(strokes) ?: return
+    dispatch(ConvEvent.Begin(Utterance(pageId, strokes.mapTo(HashSet()) { it.id }, area, Purpose.Redraw)))
+}
+
+/** They looped [area] on [pageId] (around [ids], or around printed text when empty) and ask about it. */
+fun ConversationSession.askAbout(pageId: PageId, ids: Set<com.nisaba.domain.shared.StrokeId>, area: PageRect) =
+    dispatch(ConvEvent.Begin(Utterance(pageId, ids, area, Purpose.About)))

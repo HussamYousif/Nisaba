@@ -228,6 +228,7 @@ class AppGraph(private val app: Application) {
                     ink = InkUseCases(
                         LoadPageInkUseCase(inkStore), CommitStrokeUseCase(inkStore), CommitStrokesUseCase(inkStore),
                         EraseUseCase(inkStore, idGen), UndoUseCase(inkStore), RedoUseCase(inkStore), EraseAnswerUseCase(inkStore),
+                        com.nisaba.domain.ink.ReplaceStrokesUseCase(inkStore), com.nisaba.domain.ink.RemoveStrokesUseCase(inkStore),
                     ),
                     setListening = SetListeningUseCase(notebooks), idGen = idGen,
                     settings = settings.observe(), sessions = sessionFactory(id), hands = ::hand,

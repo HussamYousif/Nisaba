@@ -5,6 +5,8 @@ import com.nisaba.device.PenTool
 import com.nisaba.domain.ink.CommitStrokeUseCase
 import com.nisaba.domain.ink.CommitStrokesUseCase
 import com.nisaba.domain.ink.EraseAnswerUseCase
+import com.nisaba.domain.ink.RemoveStrokesUseCase
+import com.nisaba.domain.ink.ReplaceStrokesUseCase
 import com.nisaba.domain.ink.EraseUseCase
 import com.nisaba.domain.ink.InkPoints
 import com.nisaba.domain.ink.InkUseCases
@@ -38,6 +40,8 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -56,7 +60,7 @@ class NotebookViewModelTest {
             nb.id, ObserveNotebookUseCase(store), InsertPageUseCase(store, FakeIdGen("pg")), RenameNotebookUseCase(store, clock),
             InkUseCases(
                 LoadPageInkUseCase(ink), CommitStrokeUseCase(ink), CommitStrokesUseCase(ink), EraseUseCase(ink, ids),
-                UndoUseCase(ink), RedoUseCase(ink), EraseAnswerUseCase(ink),
+                UndoUseCase(ink), RedoUseCase(ink), EraseAnswerUseCase(ink), ReplaceStrokesUseCase(ink), RemoveStrokesUseCase(ink),
             ),
             SetListeningUseCase(store), ids,
             changes = NotebookChanges(SetPersonaUseCase(store), setStyle = com.nisaba.domain.notebook.SetAnswerStyleUseCase(store)::invoke),
@@ -343,6 +347,39 @@ class NotebookViewModelTest {
         vm.beginRename(); assertTrue(vm.state.value.renaming)
         vm.confirmRename("Physics"); runCurrent()
         assertEquals("Physics", vm.state.value.title); assertFalse(vm.state.value.renaming)
+    }
+    private fun loop(l: Float, t: Float, r: Float, b: Float) =
+        InkPoints(floatArrayOf(l, r, r, l, l), floatArrayOf(t, t, b, b, t), FloatArray(5) { .5f }, IntArray(5) { it * 8 })
+
+    @Test fun theLassoPicksMovesRecoloursAndDeletesInkEachAsOneUndoStep() = runTest {
+        val (vm, _) = open(this)
+        vm.onPenEvent(PenEvent.StrokeDone(line(100f, 200f, 300f))); runCurrent() // page 200..400 at y 600
+        vm.onPenEvent(PenEvent.StrokeDone(line(100f, 200f, 500f))); runCurrent() // page y 1000
+        vm.setTool(PenTool.Lasso)
+        vm.onPenEvent(PenEvent.StrokeDone(loop(80f, 280f, 220f, 320f))); runCurrent() // a loop round the first
+        val sel = assertNotNull(vm.state.value.selection)
+        assertEquals(1, sel.ids.size)
+        assertEquals(2, vm.state.value.strokes.size) // the loop left no ink
+        vm.onPenEvent(PenEvent.StrokeDone(line(150f, 200f, 300f))); runCurrent() // a drag from inside the box
+        val moved = vm.state.value.strokes.first { it.id in sel.ids }
+        assertEquals(300f, moved.points.xs.first(), 0.01f)
+        assertEquals(300f, vm.state.value.selection!!.bounds.left, 0.01f) // the box follows
+        vm.recolourSelection(0xFFC0281C.toInt()); runCurrent()
+        assertEquals(0xFFC0281C.toInt(), vm.state.value.strokes.first { it.id in sel.ids }.color.argb)
+        vm.deleteSelection(); runCurrent()
+        assertEquals(1, vm.state.value.strokes.size); assertNull(vm.state.value.selection)
+        vm.undo(); runCurrent(); vm.undo(); runCurrent(); vm.undo(); runCurrent() // delete, recolour, move
+        assertEquals(200f, vm.state.value.strokes.first { it.id in sel.ids }.points.xs.first(), 0.01f)
+        vm.setTool(PenTool.Pen); assertNull(vm.state.value.selection)
+    }
+
+    @Test fun aLoopAroundNothingButPaperPicksTheAreaToAskAbout() = runTest {
+        val (vm, _) = open(this)
+        vm.setTool(PenTool.Lasso)
+        vm.onPenEvent(PenEvent.StrokeDone(loop(100f, 100f, 300f, 200f))); runCurrent()
+        val sel = assertNotNull(vm.state.value.selection)
+        assertTrue(sel.ids.isEmpty() && sel.bounds.width > 300f) // printed text, say: only "Ask about it"
+        vm.checkWork(); assertEquals(NOTHING_TO_CHECK, vm.state.value.notice)
     }
 }
 

@@ -124,11 +124,14 @@ private fun onAskNow(st: ConvStatus, s: ConvState) = when (s) {
 
 /**
  * Only from a quiet page (idle, or after a stopped answer). A lesson opening or return waits for Ask now when
- * listening is off; asking again or tidying was asked for explicitly, so it always goes.
+ * listening is off; what was asked for explicitly (again, tidy, check, a lasso) always goes, and also takes over from
+ * writing that was only waiting for its pause (that writing is usually what they then lassoed).
  */
 private fun onBegin(st: ConvStatus, s: ConvState, e: ConvEvent.Begin, cfg: ConvSettings) = when {
+    e.utt.purpose.explicit && s is ConvState.Pausing -> startRequest(st, e.utt, ConvEffect.CancelTimer)
+    e.utt.purpose.explicit && s is ConvState.Held -> startRequest(st, e.utt)
     s != ConvState.Idle && s !is ConvState.Interrupted -> st.same()
-    cfg.listening || e.utt.purpose is Purpose.Again || e.utt.purpose is Purpose.Tidy -> startRequest(st, e.utt)
+    cfg.listening || e.utt.purpose.explicit -> startRequest(st, e.utt)
     else -> st.to(ConvState.Held(e.utt))
 }
 

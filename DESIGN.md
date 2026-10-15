@@ -57,6 +57,15 @@ States (pure state machine, §4.4):
 
 **Utterance** = every stroke you've written on this page since the last exchange. Written 2 s, paused, wrote more → one utterance. Pen-down during Thinking → the request is cancelled and later resent with the extra strokes.
 
+### 1.2a Other ways to ask (M15)
+
+- **Point at it**: circle, underline, bracket or arrow at something (printed text, old notes, an answer) and write "?" or a question. The contract says marks point at what they mean; a flat stroke's focus crop reaches up to the line it underlines (`focusArea`).
+- **Lasso** (toolbar, the dashed loop): a loop picks the strokes mostly inside it (`strokesInLoop`), or, around printed text only, just the area. A bar along the bottom (the pen keeps clear of it) offers **Ask about it** (`Purpose.About`), **Check it**, **Redraw cleanly**, **Colour**, **Delete**, **Done**; a pen drag that starts inside the dashed box moves the ink. Move, recolour and delete are each one undo step (`ReplaceStrokesUseCase`, `RemoveStrokesUseCase`); an answer lassoed away whole leaves the history like an erased one. With the Onyx pen the loop leaves no ink (raw drawing off, like the eraser).
+- **Check my work** (⋯, or the lasso): their handwriting is split into lines (`inkLines`), the images get small red numbers beside each line (`SnapshotLabel`, drawn only in what the model sees), and the reply starts with one `<mark line="N" ok="true|false">correction</mark>` per line, then one closing sentence in the voice. Marks are blocks (`Block.Mark`): a green ✓ or a red ✗ + correction is written beside its line (`markRegion`: right of it, else in the left margin, else under it) on the same clock as the rest; the closing sentence goes under the work. Low temperature and thinking on. (Live example: the teacher's normal reply called "3x = 9 → x = 4" correct.)
+- **Redraw cleanly**: a sketch comes back as one diagram block below it (`Purpose.Redraw`, no voice, temperature 0.3).
+- **Margin glosses**: on a printed PDF page a reply to writing goes in the free column beside it (`glossRegion` over the printed-text occupancy: the column it was written in, else the widest, level with the question), in a hand 0.65× theirs, and the instruction asks for a short gloss (≤ 35 words unless asked for more). Not when there is room to write below as usual (6 free full-width lines within 3 lines under the question: a sparse page), no printed text alongside, or no column 7 x-heights wide.
+- Asked-for requests (again, tidy, check, redraw, a lasso) go even while muted and take over writing that was only waiting for its pause.
+
 ### 1.3 Where the answer goes
 
 1. Anchor = the utterance's bounding box. The answer starts one line-gap below its lowest stroke, left-aligned to the utterance's left edge (clamped to the page margin). Width runs to the right margin.

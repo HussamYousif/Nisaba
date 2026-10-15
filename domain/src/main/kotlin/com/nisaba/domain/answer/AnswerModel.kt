@@ -20,6 +20,9 @@ sealed interface Block {
     /** A fenced code block, lines verbatim (indentation kept); [language] as the model named it, may be empty. */
     data class Code(val language: String, val lines: List<String>) : Block
     data object Rule : Block
+
+    /** Checking their work: a ✓ ([ok]) or a ✗ with a short [note] beside their numbered [line] (1-based). */
+    data class Mark(val line: Int, val ok: Boolean, val note: String) : Block
 }
 
 /** What the streaming parser reports, in order. */

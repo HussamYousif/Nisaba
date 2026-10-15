@@ -26,7 +26,8 @@ import kotlinx.coroutines.launch
 // Debug harness only (driven by adb extras in debug builds).
 
 /**
- * Debug harness: the app's own hand writes [text] as if the user had handwritten it, one pen event per stroke.
+ * Debug harness: the app's own hand writes [text] as if the user had handwritten it, one pen event per stroke; a
+ * literal backslash-n starts a new line.
  * Lets the whole ask loop be exercised end to end without a stylus.
  */
 fun NotebookViewModel.debugWriteAsUser(text: String) {
@@ -41,8 +42,12 @@ fun NotebookViewModel.debugWriteAsUser(text: String) {
             OccupancyLookup { null },
             DEBUG_SEED, HumanParams.CASUAL, speedProfile(HandSpeed.Swift),
         )
-        val step = planner(planner.start(), Block.Paragraph(listOf(Inline.Text(text))))
-        for (s in step.strokes.filter { it.page == 0 }) {
+        // a literal "\n" starts a new line (a worked solution to check, say)
+        var state = planner.start()
+        val strokes = text.split("\\n").flatMap { line ->
+            planner(state, Block.Paragraph(listOf(Inline.Text(line.trim())))).also { state = it.state }.strokes
+        }
+        for (s in strokes.filter { it.page == 0 }) {
             val p = s.points
             val t0 = p.ts.first()
             onPenEvent(PenEvent.PenDown(0f, 0f))

@@ -13,6 +13,8 @@ class InkUseCases(
     val undo: UndoUseCase,
     val redo: RedoUseCase,
     val eraseAnswer: EraseAnswerUseCase,
+    val replace: ReplaceStrokesUseCase,
+    val remove: RemoveStrokesUseCase,
 )
 
 /**

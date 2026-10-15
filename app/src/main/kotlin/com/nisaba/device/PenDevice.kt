@@ -7,11 +7,14 @@ import com.nisaba.domain.ink.InkPoints
 import com.nisaba.domain.shared.PagePoint
 import kotlinx.coroutines.flow.SharedFlow
 
-/** [Shape] draws like the pen; the stroke is then replaced by a clean shape. */
+/** [Shape] draws like the pen; the stroke is then replaced by a clean shape. [Lasso] picks ink with a loop. */
 enum class PenTool {
-    Pen, Shape, StrokeEraser, AreaEraser;
+    Pen, Shape, StrokeEraser, AreaEraser, Lasso;
 
     val erases: Boolean get() = this == StrokeEraser || this == AreaEraser
+
+    /** The pen tip leaves ink (else its path only arrives as a stroke for the app to act on). */
+    val inks: Boolean get() = this == Pen || this == Shape
 }
 
 /** Coordinates are VIEW pixels; the ViewModel maps them to page units. */

@@ -68,7 +68,7 @@ class OnyxPenDevice(private val flow: MutableSharedFlow<PenEvent> = MutableShare
                 setStrokeWidth(penWidth).setStrokeStyle(TouchHelper.STROKE_STYLE_FOUNTAIN)
                 setLimitRect(drawArea, exclude).openRawDrawing()
                 setStrokeColor(penArgb)
-                setRawDrawingRenderEnabled(!tool.erases)
+                setRawDrawingRenderEnabled(tool.inks)
                 enableSideBtnErase(true)
                 setRawDrawingEnabled(suspendCount == 0)
             }
@@ -84,10 +84,10 @@ class OnyxPenDevice(private val flow: MutableSharedFlow<PenEvent> = MutableShare
     override fun suspendRawInk() { if (suspendCount++ == 0) helper?.setRawDrawingEnabled(false) }
     override fun resumeRawInk() { if (suspendCount > 0 && --suspendCount == 0) helper?.setRawDrawingEnabled(true) }
 
-    /** With an eraser picked, the pen tip leaves no ink; its path still arrives as a stroke, which the app erases along. */
+    /** With an eraser or the lasso picked, the pen tip leaves no ink; its path still arrives as a stroke for the app. */
     override fun setTool(tool: PenTool) {
         this.tool = tool
-        runCatching { helper?.setRawDrawingRenderEnabled(!tool.erases) }
+        runCatching { helper?.setRawDrawingRenderEnabled(tool.inks) }
     }
 
     override fun setPen(argb: Int, width: Float) {

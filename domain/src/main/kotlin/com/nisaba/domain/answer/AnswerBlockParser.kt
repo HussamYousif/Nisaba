@@ -22,7 +22,11 @@ internal class BlockSplitter {
     fun line(l: String): List<ParseEvent> {
         val out = ArrayList<ParseEvent>()
         val t = l.trim()
-        if (!inOpenContainer(l, t, out) && !LONE_TAG_RE.matches(t)) closingPass(l, t, out)
+        val mark = if (fence == null && math == null) parseMark(t) else null
+        when {
+            mark != null -> { out += flush(); emit(out, mark) }
+            !inOpenContainer(l, t, out) && !LONE_TAG_RE.matches(t) -> closingPass(l, t, out)
+        }
         return out
     }
 
@@ -219,4 +223,16 @@ fun scriptsToMath(text: String): String {
         }
         sb.append('$').toString()
     }
+}
+
+private val MARK_RE = Regex("""^<\s*mark\b([^>]*?)/?\s*>(.*?)(<\s*/\s*mark\s*>)?$""", RegexOption.IGNORE_CASE)
+private val LINE_ATTR = Regex("""line\s*=\s*["']?(\d+)""", RegexOption.IGNORE_CASE)
+private val OK_ATTR = Regex("""ok\s*=\s*["']?(\w+)""", RegexOption.IGNORE_CASE)
+
+/** `<mark line="2" ok="false">sign error</mark>` (or self-closing, attributes in any order) → a mark; anything else null. */
+internal fun parseMark(t: String): Block.Mark? {
+    val m = MARK_RE.matchEntire(t) ?: return null
+    val line = LINE_ATTR.find(m.groupValues[1])?.groupValues?.get(1)?.toIntOrNull() ?: return null
+    val ok = OK_ATTR.find(m.groupValues[1])?.groupValues?.get(1)?.lowercase() in setOf("true", "yes", "1")
+    return Block.Mark(line, ok, m.groupValues[2].trim())
 }

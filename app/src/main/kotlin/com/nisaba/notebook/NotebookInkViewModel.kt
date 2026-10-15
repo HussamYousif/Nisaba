@@ -29,6 +29,10 @@ fun NotebookViewModel.onPenEvent(e: PenEvent) {
             val tool = mutableState.value.tool
             when {
                 tool.erases -> onPenEvent(PenEvent.EraseDone(List(e.points.size) { PagePoint(e.points.xs[it], e.points.ys[it]) }))
+                tool == PenTool.Lasso -> {
+                    onLasso(points); session?.onPenAborted()
+                    effectSink.tryEmit(NotebookEffect.Repaint) // a pen that draws its own live ink drew the loop
+                }
                 tool == PenTool.Shape -> ownScope.launch { commitShape(page, points) }
                 else -> ownScope.launch { commitStroke(page, points) }
             }

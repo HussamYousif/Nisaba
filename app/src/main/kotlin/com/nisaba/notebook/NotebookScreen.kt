@@ -35,6 +35,7 @@ import com.nisaba.canvas.PageView
 import com.nisaba.canvas.jumpTo
 import com.nisaba.canvas.prepareAnswerAt
 import com.nisaba.canvas.showResumeMark
+import com.nisaba.canvas.showSelection
 import com.nisaba.canvas.ScribeAnimator
 import com.nisaba.canvas.answerPen
 import com.nisaba.device.EinkDevice
@@ -83,7 +84,7 @@ fun NotebookScreen(
     LaunchedEffect(pen) { pen.events.collect { vm.onPenEvent(it) } }
     AppVisibility(vm)
     PenWiring(state, pageView, pen)
-    PenExclusions(state.toolbarVisible, pageView, toolbarPx)
+    PenExclusions(state.toolbarVisible, pageView, toolbarPx, state.selection != null)
     DisposableEffect(Unit) { eink.fast(); onDispose { eink.normal() } }
 
     ScribeWiring(vm, state, pageView, animator, pen, eink)
@@ -103,7 +104,10 @@ fun NotebookScreen(
                     pageView = v
                 }
             },
-            update = { v -> v.setPage(state.pageSize, state.background, state.viewOrigin, state.pageId); v.setStrokes(state.strokes) },
+            update = { v ->
+                v.setPage(state.pageSize, state.background, state.viewOrigin, state.pageId); v.setStrokes(state.strokes)
+                v.showSelection(state.selection?.bounds)
+            },
         )
         if (state.showHint) {
             val hint = LocalVoices.current.of(state.personaId).hint // in the notebook's voice
@@ -115,7 +119,9 @@ fun NotebookScreen(
             state.memoryNote?.let { MemoryChip(it, vm::dismissMemoryNote) }
             state.notice?.let { MemoryChip(it, vm::dismissNotice, mark = "!") }
         }
-        if (!state.toolbarVisible) ToolbarHandle(Modifier.align(Alignment.BottomEnd), starBadge(state), vm::showToolbar)
+        state.selection?.let { SelectionBarComponent(it, state.aiAvailable, vm, Modifier.align(Alignment.BottomStart)) }
+        val handle = !state.toolbarVisible && state.selection == null
+        if (handle) ToolbarHandle(Modifier.align(Alignment.BottomEnd), starBadge(state), vm::showToolbar)
         val voice = LocalVoices.current.of(state.personaId)
         if (state.menuOpen) NotebookMenuComponent(state.title, notebookMenu(state, voice.name, vm, onOpenSettings), vm::closeMenu)
         NotebookOverlays(state, vm)
@@ -228,9 +234,9 @@ private fun notebookMenu(
     onOpenSettings: () -> Unit,
 ): List<MenuItem> = buildList {
     if (!state.endless) add(MenuItem("+ Page after this one", vm::insertBlankPage))
-    if (!state.endless && state.aiAvailable && state.strokes.any { it.origin is StrokeOrigin.User }) {
-        add(MenuItem("Tidy this page (a clean copy on a new page)", vm::tidyPage))
-    }
+    val ownInk = state.aiAvailable && state.strokes.any { it.origin is StrokeOrigin.User }
+    if (ownInk) add(MenuItem("Check my work (✓ or ✗ beside each line)", vm::checkWork))
+    if (!state.endless && ownInk) add(MenuItem("Tidy this page (a clean copy on a new page)", vm::tidyPage))
     if (state.endless) { add(MenuItem("Overview", vm::showOverview)); add(MenuItem("Home", vm::goHome)) }
     if (state.lesson) add(MenuItem("Lesson progress", vm::showProgress))
     if (state.aiAvailable) add(MenuItem("Voice: $voice", vm::openVoice))
@@ -238,14 +244,17 @@ private fun notebookMenu(
     add(MenuItem("Settings", onOpenSettings))
 }
 
-/** The pen must not write under the bar, nor under the star handle that replaces it. */
+/** The pen must not write under the bar, nor under the star handle that replaces it, nor under the lasso's bar. */
 @Composable
-private fun PenExclusions(toolbarVisible: Boolean, pageView: PageView?, toolbarPx: Int) {
-    val handlePx = with(LocalDensity.current) { (HANDLE_SIZE + 2 * HANDLE_MARGIN).dp.roundToPx() }
-    LaunchedEffect(toolbarVisible, pageView) {
+private fun PenExclusions(toolbarVisible: Boolean, pageView: PageView?, toolbarPx: Int, selecting: Boolean) {
+    val density = LocalDensity.current
+    val handlePx = with(density) { (HANDLE_SIZE + 2 * HANDLE_MARGIN).dp.roundToPx() }
+    val barPx = with(density) { SELECTION_BAR_HEIGHT.dp.roundToPx() }
+    LaunchedEffect(toolbarVisible, pageView, selecting) {
         val v = pageView ?: return@LaunchedEffect
         val handle = Rect(v.width - handlePx, v.height - handlePx, v.width, v.height)
-        v.setExclusions(if (toolbarVisible) listOf(Rect(0, 0, 10_000, toolbarPx)) else listOf(handle))
+        val top = if (toolbarVisible) listOf(Rect(0, 0, 10_000, toolbarPx)) else listOf(handle)
+        v.setExclusions(top + if (selecting) listOf(Rect(0, v.height - barPx, v.width, v.height)) else emptyList())
     }
 }
 

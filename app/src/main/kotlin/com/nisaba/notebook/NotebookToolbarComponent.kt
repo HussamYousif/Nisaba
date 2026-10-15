@@ -36,7 +36,7 @@ class MenuItem(val label: String, val onClick: () -> Unit)
 
 /**
  * The notebook's top bar, in icons: back · title (tap to rename) · page n/m (tap for all pages) · pen (tap again for
- * colours and sizes) | shapes (tap again to pick one) | eraser (hold for area mode) · undo · redo · listening · ask now
+ * colours and sizes) | shapes (tap again to pick one) | eraser (hold for area mode) | lasso · undo · redo · listening · ask now
  * (only when listening is off) · ⋯.
  */
 @Composable
@@ -71,6 +71,8 @@ fun NotebookToolbarComponent(state: NotebookUiState, vm: NotebookViewModel, onBa
             selected = erasing,
             onLongClick = { vm.setTool(if (state.tool == PenTool.AreaEraser) PenTool.StrokeEraser else PenTool.AreaEraser) },
         )
+        NisabaIconButton(NisabaIcon.Lasso, "Lasso (loop ink to move, colour, check or ask about it)", { vm.setTool(PenTool.Lasso) },
+            selected = state.tool == PenTool.Lasso)
         Spacer(Modifier.width(10.dp))
         NisabaIconButton(NisabaIcon.Undo, "Undo", { vm.undo() }, enabled = state.canUndo)
         NisabaIconButton(NisabaIcon.Redo, "Redo", { vm.redo() }, enabled = state.canRedo)

@@ -15,7 +15,12 @@ interface PageSnapshotter {
      * Whole page (background + all ink) and, when [focus] is given, a crop around the new writing. [fresh] = the new
      * writing's strokes: drawn dark, everything else faded, so the model can tell what is new.
      */
-    suspend fun snapshot(pageId: PageId, focus: PageRect?, fresh: Set<com.nisaba.domain.shared.StrokeId> = emptySet()): PageSnapshot
+    suspend fun snapshot(
+        pageId: PageId,
+        focus: PageRect?,
+        fresh: Set<com.nisaba.domain.shared.StrokeId> = emptySet(),
+        labels: List<SnapshotLabel> = emptyList(),
+    ): PageSnapshot
 }
 
 interface ExchangeStore {

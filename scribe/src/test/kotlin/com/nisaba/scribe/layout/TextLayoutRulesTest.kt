@@ -113,4 +113,11 @@ class TextLayoutRulesTest {
         val (b, next) = lay(para("   "), cursor = start)
         assertTrue(b.words.isEmpty()); assertEquals(start, next)
     }
+
+    @Test fun aCrossCarriesItsCorrectionWithItsMath() {
+        val inl = markInlines(Block.Mark(6, false, "so ${'$'}x=3${'$'}"))
+        assertEquals(Inline.Text("✗ ", bold = true), inl.first())
+        assertTrue(inl.any { it is Inline.Math }) // not "$x=3$" written out
+        assertEquals(listOf(Inline.Text("✓", bold = true)), markInlines(Block.Mark(1, true, "")))
+    }
 }

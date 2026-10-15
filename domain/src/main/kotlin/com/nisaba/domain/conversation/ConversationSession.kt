@@ -16,7 +16,6 @@ import com.nisaba.domain.shared.NotebookId
 import com.nisaba.domain.shared.PageId
 import com.nisaba.domain.shared.PageRect
 import com.nisaba.domain.shared.StrokeId
-import com.nisaba.domain.shared.inflate
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -148,7 +147,7 @@ class ConversationSession(
 
     internal suspend fun runRequest(utt: Utterance, reqId: Int) {
         val purpose = utt.purpose
-        val answersWriting = purpose is Purpose.Writing || purpose is Purpose.Again
+        val answersWriting = purpose.answersWriting
         val focus = utt.bounds.takeIf { answersWriting }
         val other = ((purpose as? Purpose.Again)?.how as? AgainHow.OtherVoice)?.personaId
         val persona = other?.let(deps.context::voice) ?: deps.context.persona
@@ -160,14 +159,14 @@ class ConversationSession(
             Purpose.Resume -> RESUME_HEARD
             is Purpose.Tidy -> TIDY_HEARD
             is Purpose.Again -> purpose.previousHeard
-            Purpose.Writing -> ""
+            Purpose.Writing, is Purpose.Check, Purpose.Redraw, Purpose.About -> ""
         }
         lock.withLock { pending[reqId] = record }
         var sent: OracleRequest? = null
         try {
-            val margin = utt.bounds.height.coerceAtLeast(FOCUS_MIN) * FOCUS_MARGIN
             val source = (purpose as? Purpose.Tidy)?.sourcePageId ?: utt.pageId
-            val snapshot = deps.snapshotter.snapshot(source, if (answersWriting) utt.bounds.inflate(margin) else null, utt.strokeIds)
+            val labels = (purpose as? Purpose.Check)?.lines?.let(::lineLabels).orEmpty() // "1", "2", … beside the lines
+            val snapshot = deps.snapshotter.snapshot(source, if (answersWriting) focusArea(utt.bounds) else null, utt.strokeIds, labels)
             val request = buildRequest(
                 ContextInput(
                     deps.context.documentPages(), deps.context.currentDocumentPage,
@@ -244,8 +243,6 @@ class ConversationSession(
     }
 
     internal companion object {
-        const val FOCUS_MARGIN = 0.1f
-        const val FOCUS_MIN = 100f
         const val LESSON_TOP = 160f
 
         /** What the person "said" when Nisaba opened the lesson, as history shows it. */

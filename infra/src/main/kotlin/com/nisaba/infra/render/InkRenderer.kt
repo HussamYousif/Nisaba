@@ -9,14 +9,22 @@ import com.nisaba.domain.shared.StrokeId
 import com.nisaba.scribe.hand.PenProfile
 import com.nisaba.scribe.hand.strokeOutline
 
-/** Draws strokes as filled variable-width outlines. Outline paths are cached per stroke. */
+/**
+ * Draws strokes as filled variable-width outlines. Outline paths are cached per stroke and where it is: a stroke
+ * moved by the lasso keeps its id, so the id alone would draw it where it was.
+ */
 class InkRenderer(private val profile: PenProfile = PenProfile.DEFAULT) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
-    private val cache = object : LruCache<StrokeId, Path>(MAX_CACHED_POINTS) {
-        override fun sizeOf(key: StrokeId, value: Path) = 1
+    private val cache = object : LruCache<OutlineKey, Path>(MAX_CACHED_POINTS) {
+        override fun sizeOf(key: OutlineKey, value: Path) = 1
     }
 
-    fun outline(stroke: Stroke): Path = cache[stroke.id] ?: buildPath(stroke).also { cache.put(stroke.id, it) }
+    private data class OutlineKey(val id: StrokeId, val x0: Float, val y0: Float, val n: Int, val width: Float)
+
+    private fun keyOf(s: Stroke) =
+        OutlineKey(s.id, s.points.xs.firstOrNull() ?: 0f, s.points.ys.firstOrNull() ?: 0f, s.points.size, s.width)
+
+    fun outline(stroke: Stroke): Path { val k = keyOf(stroke); return cache[k] ?: buildPath(stroke).also { cache.put(k, it) } }
 
     fun drawStroke(canvas: Canvas, stroke: Stroke) {
         paint.color = stroke.color.argb

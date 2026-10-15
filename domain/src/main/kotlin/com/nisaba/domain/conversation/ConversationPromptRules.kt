@@ -3,7 +3,7 @@ package com.nisaba.domain.conversation
 import com.nisaba.domain.persona.Persona
 
 /** Bump when [systemPrompt] or a voice changes; stored on every exchange so answers can be compared across versions. */
-const val PROMPT_VERSION = 13
+const val PROMPT_VERSION = 14
 
 private const val WORDS = "{words}"
 
@@ -38,6 +38,7 @@ When you answer:
 - Always answer in the language they wrote in, whatever the language of these instructions and of your voice.
 - The document text (if any) and earlier exchanges are context; cite pages as (p. 12) when you use the document.
 - If the writing is illegible, say so in one line and ask them to rewrite it.
+- A circle, underline, bracket or arrow in the new writing points at what they mean (printed text, older notes, one of your answers); a "?" beside it asks what it means or how it works. Answer about what it points at.
 - Use only this markup inside <answer>: paragraphs; # or ## headings; "- " and "1. " lists; **bold**; inline math like ${'$'}a^2+b^2${'$'} and display math between ${'$'}${'$'} lines (LaTeX subset: \frac \sqrt ^ _ \sum \int \lim \infty \pm \cdot \times \le \ge \ne \approx \to, Greek letters, \left( \right), \begin{pmatrix}); pipe tables (at most 6 columns, 12 rows, short cells, with a |---| separator row); and diagrams.
 - A diagram is a fenced block starting with ```diagram containing one <svg viewBox="0 0 1000 1000"> that uses only path (M L Q C Z), line, polyline, circle, ellipse and rect with stroke only, no text, at most 40 elements. After </svg>, list labels one per line as: Label @ x,y (coordinates in the 1000x1000 space). Draw big shapes first, then details, then labels.
 - Code only when they ask for code or it is clearly the best answer: a fenced block starting with ```language, always naming the language (```python, ```haskell, ```clojure, ```csharp, ```postgresql, …), at most 15 lines of at most 48 characters, indentation with spaces, no comments unless they help. It is handwritten too, so keep it minimal.
@@ -118,3 +119,24 @@ const val INSTRUCTION_WITH_FOCUS = "First image: the whole page. Second image: t
     "faded ink is older, and blue ink is your own earlier answers. Answer only the new writing."
 const val INSTRUCTION_PAGE_ONLY = "The image is the whole page; the new writing is in dark ink, faded ink is older, " +
     "and blue ink is your own earlier answers. Answer the new writing."
+
+const val INSTRUCTION_CHECK = "They ask you to check their work. In both images each line of their handwriting has a small red " +
+    "number at its left (1, 2, 3, …). Work it through carefully. Inside <answer>, first write one line per numbered line, in " +
+    "order: <mark line=\"N\" ok=\"true\"/> when the line is right, or <mark line=\"N\" ok=\"false\">the correction, at most 8 " +
+    "words</mark> when it has a mistake. Judge each line on its own: a line that correctly follows from an earlier slip is right; " +
+    "headings and plain notes are right. Then one short sentence of overall feedback (what to fix first, or that all is right)."
+
+const val INSTRUCTION_REDRAW = "The second image is a rough sketch they drew. Never reply <silent/>. Redraw it cleanly: inside " +
+    "<answer> exactly one ```diagram block that keeps its layout, its shapes and arrows and every label (labels as Label @ x,y), " +
+    "straightened and evenly spaced. Nothing else in <answer>, no banter, no tags."
+
+const val INSTRUCTION_ABOUT = "First image: the whole page. Second image: what they drew a loop around (their writing in dark ink, " +
+    "printed text, or your own earlier answer in blue); they ask about it. Explain it, answer it, or say what it means, " +
+    "as fits what is inside the loop."
+
+const val INSTRUCTION_GLOSS = "They are writing on the document itself: your answer goes in the margin beside the text, so make " +
+    "it a short gloss unless they ask for more."
+
+/** Checking work: the voice only flavours the closing sentence; the marks are plain. */
+fun checkReminder(persona: Persona): String =
+    "Write the closing sentence in your voice (${persona.name}), in the language they wrote in. Always end with <heard>…</heard>."

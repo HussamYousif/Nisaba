@@ -72,6 +72,8 @@ data class NotebookUiState(
     val personaId: String = PersonaRegistry.DEFAULT_ID,
     val style: com.nisaba.domain.notebook.AnswerStyle = com.nisaba.domain.notebook.AnswerStyle(),
     val voiceOpen: Boolean = false,
+    /** What the lasso picked (the bar along the bottom acts on it). */
+    val selection: InkSelection? = null,
 ) {
     val showHint: Boolean get() = hintPending && !loading && strokes.isEmpty() && background is PageBackground.Blank
 
@@ -83,6 +85,13 @@ data class NotebookUiState(
 }
 
 enum class ToolPanel { Pen, Shapes }
+
+/** What the lasso picked: [ids] inside [bounds] (page units); no ids = a loop around printed text. [colours] = inks shown. */
+data class InkSelection(
+    val ids: Set<com.nisaba.domain.shared.StrokeId>,
+    val bounds: com.nisaba.domain.shared.PageRect,
+    val colours: Boolean = false,
+)
 
 /** [pickVoice] = choosing the voice for a second opinion ([otherVoice] = the one picked first). */
 data class AnswerMenu(

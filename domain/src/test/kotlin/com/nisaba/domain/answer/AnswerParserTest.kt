@@ -186,4 +186,18 @@ class AnswerParserTest {
         assertEquals("${d}C_{6}H_{12}O_{6}$d and ${d}x^{2}$d and ${d}10^{-3}$d", scriptsToMath("C₆H₁₂O₆ and x² and 10⁻³"))
         assertEquals("already ${d}H_2O$d math", scriptsToMath("already ${d}H_2O$d math"))
     }
+
+    @Test fun marksBesideCheckedLinesAreTheirOwnBlocks() {
+        val reply = "<answer>\n<mark line=\"1\" ok=\"true\"/>\n<mark line=\"2\" ok=\"false\">−3, not +3</mark>\n" +
+            "<mark ok='yes' line='3'/>\nNearly: one sign slip.\n</answer><heard>2x+3=7</heard>"
+        val expected = listOf(
+            Block.Mark(1, true, ""), Block.Mark(2, false, "−3, not +3"), Block.Mark(3, true, ""),
+            Block.Paragraph(listOf(t("Nearly: one sign slip."))),
+        )
+        assertEquals(expected, blocks(reply))
+        assertEquals(expected, run(reply.chunked(5)).filterIsInstance<ParseEvent.BlockReady>().map { it.block }) // streamed
+        // a mark-looking line inside code stays code; an unrelated tag is no mark
+        assertEquals(null, parseMark("<marker line=\"1\"/>"))
+        assertEquals(null, parseMark("<mark ok=\"true\"/>"))
+    }
 }

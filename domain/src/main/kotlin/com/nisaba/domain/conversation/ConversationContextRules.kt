@@ -5,6 +5,7 @@ import com.nisaba.domain.memory.formatMemoryContext
 import com.nisaba.domain.persona.Persona
 import com.nisaba.domain.persona.PersonaRegistry
 import com.nisaba.domain.settings.Settings
+import com.nisaba.domain.shared.PageRect
 import kotlin.math.ceil
 
 const val TOKEN_BUDGET = 120_000
@@ -139,27 +140,67 @@ class ContextInput(
 fun maxTokensFor(purpose: Purpose, thinking: Boolean): Int {
     val base = when (purpose) {
         is Purpose.Tidy -> 2400
+        Purpose.Redraw -> 2000
+        is Purpose.Check -> 1600
         Purpose.Opening, Purpose.Resume -> 900
-        Purpose.Writing, is Purpose.Again -> 1200
+        Purpose.Writing, is Purpose.Again, Purpose.About -> 1200
     }
     return if (thinking) base * 2 else base
 }
 
+private const val FOCUS_MARGIN = 0.1f
+private const val FOCUS_MIN = 100f
+private const val FLAT_RATIO = 3f
+private const val UNDERLINE_REACH = 1.2f
+
+/**
+ * The focus crop for new writing at [b]: the writing with a margin. A flat stroke (an underline, a bracket under a
+ * line) also takes in the line above it: that is what it points at.
+ */
+fun focusArea(b: PageRect): PageRect {
+    val margin = maxOf(b.bottom - b.top, FOCUS_MIN) * FOCUS_MARGIN
+    val flat = b.bottom - b.top < FOCUS_MIN / 2 && b.right - b.left > (b.bottom - b.top) * FLAT_RATIO
+    val area = PageRect(b.left - margin, b.top - margin, b.right + margin, b.bottom + margin)
+    return if (flat) area.copy(top = area.top - FOCUS_MIN * UNDERLINE_REACH) else area
+}
+
+/** Numbers drawn just left of each line being checked, so marks can name lines ("1", "2", …). */
+fun lineLabels(lines: List<PageRect>): List<SnapshotLabel> =
+    lines.mapIndexed { i, r -> SnapshotLabel(com.nisaba.domain.shared.PagePoint(r.left, (r.top + r.bottom) / 2), "${i + 1}") }
+
+/** On a printed page an answer is a note in the margin: this short unless they ask for more. */
+const val GLOSS_WORDS = 35
+
 /** The last message: what to do this time, where they are, notes they left, and the voice line. */
+/** What this request is for, in one instruction. */
+private fun purposeInstruction(input: ContextInput): String = when (val p = input.purpose) {
+    Purpose.Opening -> INSTRUCTION_BEGIN_LESSON
+    Purpose.Resume -> INSTRUCTION_RESUME_LESSON
+    is Purpose.Tidy -> INSTRUCTION_TIDY
+    is Purpose.Again -> INSTRUCTION_WITH_FOCUS + " " + againInstruction(p.previousAnswer, p.how)
+    Purpose.Writing -> if (input.snapshot.focus != null) INSTRUCTION_WITH_FOCUS else INSTRUCTION_PAGE_ONLY
+    is Purpose.Check -> INSTRUCTION_CHECK
+    Purpose.Redraw -> INSTRUCTION_REDRAW
+    Purpose.About -> INSTRUCTION_ABOUT
+}
+
 private fun instructionFor(input: ContextInput, trailingNotes: List<String>) = buildString {
-    append(
-        when (val p = input.purpose) {
-            Purpose.Opening -> INSTRUCTION_BEGIN_LESSON
-            Purpose.Resume -> INSTRUCTION_RESUME_LESSON
-            is Purpose.Tidy -> INSTRUCTION_TIDY
-            is Purpose.Again -> INSTRUCTION_WITH_FOCUS + " " + againInstruction(p.previousAnswer, p.how)
-            Purpose.Writing -> if (input.snapshot.focus != null) INSTRUCTION_WITH_FOCUS else INSTRUCTION_PAGE_ONLY
-        },
-    )
+    val p = input.purpose
+    append(purposeInstruction(input))
+    val onDocument = input.currentDocumentPage != null
     input.currentDocumentPage?.let { append(" They are on p. ${it + 1} of the document.") }
     if (trailingNotes.isNotEmpty()) append(" Notes they wrote earlier without asking: ${trailingNotes.joinToString("; ")}.")
     input.lessonProgress?.let { append(" ").append(it) }
-    if (input.purpose !is Purpose.Tidy) append(" ").append(voiceReminder(input.persona, input.teachGoal != null, input.words))
+    val glosses = onDocument && (p == Purpose.Writing || p == Purpose.About)
+    if (glosses) append(" ").append(INSTRUCTION_GLOSS)
+    when {
+        p is Purpose.Tidy || p == Purpose.Redraw -> Unit // a copy: no voice
+        p is Purpose.Check -> append(" ").append(checkReminder(input.persona))
+        else -> {
+            val words = if (glosses) minOf(input.words, GLOSS_WORDS) else input.words
+            append(" ").append(voiceReminder(input.persona, input.teachGoal != null, words))
+        }
+    }
 }
 
 fun buildRequest(input: ContextInput): OracleRequest {
@@ -173,8 +214,11 @@ fun buildRequest(input: ContextInput): OracleRequest {
         (memory?.let(::estimateTokens) ?: 0) - imageTokens
     val kept = trimHistory(history, room.coerceAtLeast(0))
     val instruction = instructionFor(input, trailingNotes)
-    val temperature = if (input.purpose is Purpose.Tidy) TIDY_TEMPERATURE else input.persona.temperature
-    val thinking = input.settings.thinking || (input.purpose as? Purpose.Again)?.how == AgainHow.Afresh
+    val p = input.purpose
+    // copying, redrawing and checking are about getting it right, not about style
+    val temperature = if (p is Purpose.Tidy || p is Purpose.Check || p == Purpose.Redraw) TIDY_TEMPERATURE else input.persona.temperature
+    // asked again: the first answer wasn't good enough; checking work: worth thinking it through
+    val thinking = input.settings.thinking || (p as? Purpose.Again)?.how == AgainHow.Afresh || p is Purpose.Check
     val images = buildList {
         add(OracleImage(input.snapshot.page, ImageDetail.Auto))
         input.snapshot.focus?.let { add(OracleImage(it, ImageDetail.High)) }
@@ -182,7 +226,6 @@ fun buildRequest(input: ContextInput): OracleRequest {
     return OracleRequest(
         system = system, documentContext = doc, history = kept, instruction = instruction, images = images,
         options = OracleOptions(
-            // asked again: the first answer wasn't good enough, so think this time
             input.settings.model, thinking, maxTokens = maxTokensFor(input.purpose, thinking),
             temperature = temperature,
         ),

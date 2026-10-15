@@ -3,6 +3,7 @@ package com.nisaba.scribe.layout
 import com.nisaba.domain.answer.Block
 import com.nisaba.domain.answer.Inline
 import com.nisaba.domain.answer.MathNode
+import com.nisaba.domain.answer.parseInlines
 import com.nisaba.domain.answer.parseMath
 import com.nisaba.domain.shared.PageRect
 import com.nisaba.scribe.hand.GlyphSet
@@ -154,8 +155,14 @@ fun layoutBlock(
         is Block.Diagram -> layoutDiagram(block, cursor, ctx)
         is Block.Code -> layoutCode(block, cursor, ctx)
         Block.Rule -> rule(cursor, ctx)
+        is Block.Mark -> flow(markInlines(block).runs(), Style(1f, false, 0f, 0f), cursor, ctx)
     }
 }
+
+/** What a mark beside checked work says: a bold tick, or a bold cross and the correction (math and all). */
+fun markInlines(m: Block.Mark): List<Inline> =
+    if (m.ok || m.note.isBlank()) listOf(Inline.Text(if (m.ok) "✓" else "✗", bold = true))
+    else listOf(Inline.Text("✗ ", bold = true)) + parseInlines(m.note)
 
 private fun listItem(b: Block.ListItem, cursor: LayoutCursor, ctx: Ctx, xh: Float): Pair<LaidBlock, LayoutCursor> {
     val base = b.depth * xh * INDENT_UNITS

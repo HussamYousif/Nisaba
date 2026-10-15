@@ -150,6 +150,11 @@ class PageView(
         color = 0xFF27407A.toInt(); textSize = 64f; typeface = android.graphics.Typeface.SERIF
     }
     internal var resumeMark: PagePoint? = null
+    internal var selection: com.nisaba.domain.shared.PageRect? = null
+    internal val selectionPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xFF111111.toInt(); style = android.graphics.Paint.Style.STROKE; strokeWidth = 3f
+        pathEffect = android.graphics.DashPathEffect(floatArrayOf(14f, 10f), 0f)
+    }
     internal val drawnByHand = HashSet<StrokeId>()
 
     /** What the hand drew that isn't committed yet: redrawn after any rebuild, so a redraw mid-answer can't wipe it. */
@@ -240,6 +245,10 @@ class PageView(
         layer?.let { canvas.drawBitmap(it, 0f, 0f, null) }
         canvas.save(); canvas.translate(affine.dx, affine.dy); canvas.scale(affine.scale, affine.scale)
         resumeMark?.let { canvas.drawText("…", it.x, it.y, markPaint) }
+        selection?.let { b ->
+            val p = SELECTION_PAD
+            canvas.drawRect(b.left - p, b.top - p, b.right + p, b.bottom + p, selectionPaint)
+        }
         canvas.restore()
     }
 
@@ -273,6 +282,7 @@ class PageView(
         const val LIVE_INK = 0xFF111111.toInt()
         const val MEDIUM_WIDTH = 3.5f
         const val MARK_REACH = 60f
+        const val SELECTION_PAD = 14f
         const val MARK_HIT = 90f
         const val PAN_STEP_MILLIS = 120L
         const val FOLLOW_EDGE = 0.88f

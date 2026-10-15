@@ -11,6 +11,17 @@ import kotlin.math.floor
 internal fun PageView.dirtyOfView(b: com.nisaba.domain.shared.PageRect, pad: Float) =
     Rect(floor(b.left - pad).toInt(), floor(b.top - pad).toInt(), ceil(b.right + pad).toInt(), ceil(b.bottom + pad).toInt())
 
+/** The lasso's box (page units), dashed around what it picked; null hides it. */
+fun PageView.showSelection(bounds: com.nisaba.domain.shared.PageRect?) {
+    if (bounds == selection) return
+    val pad = PageView.SELECTION_PAD * affine.scale + SELECTION_STROKE
+    selection?.let { invalidate(dirtyOf(it, pad)) }
+    selection = bounds
+    bounds?.let { invalidate(dirtyOf(it, pad)) }
+}
+
+private const val SELECTION_STROKE = 6f
+
 fun PageView.showResumeMark(at: PagePoint?) {
     val old = resumeMark; resumeMark = at
     old?.let { invalidate(dirtyAround(it, MARK_REACH)) }

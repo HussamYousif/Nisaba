@@ -13,7 +13,7 @@ class InkEditSessionTest {
     private val store = FakeInkStore()
     private val ink = InkUseCases(
         LoadPageInkUseCase(store), CommitStrokeUseCase(store), CommitStrokesUseCase(store), EraseUseCase(store, FakeIdGen()),
-        UndoUseCase(store), RedoUseCase(store), EraseAnswerUseCase(store),
+        UndoUseCase(store), RedoUseCase(store), EraseAnswerUseCase(store), ReplaceStrokesUseCase(store), RemoveStrokesUseCase(store),
     )
     private val session = InkEditSession(ink)
     private val a = PageId("a"); private val b = PageId("b")

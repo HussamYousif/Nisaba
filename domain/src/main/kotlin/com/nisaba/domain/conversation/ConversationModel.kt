@@ -24,7 +24,25 @@ sealed interface Purpose {
 
     /** Write a clean copy of the notes on [sourcePageId] (on this, new, page). */
     data class Tidy(val sourcePageId: PageId) : Purpose
+
+    /** Check their work: a ✓, or a ✗ with a short correction, beside each of [lines] (page boxes, top to bottom). */
+    data class Check(val lines: List<PageRect>) : Purpose
+
+    /** Redraw the rough sketch in the focus as a clean diagram, below it. */
+    data object Redraw : Purpose
+
+    /** They drew a loop around something (their writing, printed text, an earlier answer) and ask about it. */
+    data object About : Purpose
+
+    /** Asked for there and then (a menu, a lasso): goes even while Nisaba isn't listening. */
+    val explicit: Boolean get() = this is Again || this is Tidy || this is Check || this is Redraw || this is About
+
+    /** Answers something on the page (the focus image shows it), rather than opening a lesson or copying notes. */
+    val answersWriting: Boolean get() = this is Writing || this is Again || this is Check || this is Redraw || this is About
 }
+
+/** A small mark drawn into the images the model sees (never on the page): [text] at [at], e.g. a line number. */
+data class SnapshotLabel(val at: com.nisaba.domain.shared.PagePoint, val text: String)
 
 /** What another go at an answer is for. Afresh and Shorter replace it; the rest go below it. */
 sealed interface AgainHow {
