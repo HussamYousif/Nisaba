@@ -22,8 +22,9 @@ class RoomLessonStore(private val dao: LessonDao) : LessonStore {
 }
 
 private fun LessonTopicDto.toModel() =
-    LessonTopic(topic, TopicStatus.entries.firstOrNull { it.name == status } ?: TopicStatus.Shaky, updatedAt)
+    LessonTopic(topic, TopicStatus.entries.firstOrNull { it.name == status } ?: TopicStatus.Shaky, updatedAt, streak)
 
 private fun LessonTopic.toDto(nb: NotebookId) = LessonTopicDto(
     notebookId = nb.value, topicKey = topic.trim().lowercase(), topic = topic.trim(), status = status.name, updatedAt = updatedAtMillis,
+    streak = streak,
 )

@@ -3,7 +3,7 @@ package com.nisaba.domain.conversation
 import com.nisaba.domain.persona.Persona
 
 /** Bump when [systemPrompt] or a voice changes; stored on every exchange so answers can be compared across versions. */
-const val PROMPT_VERSION = 14
+const val PROMPT_VERSION = 15
 
 private const val WORDS = "{words}"
 
@@ -47,6 +47,8 @@ When you answer:
 Memory: you remember this person across all their notebooks. What you already know is under "# Memory" as "#id fact" lines, grouped by category; use it naturally when it helps (recommendations, their projects, their tastes), never recite it. Never assume traits that are neither written nor in memory (gender, age, nationality). When the new writing reveals something durable about them worth knowing in a future notebook (who they are, their work or studies, people in their life, projects, books, films and series, music they like or dislike, preferences, goals), add one line per new fact after </answer>:
 <remember category="books">Loved Dune; found the sequel slow</remember>
 Categories: me, people, projects, books, screen, music, preferences, goals, other. One short sentence, at most 20 words, specific, without "the user". Never repeat a fact already in memory, never store the question itself, passing moods, or trivia from the document. Anything they say about themselves ("I'm a…", "I'm building…", "I love…", "my sister…") that is not yet in memory deserves a <remember>, even inside a question. If a fact is wrong or has changed, add <forget id="12"/> and remember the new version; if they ask you to forget something, forget it. When nothing new about them was revealed, write no tags. Never put these tags inside <answer>.
+
+Reminders: when they ask to be reminded of something at a time, or clearly need a reminder, add after </answer> one line <task when="2026-10-16T09:00">call Ola</task> (their local time, worked out from the time the instruction gives; a time of day without a day means the next one). They confirm it with a tap; never put it inside <answer>.
 
 Reply format, exactly one of:
 <silent/><heard>verbatim transcription of the new writing</heard>
@@ -140,3 +142,22 @@ const val INSTRUCTION_GLOSS = "They are writing on the document itself: your ans
 /** Checking work: the voice only flavours the closing sentence; the marks are plain. */
 fun checkReminder(persona: Persona): String =
     "Write the closing sentence in your voice (${persona.name}), in the language they wrote in. Always end with <heard>…</heard>."
+
+const val INSTRUCTION_QUIZ = "Quiz them on what this notebook holds (the earlier exchanges and the document, if any). Never reply " +
+    "<silent/>. Write 3 short numbered questions, one line each, on what matters most, starting with what they got wrong or " +
+    "found hard; no answers. End with one line inviting them to write their answers below. You will judge the answers when they come."
+
+const val INSTRUCTION_DAILY = "Open today's page in this notebook. Never reply <silent/>. A short heading with today's date, then at " +
+    "most 3 open loops from the earlier exchanges (questions left open, things they meant to do, look up or finish) as a \"- \" " +
+    "list, then one question to start the day. Only what the history shows; if it shows nothing open, just the date and the question."
+
+const val INSTRUCTION_RECAP = "Recap the past week in this notebook on one page. Never reply <silent/>. A heading, then the main " +
+    "things they asked and what came of them as a short \"- \" list, then one line on what to pick up next. Only from the " +
+    "earlier exchanges; never invent."
+
+/** Spaced review in a lesson notebook: one question per due topic; their answers are judged as usual (<topic> tags). */
+fun reviewInstruction(topics: List<String>): String = "Review time: these topics are due for review: " + topics.joinToString(", ") +
+    ". Never reply <silent/>. Ask one short question on each, numbered, one line each, nothing else; they will answer below. " +
+    "When they do, judge each answer and record its <topic> status as usual."
+
+const val INSTRUCTION_PRIVATE = "This notebook is private: write no <remember> or <forget> tags."

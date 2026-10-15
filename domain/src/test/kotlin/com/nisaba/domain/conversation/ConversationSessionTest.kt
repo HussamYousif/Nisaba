@@ -292,7 +292,7 @@ class ConversationSessionTest {
         rig.session.tidy(PageId("src"), page); runCurrent()
         assertEquals(listOf<PageRect?>(null), snapshotter.focuses)
         assertEquals(listOf(PageId("src")), snapshotter.pages)
-        assertEquals(INSTRUCTION_TIDY, oracle.requests.single().instruction)
+        assertTrue(oracle.requests.single().instruction.startsWith(INSTRUCTION_TIDY))
         rig.handDone(); runCurrent()
         assertEquals(page, store.saved.single().pageId)
         assertEquals("(asks for a tidy copy of a page of notes)", store.saved.single().heard)

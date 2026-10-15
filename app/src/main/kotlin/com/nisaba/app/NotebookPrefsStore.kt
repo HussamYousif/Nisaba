@@ -16,6 +16,11 @@ class NotebookPrefsStore(context: Context) {
     private val viewPrefs = context.getSharedPreferences("views", Context.MODE_PRIVATE)
     private val lastPagePrefs = context.getSharedPreferences("last_page", Context.MODE_PRIVATE)
     private val pendingPrefs = context.getSharedPreferences("pending_questions", Context.MODE_PRIVATE)
+    private val dailyPrefs = context.getSharedPreferences("daily_page", Context.MODE_PRIVATE)
+
+    fun lastDaily(nb: NotebookId): String? = dailyPrefs.getString(nb.value, null)
+
+    fun saveLastDaily(nb: NotebookId, day: String) = dailyPrefs.edit().putString(nb.value, day).apply()
 
     fun loadView(page: PageId): PagePoint? =
         viewPrefs.getString(page.value, null)?.split(',')?.let { if (it.size == 2) PagePoint(it[0].toFloat(), it[1].toFloat()) else null }

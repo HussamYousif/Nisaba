@@ -34,6 +34,7 @@ private object Keys {
     val lastPersona = stringPreferencesKey("lastPersona")
     val standardPen = booleanPreferencesKey("standardPen")
     val voiceHands = booleanPreferencesKey("voiceHands")
+    val dailyPage = booleanPreferencesKey("dailyPage")
     val styleMode = stringPreferencesKey("answerMode")
     val styleLength = stringPreferencesKey("answerLength")
 }
@@ -57,6 +58,7 @@ class DataStoreSettingsStore(context: Context) : SettingsStore {
             it[Keys.onboarded] = next.onboarded; it[Keys.hintSeen] = next.hintSeen
             it[Keys.codeHighlight] = next.codeHighlight.name; it[Keys.penInk] = next.penInk; it[Keys.penSize] = next.penSize.name
             it[Keys.lastPersona] = next.lastPersona; it[Keys.standardPen] = next.standardPen; it[Keys.voiceHands] = next.voiceHands
+            it[Keys.dailyPage] = next.dailyPage
         }
     }
 
@@ -75,6 +77,7 @@ class DataStoreSettingsStore(context: Context) : SettingsStore {
             codeHighlight = this[Keys.codeHighlight].toEnum(d.codeHighlight), penInk = this[Keys.penInk] ?: d.penInk,
             penSize = this[Keys.penSize].toEnum(d.penSize), lastPersona = this[Keys.lastPersona] ?: d.lastPersona,
             standardPen = this[Keys.standardPen] ?: d.standardPen, voiceHands = this[Keys.voiceHands] ?: d.voiceHands,
+            dailyPage = this[Keys.dailyPage] ?: d.dailyPage,
         )
     }
 }

@@ -55,6 +55,7 @@ internal fun ConversationSession.maybeFinalize(p: PendingExchange) {
         }
         if (p.replyComplete && (status == ExchangeStatus.Complete || status == ExchangeStatus.Interrupted)) {
             remember(exchange); recordTopics(exchange)
+            parseReminders(exchange.answerMarkup).forEach(deps.surface::offerReminder)
         }
     }
 }
@@ -71,7 +72,8 @@ internal suspend fun ConversationSession.recordTopics(exchange: Exchange) {
     if (deps.context.teachGoal == null) return
     val topics = parseTopics(exchange.answerMarkup, deps.clock.nowMillis()).takeIf { it.isNotEmpty() } ?: return
     try {
-        store.upsert(deps.notebookId, topics)
+        val before = store.topics(deps.notebookId).associateBy { it.topic.lowercase() }
+        store.upsert(deps.notebookId, topics.map { com.nisaba.domain.lesson.judged(before[it.topic.lowercase()], it) })
     } catch (e: CancellationException) {
         throw e
     } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
@@ -81,6 +83,7 @@ internal suspend fun ConversationSession.recordTopics(exchange: Exchange) {
 
 /** Applies the reply's `<remember>`/`<forget>` tags; a memory hiccup never disturbs the page. */
 internal suspend fun ConversationSession.remember(exchange: Exchange) {
+    if (deps.context.isPrivate) return // a private notebook teaches memory nothing
     val apply = applyMemory ?: return
     try {
         val plan = apply(exchange.answerMarkup, exchange.id)

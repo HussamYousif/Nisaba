@@ -74,6 +74,10 @@ data class NotebookUiState(
     val voiceOpen: Boolean = false,
     /** What the lasso picked (the bar along the bottom acts on it). */
     val selection: InkSelection? = null,
+    /** Kept out of memory and search. */
+    val isPrivate: Boolean = false,
+    /** A reminder the last reply offered, until added or waved away. */
+    val reminder: com.nisaba.domain.conversation.Reminder? = null,
 ) {
     val showHint: Boolean get() = hintPending && !loading && strokes.isEmpty() && background is PageBackground.Blank
 
@@ -117,4 +121,7 @@ sealed interface NotebookEffect {
 
     /** Offer [text] to another app (the share sheet). */
     data class Share(val subject: String, val text: String) : NotebookEffect
+
+    /** Put [reminder] in the calendar (or an alarm). */
+    data class Remind(val reminder: com.nisaba.domain.conversation.Reminder) : NotebookEffect
 }

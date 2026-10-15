@@ -31,7 +31,7 @@ class FakeNotebookStore : NotebookStore {
             val n = it.notebook
             NotebookSummary(
                 n.id, n.name, n.updatedAtMillis, it.pages.size, n.coverSeed, n.documentId != null, it.pages.any { p -> p.size.isEndless },
-                n.teachGoal != null, n.personaId,
+                n.teachGoal != null, n.personaId, n.isPrivate,
             )
         }
     }
@@ -79,6 +79,10 @@ class FakeNotebookStore : NotebookStore {
     override suspend fun setPersona(id: NotebookId, personaId: String) {
         val cur = books.value[id] ?: return
         books.value += (id to cur.copy(notebook = cur.notebook.copy(personaId = personaId)))
+    }
+    override suspend fun setPrivate(id: NotebookId, isPrivate: Boolean) {
+        val cur = books.value[id] ?: return
+        books.value += (id to cur.copy(notebook = cur.notebook.copy(isPrivate = isPrivate)))
     }
 }
 

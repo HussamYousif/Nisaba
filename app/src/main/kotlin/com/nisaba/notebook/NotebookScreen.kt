@@ -118,6 +118,7 @@ fun NotebookScreen(
             state.failure?.let { FailureChip(it, vm::retry) }
             state.memoryNote?.let { MemoryChip(it, vm::dismissMemoryNote) }
             state.notice?.let { MemoryChip(it, vm::dismissNotice, mark = "!") }
+            state.reminder?.let { ReminderChip(reminderLine(it), vm::addReminder, vm::dismissReminder) }
         }
         state.selection?.let { SelectionBarComponent(it, state.aiAvailable, vm, Modifier.align(Alignment.BottomStart)) }
         val handle = !state.toolbarVisible && state.selection == null
@@ -226,23 +227,6 @@ private fun ScribeWiring(
     }
 }
 
-/** The ⋯ menu for this page. */
-private fun notebookMenu(
-    state: NotebookUiState,
-    voice: String,
-    vm: NotebookViewModel,
-    onOpenSettings: () -> Unit,
-): List<MenuItem> = buildList {
-    if (!state.endless) add(MenuItem("+ Page after this one", vm::insertBlankPage))
-    val ownInk = state.aiAvailable && state.strokes.any { it.origin is StrokeOrigin.User }
-    if (ownInk) add(MenuItem("Check my work (✓ or ✗ beside each line)", vm::checkWork))
-    if (!state.endless && ownInk) add(MenuItem("Tidy this page (a clean copy on a new page)", vm::tidyPage))
-    if (state.endless) { add(MenuItem("Overview", vm::showOverview)); add(MenuItem("Home", vm::goHome)) }
-    if (state.lesson) add(MenuItem("Lesson progress", vm::showProgress))
-    if (state.aiAvailable) add(MenuItem("Voice: $voice", vm::openVoice))
-    add(MenuItem("Rename", vm::beginRename))
-    add(MenuItem("Settings", onOpenSettings))
-}
 
 /** The pen must not write under the bar, nor under the star handle that replaces it, nor under the lasso's bar. */
 @Composable
@@ -261,6 +245,7 @@ private fun PenExclusions(toolbarVisible: Boolean, pageView: PageView?, toolbarP
 /** What the ViewModel asks of the screen: refreshes, jumps, the clipboard, the share sheet, repaints. */
 @Composable
 private fun NotebookEffects(vm: NotebookViewModel, pageView: PageView?, pen: PenDevice, eink: EinkDevice) {
+    val remind = rememberReminderHandler(vm)
     val context = LocalContext.current
     val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
     LaunchedEffect(vm, pageView) {
@@ -271,6 +256,7 @@ private fun NotebookEffects(vm: NotebookViewModel, pageView: PageView?, pen: Pen
                 is NotebookEffect.PanTo -> v.jumpTo(fx.origin)
                 is NotebookEffect.Copy -> clipboard.setText(androidx.compose.ui.text.AnnotatedString(fx.text))
                 is NotebookEffect.Share -> context.startActivity(shareIntent(fx.subject, fx.text))
+                is NotebookEffect.Remind -> remind(fx.reminder)
                 NotebookEffect.Repaint -> { pen.suspendRawInk(); v.forgetLiveInk(); v.reloadBackground(); pen.resumeRawInk() }
             }
         }

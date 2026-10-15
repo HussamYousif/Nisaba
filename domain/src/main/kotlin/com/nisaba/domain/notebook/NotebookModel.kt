@@ -21,6 +21,8 @@ data class Notebook(
     /** Plain notes are kept silent (transcribed for search); only what is addressed to Nisaba gets an answer. */
     val questionsOnly: Boolean = false,
     val answerLength: AnswerLength = AnswerLength.Normal,
+    /** A private notebook: nothing remembered from it, nothing recalled into it, left out of search (a journal). */
+    val isPrivate: Boolean = false,
 ) {
     val style: AnswerStyle get() = AnswerStyle(
         when {
@@ -66,6 +68,7 @@ data class NotebookSummary(
     /** Nisaba teaches its document. */
     val lesson: Boolean = false,
     val personaId: String = PersonaRegistry.DEFAULT_ID,
+    val isPrivate: Boolean = false,
 )
 
 data class NotebookWithPages(val notebook: Notebook, val pages: List<Page>)

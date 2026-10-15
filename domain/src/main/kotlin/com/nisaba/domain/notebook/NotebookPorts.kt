@@ -17,6 +17,9 @@ interface NotebookStore {
     suspend fun setListening(id: NotebookId, listening: Boolean)
     suspend fun setPersona(id: NotebookId, personaId: String)
 
+    /** A private notebook keeps out of memory and search. */
+    suspend fun setPrivate(id: NotebookId, isPrivate: Boolean)
+
     /** [AnswerMode.WhenAsked] is listening off; the eye in the bar toggles just that. */
     suspend fun setStyle(id: NotebookId, style: AnswerStyle)
 

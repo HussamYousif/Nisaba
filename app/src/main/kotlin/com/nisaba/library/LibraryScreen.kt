@@ -133,7 +133,7 @@ private fun NotebookGrid(notebooks: List<CoverItem>, actions: LibraryActions) {
                         item.endless -> "Endless canvas"
                         item.lesson -> "Lesson · PDF"
                         else -> "${item.pageCount} page${if (item.pageCount == 1) "" else "s"}" + if (item.hasDocument) " · PDF" else ""
-                    } + " · " + voices.of(item.personaId).name,
+                    } + " · " + voices.of(item.personaId).name + if (item.isPrivate) " · Private" else "",
                     style = MaterialTheme.typography.labelSmall, color = c.faint, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
             }

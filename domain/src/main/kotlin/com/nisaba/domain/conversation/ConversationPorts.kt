@@ -57,6 +57,9 @@ interface ConversationSurface {
 
     /** The answer being written was cut short by the provider (too long, overloaded); what is written stays. */
     fun showCutShort() {}
+
+    /** The reply asked for a reminder: offer to put it in the calendar (nothing happens without their tap). */
+    fun offerReminder(reminder: Reminder) = Unit
 }
 
 /** Extra context the session needs when it builds a request. */
@@ -69,6 +72,9 @@ interface ConversationContextPorts {
 
     /** The notebook's voice and answering habits, read per request (they can change while the notebook is open). */
     val persona: com.nisaba.domain.persona.Persona get() = com.nisaba.domain.persona.PersonaRegistry.default
+
+    /** A private notebook: no memory is read into its requests or learned from its replies. */
+    val isPrivate: Boolean get() = false
 
     /** Any voice by id, their own ones included (a second opinion); unknown → the default voice. */
     fun voice(id: String): com.nisaba.domain.persona.Persona = com.nisaba.domain.persona.PersonaRegistry.of(id)

@@ -82,6 +82,7 @@ class NotebookViewModel(
                     opened = true
                     val target = startPage ?: deps.memory.lastPage(deps.notebookId) // search hit, else where it was left
                     openPage(nb.pages.indexOfFirst { it.id == target }.coerceAtLeast(0), full = false)
+                    if (startPage == null) maybeDailyPage(nb)
                 } else {
                     publish()
                 }
@@ -213,6 +214,7 @@ class NotebookViewModel(
                 background = page.background, strokes = e.ink.strokes, canUndo = e.canUndo, canRedo = e.canRedo,
                 listening = nb.notebook.listening, loading = false, endless = page.size.isEndless, viewOrigin = viewOrigin,
                 lesson = nb.notebook.teachGoal != null, personaId = nb.notebook.personaId, style = nb.notebook.style,
+                isPrivate = nb.notebook.isPrivate,
             )
         }
         if (mutableState.value.hintPending && e.ink.strokes.isNotEmpty()) {

@@ -11,7 +11,8 @@ class SearchUseCase(private val exchanges: ExchangeStore, private val notebooks:
         if (query.isBlank()) return emptyList()
         val books = HashMap<NotebookId, NotebookWithPages?>()
         return exchanges.search(query, limit).mapNotNull { e ->
-            val nb = books.getOrPut(e.notebookId) { notebooks.get(e.notebookId) } ?: return@mapNotNull null
+            val nb = books.getOrPut(e.notebookId) { notebooks.get(e.notebookId) }
+                ?.takeUnless { it.notebook.isPrivate } ?: return@mapNotNull null // a private notebook is never found
             val index = nb.pages.indexOfFirst { it.id == e.pageId }.takeIf { it >= 0 } ?: return@mapNotNull null
             SearchHit(
                 nb.notebook.id, nb.notebook.name, e.pageId, index + 1,

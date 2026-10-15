@@ -88,6 +88,7 @@ class SettingsViewModel(
     fun setThinking(on: Boolean) = update { it.copy(thinking = on) }
     fun setStandardPen(on: Boolean) = update { it.copy(standardPen = on) }
     fun setVoiceHands(on: Boolean) = update { it.copy(voiceHands = on) }
+    fun setDailyPage(on: Boolean) = update { it.copy(dailyPage = on) }
     fun setPause(millis: Int) = update { it.copy(pauseMillis = millis.coerceIn(Settings.MIN_PAUSE, Settings.MAX_PAUSE)) }
     fun setSpeed(speed: HandSpeed) = update { it.copy(handSpeed = speed) }
     fun setStyle(style: HandStyle) = update { it.copy(handStyle = style) }

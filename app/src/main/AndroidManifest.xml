@@ -3,6 +3,8 @@
     xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- reminders the notebook was asked for, when there is no calendar app (a Boox has none) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application
         android:name=".app.NisabaApp"
         android:allowBackup="false"
@@ -23,5 +25,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <receiver android:name="com.nisaba.device.ReminderAlarmReceiver" android:exported="false" />
     </application>
 </manifest>

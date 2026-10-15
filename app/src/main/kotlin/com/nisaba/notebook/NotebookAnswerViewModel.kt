@@ -253,7 +253,10 @@ internal fun NotebookViewModel.startSession(page: Page) {
         ++sessionGen, page.id, deps.hands, { settings }, { currentPage()?.size ?: page.size }, { edit?.ink?.strokes.orEmpty() },
         { printedOccupancy },
         { scribeSink.tryEmit(it) }, ::failure,
-        ScribeNotices(::memoryNote, onCutShort = { mutableState.update { it.copy(notice = CUT_SHORT_NOTICE) } }),
+        ScribeNotices(
+            ::memoryNote, onCutShort = { mutableState.update { it.copy(notice = CUT_SHORT_NOTICE) } },
+            onReminder = { r -> mutableState.update { it.copy(reminder = r) } },
+        ),
         voices = { deps.sources.voices().of(it) },
     )
     answerScribe = scribe
@@ -262,6 +265,7 @@ internal fun NotebookViewModel.startSession(page: Page) {
         override val currentDocumentPage: Int? get() = documentPageIndex
         override val teachGoal: String? get() = notebook?.notebook?.teachGoal
         override val persona get() = voice()
+        override val isPrivate get() = notebook?.notebook?.isPrivate == true
         override fun voice(id: String) = deps.sources.voices().of(id)
         override val style get() = notebook?.notebook?.style ?: com.nisaba.domain.notebook.AnswerStyle()
     }

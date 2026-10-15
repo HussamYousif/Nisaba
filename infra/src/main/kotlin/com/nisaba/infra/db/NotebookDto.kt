@@ -21,6 +21,8 @@ data class NotebookDto(
     // v8: answering habits
     val questionsOnly: Boolean = false,
     val answerLength: String = "Normal",
+    /** v10: kept out of memory and search. */
+    val isPrivate: Boolean = false,
 )
 
 @Entity(
@@ -60,6 +62,7 @@ data class SummaryRowDto(
     val endless: Boolean,
     val lesson: Boolean = false,
     val persona: String,
+    val isPrivate: Boolean = false,
 )
 
 @Entity(
@@ -118,4 +121,6 @@ data class LessonTopicDto(
     val topic: String,
     val status: String,
     val updatedAt: Long,
+    /** v10: times in a row judged learned (spaced review). */
+    val streak: Int = 0,
 )

@@ -34,6 +34,8 @@ data class Settings(
     val standardPen: Boolean = false,
     /** Each voice writes in its own ink, slant and pace (off: every voice writes like the settings above). */
     val voiceHands: Boolean = true,
+    /** The first time a notebook is opened on a new day, Nisaba starts the day's page (off by default). */
+    val dailyPage: Boolean = false,
 ) {
     companion object {
         const val MIN_PAUSE = 2000

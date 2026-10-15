@@ -66,6 +66,8 @@ class NotebookChanges(
     val setStyle: suspend (NotebookId, com.nisaba.domain.notebook.AnswerStyle) -> Unit = { _, _ -> },
     /** An answer was erased from the page: it leaves the conversation's history. */
     val markErased: suspend (com.nisaba.domain.shared.ExchangeId) -> Unit = {},
+    /** Private: nothing remembered from the notebook or recalled into it, out of search. */
+    val setPrivate: suspend (NotebookId, Boolean) -> Unit = { _, _ -> },
 )
 
 /** What answers draw on besides the ink: the document, its printed text, saved exchanges. */
@@ -82,6 +84,8 @@ class NotebookSources(
     val online: Flow<Boolean> = emptyFlow(),
     /** Every voice as it is now, their own included. */
     val voices: () -> com.nisaba.domain.persona.Voices = { com.nisaba.domain.persona.Voices() },
+    /** When this notebook last had an exchange (null: never). */
+    val lastExchangeMillis: suspend () -> Long? = { null },
 )
 
 /** What the app remembers for the user between visits: the first-run hint, where each endless canvas was left, the pen. */
@@ -96,4 +100,7 @@ class NotebookMemory(
     /** A page's unanswered question, kept across page turns and restarts (null clears it). */
     val loadPending: (PageId) -> com.nisaba.domain.conversation.Utterance? = { null },
     val savePending: (PageId, com.nisaba.domain.conversation.Utterance?) -> Unit = { _, _ -> },
+    /** The day ("2026-10-15") today's page was last written in a notebook, so it comes once a day. */
+    val lastDaily: (NotebookId) -> String? = { null },
+    val saveLastDaily: (NotebookId, String) -> Unit = { _, _ -> },
 )

@@ -87,3 +87,9 @@ fun ConversationSession.redraw(pageId: PageId, strokes: List<com.nisaba.domain.i
 /** They looped [area] on [pageId] (around [ids], or around printed text when empty) and ask about it. */
 fun ConversationSession.askAbout(pageId: PageId, ids: Set<com.nisaba.domain.shared.StrokeId>, area: PageRect) =
     dispatch(ConvEvent.Begin(Utterance(pageId, ids, area, Purpose.About)))
+
+/** Writes [purpose] (a quiz, today's page, the week's recap, a review) on [pageId], a fresh page, from the top. */
+fun ConversationSession.writeFresh(pageId: PageId, purpose: Purpose) {
+    if (!purpose.textOnly) return
+    dispatch(ConvEvent.Begin(Utterance(pageId, emptySet(), at(LESSON_TOP), purpose)))
+}

@@ -70,7 +70,7 @@ class ConversationAskTest {
         val s = session()
         s.redraw(page, work); runCurrent()
         val req = oracle.requests.single()
-        assertEquals(INSTRUCTION_REDRAW, req.instruction)
+        assertTrue(req.instruction.startsWith(INSTRUCTION_REDRAW))
         assertEquals(TIDY_TEMPERATURE, req.options.temperature)
         assertIs<Block.Diagram>(surface.blocks.single())
     }

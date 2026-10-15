@@ -111,6 +111,12 @@ private fun WaitingPane(s: Settings, vm: SettingsViewModel) {
         Text("%.1f seconds of quiet before it answers".format(s.pauseMillis / 1000f), style = MaterialTheme.typography.bodyLarge)
         NisabaButton("+", { vm.setPause(s.pauseMillis + PAUSE_STEP) }, enabled = s.pauseMillis < Settings.MAX_PAUSE)
     }
+    Text("Mornings", style = MaterialTheme.typography.labelLarge)
+    Choice(listOf(false to "Just open", true to "Start a page each day"), s.dailyPage, vm::setDailyPage)
+    Text(
+        "The first time a notebook opens on a new day, Nisaba writes the date, what was left open, and a question.",
+        style = MaterialTheme.typography.labelSmall, color = Nisaba.colors.faint,
+    )
 }
 
 @Composable

@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.nisaba.device.PenTool
+import com.nisaba.domain.ink.StrokeOrigin
 import com.nisaba.ui.theme.Nisaba
 import com.nisaba.ui.theme.NisabaButton
 import com.nisaba.ui.theme.NisabaDialog
@@ -88,6 +89,32 @@ fun NotebookToolbarComponent(state: NotebookUiState, vm: NotebookViewModel, onBa
         Spacer(Modifier.width(10.dp))
         NisabaIconButton(NisabaIcon.More, "More", vm::openMenu)
     }
+}
+
+/** The ⋯ menu for this page. */
+internal fun notebookMenu(
+    state: NotebookUiState,
+    voice: String,
+    vm: NotebookViewModel,
+    onOpenSettings: () -> Unit,
+): List<MenuItem> = buildList {
+    if (!state.endless) add(MenuItem("+ Page after this one", vm::insertBlankPage))
+    val ownInk = state.aiAvailable && state.strokes.any { it.origin is StrokeOrigin.User }
+    if (ownInk) add(MenuItem("Check my work (✓ or ✗ beside each line)", vm::checkWork))
+    if (!state.endless && ownInk) add(MenuItem("Tidy this page (a clean copy on a new page)", vm::tidyPage))
+    if (state.endless) { add(MenuItem("Overview", vm::showOverview)); add(MenuItem("Home", vm::goHome)) }
+    if (state.lesson) add(MenuItem("Lesson progress", vm::showProgress))
+    val due = state.dueReviews()
+    if (state.lesson && due > 0) add(MenuItem("Review what's due ($due)", vm::reviewDue))
+    if (state.aiAvailable && !state.endless) {
+        add(MenuItem("Quiz me on this notebook", vm::quizMe))
+        add(MenuItem("Today's page", vm::todaysPage))
+        add(MenuItem("This week, recapped", vm::recapWeek))
+    }
+    add(MenuItem(if (state.isPrivate) "Private: on (tap to turn off)" else "Make private (nothing remembered)", vm::togglePrivate))
+    if (state.aiAvailable) add(MenuItem("Voice: $voice", vm::openVoice))
+    add(MenuItem("Rename", vm::beginRename))
+    add(MenuItem("Settings", onOpenSettings))
 }
 
 /** The ⋯ menu, drawn over the page (it outlives the bar hiding). */

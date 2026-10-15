@@ -60,6 +60,7 @@ sealed interface ScribeCommand {
 class ScribeNotices(
     val onMemoryNote: (String) -> Unit = {},
     val onCutShort: () -> Unit = {},
+    val onReminder: (com.nisaba.domain.conversation.Reminder) -> Unit = {},
     val onLayoutError: (Throwable) -> Unit = { android.util.Log.w("Nisaba/Scribe", "block skipped", it) },
 )
 
@@ -229,4 +230,5 @@ class AnswerScribeSession(
     override fun clearFailure() = onFailure(null)
     override fun showMemoryNote(note: String) = notices.onMemoryNote(note)
     override fun showCutShort() = notices.onCutShort()
+    override fun offerReminder(reminder: com.nisaba.domain.conversation.Reminder) = notices.onReminder(reminder)
 }

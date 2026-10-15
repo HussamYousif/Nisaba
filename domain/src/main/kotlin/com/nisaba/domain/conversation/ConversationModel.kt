@@ -34,12 +34,30 @@ sealed interface Purpose {
     /** They drew a loop around something (their writing, printed text, an earlier answer) and ask about it. */
     data object About : Purpose
 
+    /** Quiz them on what this notebook holds (on a fresh page). */
+    data object Quiz : Purpose
+
+    /** Today's page: the date, yesterday's open loops, a question for today (on a fresh page). */
+    data object Daily : Purpose
+
+    /** The past week in this notebook on one page. */
+    data object Recap : Purpose
+
+    /** Spaced review in a lesson notebook: one question on each due [topics]. */
+    data class Review(val topics: List<String>) : Purpose
+
     /** Asked for there and then (a menu, a lasso): goes even while Nisaba isn't listening. */
-    val explicit: Boolean get() = this is Again || this is Tidy || this is Check || this is Redraw || this is About
+    val explicit: Boolean get() = this !is Writing && this !is Opening && this !is Resume
+
+    /** Needs no picture of the page: it works from the notebook's history alone (cheaper, faster). */
+    val textOnly: Boolean get() = this is Quiz || this is Daily || this is Recap || this is Review
 
     /** Answers something on the page (the focus image shows it), rather than opening a lesson or copying notes. */
     val answersWriting: Boolean get() = this is Writing || this is Again || this is Check || this is Redraw || this is About
 }
+
+/** A reminder the reply asked for: [text] at [at], their local time as "2026-10-16T09:00". */
+data class Reminder(val text: String, val at: String)
 
 /** A small mark drawn into the images the model sees (never on the page): [text] at [at], e.g. a line number. */
 data class SnapshotLabel(val at: com.nisaba.domain.shared.PagePoint, val text: String)

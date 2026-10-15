@@ -236,14 +236,17 @@ class AppGraph(private val app: Application) {
                         { settings.update { it.copy(hintSeen = true) } }, prefs::loadView, prefs::saveView,
                         { ink, size -> settings.update { it.copy(penInk = ink, penSize = size) } },
                         prefs::lastPage, prefs::saveLastPage, prefs::loadPending, prefs::savePending,
+                        prefs::lastDaily, prefs::saveLastDaily,
                     ),
                     sources = NotebookSources(
                         { documentText(id) }, ::printedOccupancy, exchanges::get, lessons.observe(id), online, voices = { voices.value },
+                        lastExchangeMillis = { exchanges.listByNotebook(id).maxOfOrNull { it.createdAtMillis } },
                     ),
                     changes = com.nisaba.notebook.NotebookChanges(
                         SetPersonaUseCase(notebooks), { touchNotebook(it) },
                         com.nisaba.domain.notebook.SetAnswerStyleUseCase(notebooks)::invoke,
                         com.nisaba.domain.conversation.MarkAnswerErasedUseCase(exchanges)::invoke,
+                        com.nisaba.domain.notebook.SetPrivateUseCase(notebooks)::invoke,
                     ),
                 ),
                 startPage = startPage,

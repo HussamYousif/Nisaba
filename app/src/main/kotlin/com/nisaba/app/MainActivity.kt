@@ -67,6 +67,11 @@ class MainActivity : ComponentActivity() {
         if (BuildConfig.DEBUG) intent.getStringExtra("write")?.let { graph.debugWrites.tryEmit(it) }
     }
 
+    override fun onResume() {
+        super.onResume()
+        com.nisaba.device.ReminderDevice.catchUp(this) // a reminder whose alarm the device refused is posted now
+    }
+
     override fun onPause() {
         graph.flushInk()
         super.onPause()

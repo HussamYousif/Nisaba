@@ -66,6 +66,14 @@ States (pure state machine, §4.4):
 - **Margin glosses**: on a printed PDF page a reply to writing goes in the free column beside it (`glossRegion` over the printed-text occupancy: the column it was written in, else the widest, level with the question), in a hand 0.65× theirs, and the instruction asks for a short gloss (≤ 35 words unless asked for more). Not when there is room to write below as usual (6 free full-width lines within 3 lines under the question: a sparse page), no printed text alongside, or no column 7 x-heights wide.
 - Asked-for requests (again, tidy, check, redraw, a lasso) go even while muted and take over writing that was only waiting for its pause.
 
+### 1.2b Learning and habits (M16)
+
+- **Fresh-page requests** (⋯, paged notebooks): **Quiz me** (3 numbered questions on what matters most, hard things first; their written answers are judged by the next reply), **Today's page** (the date, ≤ 3 open loops from the history, a question for the day), **This week, recapped**. Each adds a page at the end and writes from its top. They are text-only (`Purpose.textOnly`: no snapshot, no images, cheaper) and work from the history the request already carries.
+- **A page each morning** (Settings → Waiting → Mornings, off by default): the first open of a notebook on a new day, if it was written in on an earlier day, starts today's page (once a day per notebook; not in lessons or on a canvas).
+- **Spaced review** (lesson notebooks): topics carry a `streak` (Room v10); learned again → the gap grows 2, 4, 8, 16, 30, 60 days; shaky → tomorrow (`judged`, `dueAt`, `dueTopics`). ⋯ → **Review what's due (N)** asks one question on each (≤ 5) on a fresh page; the answers are judged with `<topic>` tags as usual, which reschedules them.
+- **Private notebooks** (⋯ toggle, Room v10 `isPrivate`): no memory is sent or learned (and the instruction asks for no memory tags), never found by search, "· Private" under the cover.
+- **Reminders**: every instruction carries the local date and time ("It is now Thursday 15 October 2026, 21:40"); a reply may add `<task when="2026-10-16T09:00">call Ola</task>` after `</answer>` (stripped from the ink). The page shows a chip "⏰ call Ola · Fri 16 Oct, 09:00 [Add] [×]"; Add opens the calendar app with the event filled in; a Boox has none, so Nisaba posts its own notification at the time (`ReminderDevice`: an inexact alarm → `ReminderAlarmReceiver`; asks for notification permission the first time; lost on a reboot); failing both, the words go on the clipboard.
+
 ### 1.3 Where the answer goes
 
 1. Anchor = the utterance's bounding box. The answer starts one line-gap below its lowest stroke, left-aligned to the utterance's left edge (clamped to the page margin). Width runs to the right margin.

@@ -13,6 +13,7 @@ data class CoverItem(
     val endless: Boolean = false,
     val lesson: Boolean = false,
     val personaId: String = PersonaRegistry.DEFAULT_ID,
+    val isPrivate: Boolean = false,
 )
 
 /** What "New" makes: the first thing it asks. */

@@ -133,7 +133,7 @@ class AnswerParser {
         val lines = chunk.split('\n')
         val complete = if (flushTail) lines else lines.dropLast(1)
         for ((i, raw) in complete.withIndex()) {
-            val l = stripTopicTags(stripMemoryTags(raw))
+            val l = com.nisaba.domain.conversation.stripTaskTags(stripTopicTags(stripMemoryTags(raw)))
             val trailingEmpty = flushTail && i == complete.lastIndex && raw.isEmpty()
             val tagOnly = l.isBlank() && raw.isNotBlank() // a memory tag on its own line: not ink, not a paragraph break
             if (!trailingEmpty && !tagOnly) out += blocks.line(l.trimEnd('\r'))

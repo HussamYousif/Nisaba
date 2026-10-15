@@ -145,6 +145,29 @@ class ConversationSession(
         }
     }
 
+    /** What the person "said", as history shows it, when Nisaba writes without new writing to transcribe. */
+    private fun heardFor(purpose: Purpose): String = when (purpose) {
+        Purpose.Opening -> OPENING_HEARD
+        Purpose.Resume -> RESUME_HEARD
+        is Purpose.Tidy -> TIDY_HEARD
+        is Purpose.Again -> purpose.previousHeard
+        Purpose.Quiz -> QUIZ_HEARD
+        Purpose.Daily -> DAILY_HEARD
+        Purpose.Recap -> RECAP_HEARD
+        is Purpose.Review -> REVIEW_HEARD
+        Purpose.Writing, is Purpose.Check, Purpose.Redraw, Purpose.About -> ""
+    }
+
+    /** The page as the model sees it: none for text-only requests; the tidy's source page; numbered lines for a check. */
+    private suspend fun snapshotFor(utt: Utterance): PageSnapshot {
+        val purpose = utt.purpose
+        if (purpose.textOnly) return NO_PICTURE
+        val source = (purpose as? Purpose.Tidy)?.sourcePageId ?: utt.pageId
+        val labels = (purpose as? Purpose.Check)?.lines?.let(::lineLabels).orEmpty() // "1", "2", … beside the lines
+        val focus = if (purpose.answersWriting) focusArea(utt.bounds) else null
+        return deps.snapshotter.snapshot(source, focus, utt.strokeIds, labels)
+    }
+
     internal suspend fun runRequest(utt: Utterance, reqId: Int) {
         val purpose = utt.purpose
         val answersWriting = purpose.answersWriting
@@ -154,24 +177,19 @@ class ConversationSession(
         val record = PendingExchange(
             reqId, ExchangeId(deps.idGen.next()), utt.pageId, deps.clock.nowMillis(), focus, answersWriting, persona.id,
         )
-        record.heard = when (purpose) {
-            Purpose.Opening -> OPENING_HEARD
-            Purpose.Resume -> RESUME_HEARD
-            is Purpose.Tidy -> TIDY_HEARD
-            is Purpose.Again -> purpose.previousHeard
-            Purpose.Writing, is Purpose.Check, Purpose.Redraw, Purpose.About -> ""
-        }
+        record.heard = heardFor(purpose)
         lock.withLock { pending[reqId] = record }
         var sent: OracleRequest? = null
         try {
-            val source = (purpose as? Purpose.Tidy)?.sourcePageId ?: utt.pageId
-            val labels = (purpose as? Purpose.Check)?.lines?.let(::lineLabels).orEmpty() // "1", "2", … beside the lines
-            val snapshot = deps.snapshotter.snapshot(source, if (answersWriting) focusArea(utt.bounds) else null, utt.strokeIds, labels)
+            val snapshot = snapshotFor(utt)
+            val private = deps.context.isPrivate // a private notebook neither sees memory nor teaches it
             val request = buildRequest(
                 ContextInput(
                     deps.context.documentPages(), deps.context.currentDocumentPage,
                     deps.exchanges.listByNotebook(deps.notebookId), snapshot, appSettings,
-                    deps.memory?.all().orEmpty(), deps.context.teachGoal, purpose, lessonProgress(), persona, deps.context.style,
+                    if (private) emptyList() else deps.memory?.all().orEmpty(), deps.context.teachGoal, purpose, lessonProgress(),
+                    persona, deps.context.style, now = nowInWords(deps.clock.nowMillis(), java.time.ZoneId.systemDefault()),
+                    isPrivate = private,
                 ),
             )
             sent = request
@@ -249,6 +267,11 @@ class ConversationSession(
         const val OPENING_HEARD = "(opens the lesson notebook)"
         const val RESUME_HEARD = "(comes back to the lesson)"
         const val TIDY_HEARD = "(asks for a tidy copy of a page of notes)"
+        const val QUIZ_HEARD = "(asks to be quizzed on this notebook)"
+        const val DAILY_HEARD = "(opens today's page)"
+        const val RECAP_HEARD = "(asks for a recap of the week)"
+        const val REVIEW_HEARD = "(asks to review what is due)"
+        val NO_PICTURE = PageSnapshot(ByteArray(0), null)
         const val RESUME_AFTER_MILLIS = 4 * 60 * 60 * 1000L
     }
 }

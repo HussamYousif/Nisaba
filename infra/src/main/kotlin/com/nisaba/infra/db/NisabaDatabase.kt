@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.Flow
 interface NotebookDao {
     @Query(
         "SELECT n.id, n.name, n.updatedAt, n.coverSeed, n.documentId IS NOT NULL AS hasDocument, n.teachGoal IS NOT NULL AS lesson, " +
-            "n.persona, " +
+            "n.persona, n.isPrivate, " +
             "(SELECT COUNT(*) FROM pages p WHERE p.notebookId = n.id) AS pageCount, " +
             "(SELECT COUNT(*) FROM pages p WHERE p.notebookId = n.id AND p.width >= 100000) > 0 AS endless FROM notebooks n",
     )
@@ -58,6 +58,9 @@ interface NotebookDao {
 
     @Query("UPDATE notebooks SET persona = :persona WHERE id = :id")
     suspend fun setPersona(id: String, persona: String)
+
+    @Query("UPDATE notebooks SET isPrivate = :isPrivate WHERE id = :id")
+    suspend fun setPrivate(id: String, isPrivate: Boolean)
 
     @Query("UPDATE notebooks SET updatedAt = :at WHERE id = :id")
     suspend fun touch(id: String, at: Long)
@@ -114,15 +117,15 @@ interface LessonDao {
     @Insert
     suspend fun insert(t: LessonTopicDto)
 
-    @Query("UPDATE lesson_topics SET topic = :topic, status = :status, updatedAt = :at WHERE id = :rowId")
-    suspend fun update(rowId: Long, topic: String, status: String, at: Long)
+    @Query("UPDATE lesson_topics SET topic = :topic, status = :status, updatedAt = :at, streak = :streak WHERE id = :rowId")
+    suspend fun update(rowId: Long, topic: String, status: String, at: Long, streak: Int)
 
     /** Replaces each topic's status, adding the ones not seen before, in one transaction. */
     @Transaction
     suspend fun upsert(rows: List<LessonTopicDto>) {
         for (r in rows) {
             val old = find(r.notebookId, r.topicKey)
-            if (old == null) insert(r) else update(old.id, r.topic, r.status, r.updatedAt)
+            if (old == null) insert(r) else update(old.id, r.topic, r.status, r.updatedAt, r.streak)
         }
     }
 }
@@ -165,7 +168,7 @@ interface OwnVoiceDao {
         NotebookDto::class, PageDto::class, DocumentDto::class, ExchangeDto::class, FactDto::class, LessonTopicDto::class,
         OwnVoiceDto::class,
     ],
-    version = 9,
+    version = 10,
     exportSchema = true,
 )
 abstract class NisabaDatabase : RoomDatabase() {

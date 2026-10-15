@@ -42,6 +42,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlinx.coroutines.flow.update
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -63,7 +64,10 @@ class NotebookViewModelTest {
                 UndoUseCase(ink), RedoUseCase(ink), EraseAnswerUseCase(ink), ReplaceStrokesUseCase(ink), RemoveStrokesUseCase(ink),
             ),
             SetListeningUseCase(store), ids,
-            changes = NotebookChanges(SetPersonaUseCase(store), setStyle = com.nisaba.domain.notebook.SetAnswerStyleUseCase(store)::invoke),
+            changes = NotebookChanges(
+                SetPersonaUseCase(store), setStyle = com.nisaba.domain.notebook.SetAnswerStyleUseCase(store)::invoke,
+                setPrivate = com.nisaba.domain.notebook.SetPrivateUseCase(store)::invoke,
+            ),
         )
         val vm = NotebookViewModel(
             deps, scope.backgroundScope, eraserRadius = 6f, toolbarHideMillis = 3000, nowMillis = { scope.testScheduler.currentTime },
@@ -381,6 +385,22 @@ class NotebookViewModelTest {
         assertTrue(sel.ids.isEmpty() && sel.bounds.width > 300f) // printed text, say: only "Ask about it"
         vm.checkWork(); assertEquals(NOTHING_TO_CHECK, vm.state.value.notice)
     }
+
+    @Test fun aNotebookTurnsPrivateAndAnOfferedReminderGoesOutOnATap() = runTest {
+        val (vm, id) = open(this)
+        vm.togglePrivate(); runCurrent()
+        assertTrue(store.get(id)!!.notebook.isPrivate && vm.state.value.isPrivate)
+        assertEquals(PRIVATE_ON, vm.state.value.notice)
+        val r = com.nisaba.domain.conversation.Reminder("call Ola", "2026-10-16T09:00")
+        val effects = mutableListOf<NotebookEffect>()
+        backgroundScope.launch { vm.effects.collect { effects += it } }; runCurrent()
+        vm.mutableState.update { it.copy(reminder = r) }
+        vm.addReminder(); runCurrent()
+        assertEquals(listOf<NotebookEffect>(NotebookEffect.Remind(r)), effects.filterIsInstance<NotebookEffect.Remind>())
+        assertNull(vm.state.value.reminder)
+        assertTrue(reminderLine(r).startsWith("call Ola · "))
+    }
+
 }
 
 /** In-memory ink whose saves can be held up (a slow disk) until [gate] completes. */

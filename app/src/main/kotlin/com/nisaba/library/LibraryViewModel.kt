@@ -46,7 +46,10 @@ class LibraryViewModel(
                     s.copy(
                         loading = false,
                         notebooks = items.map {
-                            CoverItem(it.id, it.name, it.pageCount, it.coverSeed, it.hasDocument, it.endless, it.lesson, it.personaId)
+                            CoverItem(
+                                it.id, it.name, it.pageCount, it.coverSeed, it.hasDocument, it.endless, it.lesson, it.personaId,
+                                it.isPrivate,
+                            )
                         },
                     )
                 }

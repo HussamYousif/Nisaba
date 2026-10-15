@@ -89,6 +89,8 @@ class RecordingSurface : ConversationSurface {
     override fun clearFailure() { log += "clear"; failure = null }
     override fun showMemoryNote(note: String) { memoryNotes += note }
     override fun showCutShort() { log += "cut" }
+    val reminders = mutableListOf<Reminder>()
+    override fun offerReminder(reminder: Reminder) { reminders += reminder }
 }
 
 class FakeContextPorts(

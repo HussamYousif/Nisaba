@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -45,6 +47,45 @@ internal fun MemoryChip(text: String, onDismiss: () -> Unit, mark: String = "✎
     ) {
         Text(mark, style = MaterialTheme.typography.titleLarge, color = c.lapis)
         Text(text, style = MaterialTheme.typography.bodyLarge)
+    }
+}
+
+/**
+ * What "Add" on a reminder does: the calendar app with it filled in; without one, Nisaba's own notification at the time
+ * (asking for permission to notify the first time); failing that, the words on the clipboard.
+ */
+@Composable
+internal fun rememberReminderHandler(vm: NotebookViewModel): (com.nisaba.domain.conversation.Reminder) -> Unit {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var waiting by androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf<com.nisaba.domain.conversation.Reminder?>(null)
+    }
+    fun own(r: com.nisaba.domain.conversation.Reminder) =
+        if (com.nisaba.device.ReminderDevice.schedule(context, r)) vm.reminderSet(r) else vm.reminderNotAdded(r)
+    val ask = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
+    ) { granted -> waiting?.let { r -> if (granted) own(r) else vm.reminderNotAdded(r) }; waiting = null }
+    return { r ->
+        when {
+            CalendarClient.add(context, r) -> Unit
+            com.nisaba.device.ReminderDevice.canNotify(context) -> own(r)
+            else -> { waiting = r; ask.launch(android.Manifest.permission.POST_NOTIFICATIONS) }
+        }
+    }
+}
+
+/** A reminder the reply offered: Add puts it in the calendar; × waves it away. */
+@Composable
+internal fun ReminderChip(text: String, onAdd: () -> Unit, onDismiss: () -> Unit) {
+    val c = Nisaba.colors
+    Row(
+        Modifier.padding(12.dp).background(c.paper).border(BorderStroke(2.dp, c.lapis)).padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text("⏰", style = MaterialTheme.typography.titleLarge, color = c.lapis)
+        Text(text, style = MaterialTheme.typography.bodyLarge)
+        NisabaButton("Add", onAdd, filled = true)
+        NisabaButton("×", onDismiss)
     }
 }
 

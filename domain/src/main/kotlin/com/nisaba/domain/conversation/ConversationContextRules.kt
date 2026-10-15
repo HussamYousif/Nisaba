@@ -129,6 +129,10 @@ class ContextInput(
     /** The notebook's voice and answering habits. */
     val persona: Persona = PersonaRegistry.default,
     val style: com.nisaba.domain.notebook.AnswerStyle = com.nisaba.domain.notebook.AnswerStyle(),
+    /** Their local date and time in words ("Thursday 15 October 2026, 21:40"), for dates and reminders; "" = left out. */
+    val now: String = "",
+    /** A private notebook (no memory is sent; no tags are asked for). */
+    val isPrivate: Boolean = false,
 ) {
     val words: Int get() = (persona.words * style.length.factor).toInt()
 }
@@ -141,8 +145,8 @@ fun maxTokensFor(purpose: Purpose, thinking: Boolean): Int {
     val base = when (purpose) {
         is Purpose.Tidy -> 2400
         Purpose.Redraw -> 2000
-        is Purpose.Check -> 1600
-        Purpose.Opening, Purpose.Resume -> 900
+        is Purpose.Check, Purpose.Recap -> 1600
+        Purpose.Opening, Purpose.Resume, Purpose.Quiz, Purpose.Daily, is Purpose.Review -> 900
         Purpose.Writing, is Purpose.Again, Purpose.About -> 1200
     }
     return if (thinking) base * 2 else base
@@ -182,11 +186,17 @@ private fun purposeInstruction(input: ContextInput): String = when (val p = inpu
     is Purpose.Check -> INSTRUCTION_CHECK
     Purpose.Redraw -> INSTRUCTION_REDRAW
     Purpose.About -> INSTRUCTION_ABOUT
+    Purpose.Quiz -> INSTRUCTION_QUIZ
+    Purpose.Daily -> INSTRUCTION_DAILY
+    Purpose.Recap -> INSTRUCTION_RECAP
+    is Purpose.Review -> reviewInstruction(p.topics)
 }
 
 private fun instructionFor(input: ContextInput, trailingNotes: List<String>) = buildString {
     val p = input.purpose
     append(purposeInstruction(input))
+    if (input.now.isNotEmpty()) append(" It is now ").append(input.now).append(".") // for dates and reminders
+    if (input.isPrivate) append(" ").append(INSTRUCTION_PRIVATE)
     val onDocument = input.currentDocumentPage != null
     input.currentDocumentPage?.let { append(" They are on p. ${it + 1} of the document.") }
     if (trailingNotes.isNotEmpty()) append(" Notes they wrote earlier without asking: ${trailingNotes.joinToString("; ")}.")
@@ -207,7 +217,7 @@ fun buildRequest(input: ContextInput): OracleRequest {
     val doc = formatDocumentContext(input.documentPages, input.currentDocumentPage ?: lastCitedPage(input.exchanges))
     val memory = formatMemoryContext(input.facts, (TOKEN_BUDGET * MEMORY_SHARE).toInt())
     val (history, trailingNotes) = historyTurns(input.exchanges)
-    val imageTokens = IMAGE_TOKENS * (if (input.snapshot.focus != null) 2 else 1)
+    val imageTokens = if (input.purpose.textOnly) 0 else IMAGE_TOKENS * (if (input.snapshot.focus != null) 2 else 1)
     val voiced = systemPrompt(input.persona, input.style.mode == com.nisaba.domain.notebook.AnswerMode.QuestionsOnly, input.words)
     val system = input.teachGoal?.let { voiced + "\n\n" + teachingPrompt(it) } ?: voiced
     val room = TOKEN_BUDGET - estimateTokens(system) - (doc?.let(::estimateTokens) ?: 0) -
@@ -219,7 +229,7 @@ fun buildRequest(input: ContextInput): OracleRequest {
     val temperature = if (p is Purpose.Tidy || p is Purpose.Check || p == Purpose.Redraw) TIDY_TEMPERATURE else input.persona.temperature
     // asked again: the first answer wasn't good enough; checking work: worth thinking it through
     val thinking = input.settings.thinking || (p as? Purpose.Again)?.how == AgainHow.Afresh || p is Purpose.Check
-    val images = buildList {
+    val images = if (p.textOnly) emptyList() else buildList {
         add(OracleImage(input.snapshot.page, ImageDetail.Auto))
         input.snapshot.focus?.let { add(OracleImage(it, ImageDetail.High)) }
     }
@@ -232,3 +242,8 @@ fun buildRequest(input: ContextInput): OracleRequest {
         memoryContext = memory,
     )
 }
+
+/** [millis] in [zone] as the model reads a date: "Thursday 15 October 2026, 21:40". */
+fun nowInWords(millis: Long, zone: java.time.ZoneId): String =
+    java.time.format.DateTimeFormatter.ofPattern("EEEE d MMMM yyyy, HH:mm", java.util.Locale.ENGLISH)
+        .format(java.time.Instant.ofEpochMilli(millis).atZone(zone))

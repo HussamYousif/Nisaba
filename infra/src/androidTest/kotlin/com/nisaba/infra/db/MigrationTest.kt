@@ -131,12 +131,26 @@ class MigrationTest {
         db.query("SELECT name FROM own_voices").use { c -> c.moveToFirst(); assertEquals("Pirate", c.getString(0)) }
     }
 
+    @Test fun v9ToV10KeepsNotebooksOpenAndTopicsUnreviewed() {
+        helper.createDatabase("mig10", 9).apply {
+            execSQL(
+                "INSERT INTO notebooks (id,name,createdAt,updatedAt,documentId,listening,coverSeed,teachGoal,persona,questionsOnly,answerLength) " +
+                    "VALUES ('n1','Old',1,2,NULL,1,7,'',' book',0,'Normal')",
+            )
+            execSQL("INSERT INTO lesson_topics (notebookId,topicKey,topic,status,updatedAt) VALUES ('n1','fjords','Fjords','Learned',5)")
+            close()
+        }
+        val db = helper.runMigrationsAndValidate("mig10", 10, true, MIGRATION_9_10)
+        db.query("SELECT isPrivate FROM notebooks").use { c -> c.moveToFirst(); assertEquals(0, c.getInt(0)) }
+        db.query("SELECT streak FROM lesson_topics").use { c -> c.moveToFirst(); assertEquals(0, c.getInt(0)) }
+    }
+
     @Test fun v1MigratesAllTheWayToTheCurrentSchema() {
         helper.createDatabase("migAll", 1).apply {
             execSQL("INSERT INTO notebooks (id,name,createdAt,updatedAt,documentId,listening,coverSeed) VALUES ('n1','Old',1,2,NULL,1,7)")
             close()
         }
-        helper.runMigrationsAndValidate("migAll", 9, true, *MIGRATIONS)
+        helper.runMigrationsAndValidate("migAll", 10, true, *MIGRATIONS)
             .query("SELECT COUNT(*) FROM notebooks").use { c -> c.moveToFirst(); assertEquals(1, c.getInt(0)) }
     }
 }
