@@ -19,4 +19,7 @@ data class SettingsUiState(
     val factCount: Int = 0,
     /** Answers and tokens this month and in total; null until loaded (or with no history). */
     val usage: UsageSummary? = null,
+    /** One line about the last backup or restore; [restartNow] = a restore went in and the app must start again. */
+    val backupNote: String? = null,
+    val restartNow: Boolean = false,
 )

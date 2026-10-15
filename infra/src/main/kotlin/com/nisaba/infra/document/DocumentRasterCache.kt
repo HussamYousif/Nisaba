@@ -51,15 +51,18 @@ class DocumentRasterCache(private val docsDir: File, private val rasterDir: File
         val pdf = File(docsDir, "${id.value}.pdf")
         if (!pdf.exists()) return null
         val system = runCatching { renderWithSystem(pdf, index) }.getOrNull()
-        return if (system != null && !looksBlack(system)) system else runCatching { renderWithPdfBox(pdf, index) }.getOrNull() ?: system
+        return if (system != null && !looksBlack(system)) system else runCatching { renderWithPdfBox(id, pdf, index) }.getOrNull() ?: system
     }
+
+    /** The PdfBox fallback's open document (only ever touched under [lock]): parsing a PDF per page was the slow part. */
+    private var openDoc: Pair<DocumentId, PDDocument>? = null
 
     private fun renderWithSystem(pdf: File, index: Int): Bitmap =
         ParcelFileDescriptor.open(pdf, ParcelFileDescriptor.MODE_READ_ONLY).use { fd ->
             PdfRenderer(fd).use { renderer ->
                 renderer.openPage(index).use { page ->
-                    val h = (widthPx.toLong() * page.height / page.width).toInt()
-                    val bmp = Bitmap.createBitmap(widthPx, h, Bitmap.Config.ARGB_8888)
+                    val (w, h) = rasterSize(page.width.toFloat(), page.height.toFloat())
+                    val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
                     Canvas(bmp).drawColor(Color.WHITE)
                     page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                     bmp
@@ -67,9 +70,20 @@ class DocumentRasterCache(private val docsDir: File, private val rasterDir: File
             }
         }
 
-    private fun renderWithPdfBox(pdf: File, index: Int): Bitmap = PDDocument.load(pdf).use { doc ->
+    private fun renderWithPdfBox(id: DocumentId, pdf: File, index: Int): Bitmap {
+        val doc = openDoc?.takeIf { it.first == id }?.second ?: PDDocument.load(pdf).also { d ->
+            openDoc?.second?.close()
+            openDoc = id to d
+        }
         val box = doc.getPage(index).mediaBox
-        PDFRenderer(doc).renderImage(index, widthPx / box.width)
+        val (w, _) = rasterSize(box.width, box.height)
+        return PDFRenderer(doc).renderImage(index, w / box.width)
+    }
+
+    /** The page's picture size: the page's width in pixels, unless a very tall page would make it huge (then capped). */
+    private fun rasterSize(pageW: Float, pageH: Float): Pair<Int, Int> {
+        val scale = minOf(widthPx / pageW, MAX_HEIGHT_FACTOR * widthPx / pageH)
+        return (pageW * scale).toInt().coerceAtLeast(1) to (pageH * scale).toInt().coerceAtLeast(1)
     }
 
     /** True for a (nearly) all-black render: the sign of the Android 15 PdfRenderer bug. */
@@ -93,5 +107,6 @@ class DocumentRasterCache(private val docsDir: File, private val rasterDir: File
         private const val PROBE = 8
         private const val BLACK_MEAN = 40
         private const val WEBP_QUALITY = 90
+        private const val MAX_HEIGHT_FACTOR = 3 // a page at most three page-widths tall in pixels
     }
 }

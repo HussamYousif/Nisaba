@@ -117,3 +117,7 @@ internal fun NotebookViewModel.hideToolbarLater(millis: Long = toolbarHideMillis
 
 /** The bar was used: keep it up a little longer. */
 internal fun NotebookViewModel.usedToolbar() { if (mutableState.value.toolbarVisible) hideToolbarLater(toolbarUseMillis) }
+
+/** The held star's few tools. */
+fun NotebookViewModel.openMiniBar() = mutableState.update { it.copy(miniBar = true) }
+fun NotebookViewModel.closeMiniBar() = mutableState.update { it.copy(miniBar = false) }

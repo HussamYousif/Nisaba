@@ -20,6 +20,16 @@ interface NotebookStore {
     /** A private notebook keeps out of memory and search. */
     suspend fun setPrivate(id: NotebookId, isPrivate: Boolean)
 
+    suspend fun setPinned(id: NotebookId, pinned: Boolean)
+
+    /** Into the trash at [atMillis]; null takes it out again. */
+    suspend fun setTrashed(id: NotebookId, atMillis: Long?)
+    suspend fun setPaper(id: NotebookId, paper: Paper)
+
+    /** Turns tutoring on ([goal] non-null, "" = all of it) or off. */
+    suspend fun setTeachGoal(id: NotebookId, goal: String?)
+    suspend fun deletePage(pageId: PageId)
+
     /** [AnswerMode.WhenAsked] is listening off; the eye in the bar toggles just that. */
     suspend fun setStyle(id: NotebookId, style: AnswerStyle)
 

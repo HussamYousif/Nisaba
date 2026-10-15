@@ -38,3 +38,13 @@ internal fun PageView.dirtyOf(b: com.nisaba.domain.shared.PageRect, pad: Float):
     floor(b.left * affine.scale + affine.dx - pad).toInt(), floor(b.top * affine.scale + affine.dy - pad).toInt(),
     ceil(b.right * affine.scale + affine.dx + pad).toInt(), ceil(b.bottom * affine.scale + affine.dy + pad).toInt(),
 )
+
+/** The strokes to paint: all of them on a page; on an endless canvas only those in (or near) [area] of the view. */
+internal fun PageView.visibleStrokes(area: Rect? = null): List<com.nisaba.domain.ink.Stroke> {
+    if (!endless) return strokes
+    val a = area ?: Rect(0, 0, width, height)
+    val w = PageView.MAX_WIDTH
+    val l = panX + a.left - w; val t = panY + a.top - w
+    val r = panX + a.right + w; val b = panY + a.bottom + w
+    return strokes.filter { s -> s.bounds.let { it.right >= l && it.left <= r && it.bottom >= t && it.top <= b } }
+}

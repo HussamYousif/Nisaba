@@ -83,6 +83,8 @@ class AnswerScribeSession(
     private val notices: ScribeNotices = ScribeNotices(),
     /** Any voice by id (each writes in its own hand: Settings → The hand). */
     private val voices: (String) -> Persona = PersonaRegistry::of,
+    /** The notebook's paper: on lined paper the hand writes on the lines. */
+    private val paper: () -> com.nisaba.domain.notebook.Paper = { com.nisaba.domain.notebook.Paper.Blank },
     /** Where the hand's planning runs: one block after another, off the main thread (layout must not stall frames). */
     private val planScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default.limitedParallelism(1)),
 ) : ConversationSurface {
@@ -170,9 +172,14 @@ class AnswerScribeSession(
         val u = utt
         answerPage = u?.pageId ?: pageId
         val userInk = userInkOf(u)
-        // nothing of theirs to match (a lesson opening, a tidy copy): a calm, compact size
-        val xHeight = if (userInk.isEmpty()) OPENING_X_HEIGHT else estimateXHeight(userInk)
-        val region = regionFor(u, page, xHeight)
+        val lined = paper() == com.nisaba.domain.notebook.Paper.Lined && !page.isEndless && printed() == null
+        // nothing of theirs to match (a lesson opening, a tidy copy): a calm, compact size; on lined paper, the lines' size
+        val xHeight = when {
+            lined -> com.nisaba.domain.notebook.Paper.RULE / LayoutRegion.LINE_HEIGHT_FACTOR
+            userInk.isEmpty() -> OPENING_X_HEIGHT
+            else -> estimateXHeight(userInk)
+        }
+        val region = regionFor(u, page, xHeight).let { if (lined) onTheLines(it) else it }
         val occupancy = (printed()?.copy() ?: emptyOccupancy(page, region))
             .also { o -> ink().forEach { s -> o.mark(s.bounds.inflate(INK_PAD)) } }
         val hand = voices(personaId).handFor(s) // each voice its own slant, neatness, pace and ink
@@ -183,6 +190,14 @@ class AnswerScribeSession(
         val marks = (u?.purpose as? Purpose.Check)?.let { MarkPlanner(it.lines, page, xHeight, glyphs, occupancy, seed, human, speed) }
         val lookup = OccupancyLookup { if (it == 0) occupancy else null }
         run = PlanRun(ScribePlanUseCase(glyphs, region, lookup, seed, human, speed), hand.ink, marks)
+    }
+
+    /** [r] moved down so its baselines fall on the paper's lines (one line apart = one rule apart). */
+    private fun onTheLines(r: LayoutRegion): LayoutRegion {
+        val rule = com.nisaba.domain.notebook.Paper.RULE
+        val toBaseline = r.xHeight * BASELINE_FACTOR
+        val firstRule = kotlin.math.ceil((r.top + toBaseline) / rule) * rule
+        return r.copy(top = firstRule - toBaseline)
     }
 
     /** The person's writing the answer replies to (its size sets the hand's). */
@@ -217,6 +232,7 @@ class AnswerScribeSession(
         const val WINDOW_PAD = 400f
         const val OPENING_X_HEIGHT = 32f
         const val GLOSS_SCALE = 0.65f
+        const val BASELINE_FACTOR = 1.7f // where the layout puts the first baseline below a region's top, in x-heights
         const val MIN_GLOSS_X_HEIGHT = 20f
         const val TICK_INK = 0xFF1F7A33.toInt()
         const val CROSS_INK = 0xFFA3271B.toInt()

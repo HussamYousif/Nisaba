@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.Flow
 interface NotebookDao {
     @Query(
         "SELECT n.id, n.name, n.updatedAt, n.coverSeed, n.documentId IS NOT NULL AS hasDocument, n.teachGoal IS NOT NULL AS lesson, " +
-            "n.persona, n.isPrivate, " +
+            "n.persona, n.isPrivate, n.pinned, n.deletedAt, " +
             "(SELECT COUNT(*) FROM pages p WHERE p.notebookId = n.id) AS pageCount, " +
             "(SELECT COUNT(*) FROM pages p WHERE p.notebookId = n.id AND p.width >= 100000) > 0 AS endless FROM notebooks n",
     )
@@ -61,6 +61,21 @@ interface NotebookDao {
 
     @Query("UPDATE notebooks SET isPrivate = :isPrivate WHERE id = :id")
     suspend fun setPrivate(id: String, isPrivate: Boolean)
+
+    @Query("UPDATE notebooks SET pinned = :pinned WHERE id = :id")
+    suspend fun setPinned(id: String, pinned: Boolean)
+
+    @Query("UPDATE notebooks SET deletedAt = :at WHERE id = :id")
+    suspend fun setTrashed(id: String, at: Long?)
+
+    @Query("UPDATE notebooks SET paper = :paper WHERE id = :id")
+    suspend fun setPaper(id: String, paper: String)
+
+    @Query("UPDATE notebooks SET teachGoal = :goal WHERE id = :id")
+    suspend fun setTeachGoal(id: String, goal: String?)
+
+    @Query("DELETE FROM pages WHERE id = :pageId")
+    suspend fun deletePage(pageId: String)
 
     @Query("UPDATE notebooks SET updatedAt = :at WHERE id = :id")
     suspend fun touch(id: String, at: Long)
@@ -168,7 +183,7 @@ interface OwnVoiceDao {
         NotebookDto::class, PageDto::class, DocumentDto::class, ExchangeDto::class, FactDto::class, LessonTopicDto::class,
         OwnVoiceDto::class,
     ],
-    version = 10,
+    version = 11,
     exportSchema = true,
 )
 abstract class NisabaDatabase : RoomDatabase() {
@@ -188,6 +203,9 @@ abstract class NisabaDatabase : RoomDatabase() {
                 .addMigrations(*MIGRATIONS)
                 .build().also { shared = it }
         }
+
+        /** Closes the shared database (a restore is about to replace its file); the next [shared] opens it again. */
+        fun closeShared() = synchronized(this) { shared?.close(); shared = null }
 
         fun inMemory(context: Context): NisabaDatabase =
             Room.inMemoryDatabaseBuilder(context, NisabaDatabase::class.java).build()

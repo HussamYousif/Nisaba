@@ -14,6 +14,9 @@ data class CoverItem(
     val lesson: Boolean = false,
     val personaId: String = PersonaRegistry.DEFAULT_ID,
     val isPrivate: Boolean = false,
+    val pinned: Boolean = false,
+    /** "edited 2 h ago" (for the trash: "deleted 3 days ago"). */
+    val edited: String = "",
 )
 
 /** What "New" makes: the first thing it asks. */
@@ -35,7 +38,10 @@ sealed interface LibraryDialog {
 
     /** "New", step 3 for a notebook or a canvas: its name. (A PDF goes to the system picker instead.) */
     data class NameIt(val kind: NotebookKind, val personaId: String, val style: AnswerStyle = AnswerStyle()) : LibraryDialog
-    data class Menu(val id: NotebookId, val name: String) : LibraryDialog
+    data class Menu(val id: NotebookId, val name: String, val pinned: Boolean = false) : LibraryDialog
+
+    /** What was deleted in the last 30 days: restore it or let it go. */
+    data object Trash : LibraryDialog
     data class Rename(val id: NotebookId, val name: String) : LibraryDialog
     data class ConfirmDelete(val id: NotebookId, val name: String) : LibraryDialog
     data class Message(val text: String) : LibraryDialog
@@ -50,4 +56,33 @@ data class LibraryUiState(
     val loading: Boolean = true,
     /** 0..1 while a PDF is being imported, else null. */
     val importing: Float? = null,
-)
+    /** Which screenful of covers is shown (no scrolling on e-ink). */
+    val gridPage: Int = 0,
+    val trash: List<CoverItem> = emptyList(),
+    /** The notebook written in most recently ("Continue"). */
+    val latest: CoverItem? = null,
+) {
+    val gridPages: Int get() = maxOf(1, (notebooks.size + COVERS_PER_PAGE - 1) / COVERS_PER_PAGE)
+    val visible: List<CoverItem> get() = notebooks.drop(gridPage.coerceIn(0, gridPages - 1) * COVERS_PER_PAGE).take(COVERS_PER_PAGE)
+
+    companion object { const val COVERS_PER_PAGE = 6 }
+}
+
+private const val MINUTE = 60_000L
+private const val HOUR = 60 * MINUTE
+private const val DAY = 24 * HOUR
+private const val WEEK_DAYS = 7
+
+/** "just now", "12 min ago", "3 h ago", "yesterday", "4 days ago", else the date. */
+fun ago(thenMillis: Long, nowMillis: Long): String {
+    val d = (nowMillis - thenMillis).coerceAtLeast(0)
+    return when {
+        d < MINUTE -> "just now"
+        d < HOUR -> "${d / MINUTE} min ago"
+        d < DAY -> "${d / HOUR} h ago"
+        d < 2 * DAY -> "yesterday"
+        d < WEEK_DAYS * DAY -> "${d / DAY} days ago"
+        else -> java.time.format.DateTimeFormatter.ofPattern("d MMM yyyy", java.util.Locale.ENGLISH)
+            .format(java.time.Instant.ofEpochMilli(thenMillis).atZone(java.time.ZoneId.systemDefault()))
+    }
+}

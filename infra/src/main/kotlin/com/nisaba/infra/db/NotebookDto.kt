@@ -23,6 +23,10 @@ data class NotebookDto(
     val answerLength: String = "Normal",
     /** v10: kept out of memory and search. */
     val isPrivate: Boolean = false,
+    // v11: pinned to the front, in the trash since (null: not), the paper of blank pages
+    val pinned: Boolean = false,
+    val deletedAt: Long? = null,
+    val paper: String = "Blank",
 )
 
 @Entity(
@@ -63,6 +67,8 @@ data class SummaryRowDto(
     val lesson: Boolean = false,
     val persona: String,
     val isPrivate: Boolean = false,
+    val pinned: Boolean = false,
+    val deletedAt: Long? = null,
 )
 
 @Entity(

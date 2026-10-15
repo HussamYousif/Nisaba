@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.nisaba.domain.ink.EraseMode
@@ -35,6 +36,8 @@ private object Keys {
     val standardPen = booleanPreferencesKey("standardPen")
     val voiceHands = booleanPreferencesKey("voiceHands")
     val dailyPage = booleanPreferencesKey("dailyPage")
+    val backupFolder = stringPreferencesKey("backupFolder")
+    val lastBackup = longPreferencesKey("lastBackup")
     val styleMode = stringPreferencesKey("answerMode")
     val styleLength = stringPreferencesKey("answerLength")
 }
@@ -58,7 +61,7 @@ class DataStoreSettingsStore(context: Context) : SettingsStore {
             it[Keys.onboarded] = next.onboarded; it[Keys.hintSeen] = next.hintSeen
             it[Keys.codeHighlight] = next.codeHighlight.name; it[Keys.penInk] = next.penInk; it[Keys.penSize] = next.penSize.name
             it[Keys.lastPersona] = next.lastPersona; it[Keys.standardPen] = next.standardPen; it[Keys.voiceHands] = next.voiceHands
-            it[Keys.dailyPage] = next.dailyPage
+            it[Keys.dailyPage] = next.dailyPage; it[Keys.backupFolder] = next.backupFolder; it[Keys.lastBackup] = next.lastBackupMillis
         }
     }
 
@@ -77,7 +80,8 @@ class DataStoreSettingsStore(context: Context) : SettingsStore {
             codeHighlight = this[Keys.codeHighlight].toEnum(d.codeHighlight), penInk = this[Keys.penInk] ?: d.penInk,
             penSize = this[Keys.penSize].toEnum(d.penSize), lastPersona = this[Keys.lastPersona] ?: d.lastPersona,
             standardPen = this[Keys.standardPen] ?: d.standardPen, voiceHands = this[Keys.voiceHands] ?: d.voiceHands,
-            dailyPage = this[Keys.dailyPage] ?: d.dailyPage,
+            dailyPage = this[Keys.dailyPage] ?: d.dailyPage, backupFolder = this[Keys.backupFolder] ?: d.backupFolder,
+            lastBackupMillis = this[Keys.lastBackup] ?: d.lastBackupMillis,
         )
     }
 }

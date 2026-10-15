@@ -20,6 +20,16 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+/** Pinning and the trash (null where a test doesn't care: delete is then for good). */
+class LibraryChanges(
+    val pin: com.nisaba.domain.notebook.PinNotebookUseCase? = null,
+    val trash: com.nisaba.domain.notebook.TrashNotebookUseCase? = null,
+    val restore: com.nisaba.domain.notebook.RestoreNotebookUseCase? = null,
+    val emptyTrash: com.nisaba.domain.notebook.EmptyTrashUseCase? = null,
+    val listTrash: com.nisaba.domain.notebook.ListTrashUseCase? = null,
+    val now: () -> Long = System::currentTimeMillis,
+)
+
 /** [settings] remembers the last voice picked, so "New" starts there (null in tests that don't care). */
 class LibraryViewModel(
     private val list: ListNotebooksUseCase,
@@ -29,6 +39,7 @@ class LibraryViewModel(
     private val importDocument: ImportDocumentUseCase,
     private val settings: SettingsStore? = null,
     scopeOverride: CoroutineScope? = null,
+    private val changes: LibraryChanges = LibraryChanges(),
 ) : ViewModel() {
     private val scope = scopeOverride ?: viewModelScope
     private val _state = MutableStateFlow(LibraryUiState())
@@ -42,26 +53,55 @@ class LibraryViewModel(
     init {
         scope.launch {
             list().collect { items ->
+                val now = changes.now()
+                val covers = items.map { it.toCover("edited " + ago(it.updatedAtMillis, now)) }
                 _state.update { s ->
                     s.copy(
-                        loading = false,
-                        notebooks = items.map {
-                            CoverItem(
-                                it.id, it.name, it.pageCount, it.coverSeed, it.hasDocument, it.endless, it.lesson, it.personaId,
-                                it.isPrivate,
-                            )
-                        },
+                        loading = false, notebooks = covers,
+                        latest = items.maxByOrNull { it.updatedAtMillis }?.let { l -> covers.first { it.id == l.id } },
+                        gridPage = s.gridPage.coerceIn(0, maxOf(0, (covers.size - 1) / LibraryUiState.COVERS_PER_PAGE)),
                     )
                 }
             }
         }
+        changes.listTrash?.let { trash ->
+            scope.launch {
+                trash().collect { items ->
+                    val now = changes.now()
+                    _state.update { s -> s.copy(trash = items.map { it.toCover("deleted " + ago(it.deletedAtMillis ?: now, now)) }) }
+                }
+            }
+        }
+        changes.emptyTrash?.let { empty -> scope.launch { empty() } } // what has been there 30 days goes for good
         settings?.let { s -> scope.launch { s.observe().collect { lastPersona = it.lastPersona; lastStyle = it.lastStyle } } }
     }
 
+    private fun com.nisaba.domain.notebook.NotebookSummary.toCover(edited: String) = CoverItem(
+        id, name, pageCount, coverSeed, hasDocument, endless, lesson, personaId, isPrivate, pinned, edited,
+    )
+
+    /** The next or previous screenful of covers. */
+    fun gridPage(delta: Int) = _state.update { s -> s.copy(gridPage = (s.gridPage + delta).coerceIn(0, s.gridPages - 1)) }
+
+    fun pin(id: NotebookId, pinned: Boolean) { scope.launch { changes.pin?.invoke(id, pinned); dismiss() } }
+
+    fun openTrash() = _state.update { it.copy(dialog = LibraryDialog.Trash) }
+    fun restore(id: NotebookId) { scope.launch { changes.restore?.invoke(id) } }
+    fun deleteForever(id: NotebookId) { scope.launch { delete(id) } }
+    fun emptyTrash() { scope.launch { changes.emptyTrash?.invoke(all = true); dismiss() } }
+
     fun onNew() = _state.update { it.copy(dialog = LibraryDialog.ChooseKind) }
-    fun onMenu(item: CoverItem) = _state.update { it.copy(dialog = LibraryDialog.Menu(item.id, item.name)) }
+    fun onMenu(item: CoverItem) = _state.update { it.copy(dialog = LibraryDialog.Menu(item.id, item.name, item.pinned)) }
     fun onRenameRequested(id: NotebookId, name: String) = _state.update { it.copy(dialog = LibraryDialog.Rename(id, name)) }
-    fun onDeleteRequested(id: NotebookId, name: String) = _state.update { it.copy(dialog = LibraryDialog.ConfirmDelete(id, name)) }
+    /** Delete puts it in the trash (restorable for 30 days); without a trash it asks first, then deletes for good. */
+    fun onDeleteRequested(id: NotebookId, name: String) {
+        val trash = changes.trash
+        if (trash != null) {
+            scope.launch { trash(id); dismiss() }
+        } else {
+            _state.update { it.copy(dialog = LibraryDialog.ConfirmDelete(id, name)) }
+        }
+    }
     fun dismiss() = _state.update { it.copy(dialog = LibraryDialog.None) }
 
     // ---- "New": what kind → who answers → a name (or a PDF) ------------------------------------------------------
@@ -85,14 +125,27 @@ class LibraryViewModel(
         }
     }
 
-    /** The voice is picked: a notebook or canvas is named next; for a PDF, [pickPdf] opens the system picker. */
-    fun confirmVoice(pickPdf: () -> Unit) {
+    /** A PDF another app handed over: who answers in it comes first, then it is imported. */
+    private var incoming: String? = null
+
+    fun offerIncomingPdf(uri: String) {
+        incoming = uri
+        _state.update { it.copy(dialog = LibraryDialog.ChooseVoice(NotebookKind.Pdf, lastPersona, lastStyle)) }
+    }
+
+    /**
+     * The voice is picked: a notebook or canvas is named next; for a PDF, [pickPdf] opens the system picker (a PDF
+     * handed over by another app is imported at once, [onCreated] opening it).
+     */
+    fun confirmVoice(onCreated: (NotebookId) -> Unit = {}, pickPdf: () -> Unit) {
         val d = _state.value.dialog as? LibraryDialog.ChooseVoice ?: return
         rememberVoice(d.personaId, d.style)
-        when (d.kind) {
-            NotebookKind.Pages, NotebookKind.Canvas ->
+        val handed = incoming.also { incoming = null }
+        when {
+            handed != null && d.kind == NotebookKind.Pdf -> importPdf(handed, null, d.personaId, d.style, onCreated)
+            d.kind == NotebookKind.Pages || d.kind == NotebookKind.Canvas ->
                 _state.update { it.copy(dialog = LibraryDialog.NameIt(d.kind, d.personaId, d.style)) }
-            NotebookKind.Pdf, NotebookKind.Lesson -> { picking = d; dismiss(); pickPdf() }
+            else -> { picking = d; dismiss(); pickPdf() }
         }
     }
 

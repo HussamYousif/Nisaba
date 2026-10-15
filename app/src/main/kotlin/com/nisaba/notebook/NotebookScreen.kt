@@ -97,7 +97,7 @@ fun NotebookScreen(
                     v.topStripPx = toolbarPx
                     v.onSizeKnown = { w, h -> vm.onViewSize(w, h) }
                     v.onSwipe = { vm.turnPage(it) }
-                    v.onMultiTap = { n -> if (n == 2) vm.undo() else vm.redo() }
+                    v.onMultiTap = { n -> if (n == 2) vm.undo(announce = true) else vm.redo(announce = true) } // can be a palm
                     v.onTopTap = { vm.showToolbar() }
                     v.onPan = vm::onPan
                     v.onLongPress = vm::onLongPress
@@ -105,24 +105,19 @@ fun NotebookScreen(
                 }
             },
             update = { v ->
-                v.setPage(state.pageSize, state.background, state.viewOrigin, state.pageId); v.setStrokes(state.strokes)
-                v.showSelection(state.selection?.bounds)
+                v.setPage(state.pageSize, state.background, state.viewOrigin, state.pageId, state.paper); v.setStrokes(state.strokes)
+                v.showSelection(state.selection?.bounds ?: state.highlight)
             },
         )
         if (state.showHint) {
             val hint = LocalVoices.current.of(state.personaId).hint // in the notebook's voice
             HandTextComponent(hint, Nisaba.colors.faint, Modifier.align(Alignment.Center).fillMaxWidth(HINT_WIDTH))
         }
-        Column(Modifier.align(Alignment.TopStart)) {
-            if (state.toolbarVisible) NotebookToolbarComponent(state, vm, onBack)
-            state.failure?.let { FailureChip(it, vm::retry) }
-            state.memoryNote?.let { MemoryChip(it, vm::dismissMemoryNote) }
-            state.notice?.let { MemoryChip(it, vm::dismissNotice, mark = "!") }
-            state.reminder?.let { ReminderChip(reminderLine(it), vm::addReminder, vm::dismissReminder) }
-        }
+        TopOfPage(state, vm, onBack, Modifier.align(Alignment.TopStart))
         state.selection?.let { SelectionBarComponent(it, state.aiAvailable, vm, Modifier.align(Alignment.BottomStart)) }
         val handle = !state.toolbarVisible && state.selection == null
-        if (handle) ToolbarHandle(Modifier.align(Alignment.BottomEnd), starBadge(state), vm::showToolbar)
+        if (handle) ToolbarHandle(Modifier.align(Alignment.BottomEnd), starBadge(state), vm::showToolbar, vm::openMiniBar)
+        if (handle && state.miniBar) MiniBarComponent(state, vm, Modifier.align(Alignment.BottomEnd))
         val voice = LocalVoices.current.of(state.personaId)
         if (state.menuOpen) NotebookMenuComponent(state.title, notebookMenu(state, voice.name, vm, onOpenSettings), vm::closeMenu)
         NotebookOverlays(state, vm)
@@ -159,6 +154,7 @@ private fun PenWiring(state: NotebookUiState, pageView: PageView?, pen: PenDevic
 @Composable
 private fun NotebookOverlays(state: NotebookUiState, vm: NotebookViewModel) {
     if (state.pageGridOpen) PageGridComponent(state, vm)
+    if (state.paperOpen) PaperDialogComponent(state.paper, vm::setPaper, vm::closePaper)
     when (state.toolPanel) {
         ToolPanel.Pen -> PenPanelComponent(state, vm)
         ToolPanel.Shapes -> ShapePanelComponent(state, vm)
@@ -246,6 +242,7 @@ private fun PenExclusions(toolbarVisible: Boolean, pageView: PageView?, toolbarP
 @Composable
 private fun NotebookEffects(vm: NotebookViewModel, pageView: PageView?, pen: PenDevice, eink: EinkDevice) {
     val remind = rememberReminderHandler(vm)
+    val exportAs = rememberExportHandler(vm)
     val context = LocalContext.current
     val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
     LaunchedEffect(vm, pageView) {
@@ -257,6 +254,7 @@ private fun NotebookEffects(vm: NotebookViewModel, pageView: PageView?, pen: Pen
                 is NotebookEffect.Copy -> clipboard.setText(androidx.compose.ui.text.AnnotatedString(fx.text))
                 is NotebookEffect.Share -> context.startActivity(shareIntent(fx.subject, fx.text))
                 is NotebookEffect.Remind -> remind(fx.reminder)
+                is NotebookEffect.Export -> exportAs(fx)
                 NotebookEffect.Repaint -> { pen.suspendRawInk(); v.forgetLiveInk(); v.reloadBackground(); pen.resumeRawInk() }
             }
         }
@@ -275,4 +273,16 @@ private fun starBadge(state: NotebookUiState): StarBadge? = when {
     state.working -> StarBadge.Working
     !state.listening -> StarBadge.Muted
     else -> null
+}
+
+/** The bar (when shown) and the one-line chips under it: a failure, a memory note, a notice, a reminder. */
+@Composable
+private fun TopOfPage(state: NotebookUiState, vm: NotebookViewModel, onBack: () -> Unit, modifier: Modifier) {
+    Column(modifier) {
+        if (state.toolbarVisible) NotebookToolbarComponent(state, vm, onBack)
+        state.failure?.let { FailureChip(it, vm::retry) }
+        state.memoryNote?.let { MemoryChip(it, vm::dismissMemoryNote) }
+        state.notice?.let { MemoryChip(it, vm::dismissNotice, mark = "!") }
+        state.reminder?.let { ReminderChip(reminderLine(it), vm::addReminder, vm::dismissReminder) }
+    }
 }

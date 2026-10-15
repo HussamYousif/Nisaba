@@ -17,12 +17,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.nisaba.domain.search.HitKind
 import com.nisaba.domain.search.SearchHit
 import com.nisaba.ui.theme.Nisaba
 import com.nisaba.ui.theme.NisabaButton
 import com.nisaba.ui.theme.NisabaTextField
-
-private const val RESULT_LIMIT = 10 // what SearchUseCase returns at most
 
 /** Every question asked and answer given, across notebooks; tap one to open its page. */
 @Composable
@@ -36,26 +35,46 @@ fun SearchScreen(state: SearchUiState, vm: SearchViewModel, onBack: () -> Unit, 
         NisabaTextField(state.query, vm::onQuery)
         Text(
             when {
-                state.query.isBlank() -> "Words from your questions or Nisaba's answers, in any notebook."
+                state.query.isBlank() -> "Words from your questions, Nisaba's answers, notebook names or your PDFs."
                 state.searched && state.hits.isEmpty() -> "Nothing found."
                 state.searched && state.hits.size == 1 -> "1 match."
-                state.searched && state.hits.size >= RESULT_LIMIT -> "The $RESULT_LIMIT newest matches."
+                state.searched && state.more -> "${state.hits.size}+ matches."
                 state.searched -> "${state.hits.size} matches."
                 else -> ""
             },
             style = MaterialTheme.typography.bodyLarge, color = c.faint,
         )
-        for (hit in state.hits) {
-            Column(
-                Modifier.fillMaxWidth().border(BorderStroke(1.dp, c.ink)).clickable { onOpen(hit) }.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Text("${hit.notebookName} · page ${hit.pageNumber}", style = MaterialTheme.typography.labelLarge, color = c.faint)
-                if (hit.question.isNotBlank()) {
-                    Text(hit.question, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-                Text(hit.answer, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        for (hit in state.visible) HitCard(hit, onOpen)
+        val later = state.more || state.hits.size > (state.screen + 1) * SearchUiState.PER_SCREEN
+        if (state.screen > 0 || later) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                NisabaButton("‹ Earlier", { vm.screen(-1) }, enabled = state.screen > 0)
+                NisabaButton("Later ›", { vm.screen(1) }, enabled = later)
             }
+        }
+    }
+}
+
+/** One match: where it is, the question, and the words around the match. */
+@Composable
+private fun HitCard(hit: SearchHit, onOpen: (SearchHit) -> Unit) {
+    val c = Nisaba.colors
+    Column(
+        Modifier.fillMaxWidth().border(BorderStroke(1.dp, c.ink)).clickable { onOpen(hit) }.padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        val where = when (hit.kind) {
+            HitKind.Title -> "Notebook"
+            HitKind.Document -> "${hit.notebookName} · in the PDF"
+            HitKind.Exchange -> "${hit.notebookName} · page ${hit.pageNumber}"
+        }
+        Text(where, style = MaterialTheme.typography.labelLarge, color = c.faint)
+        if (hit.kind == HitKind.Title) Text(hit.notebookName, style = MaterialTheme.typography.titleMedium)
+        if (hit.question.isNotBlank()) {
+            Text(hit.question, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        if (hit.answer.isNotBlank()) {
+            Text(hit.answer, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
     }
 }

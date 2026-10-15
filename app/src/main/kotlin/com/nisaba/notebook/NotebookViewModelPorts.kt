@@ -68,6 +68,17 @@ class NotebookChanges(
     val markErased: suspend (com.nisaba.domain.shared.ExchangeId) -> Unit = {},
     /** Private: nothing remembered from the notebook or recalled into it, out of search. */
     val setPrivate: suspend (NotebookId, Boolean) -> Unit = { _, _ -> },
+    /** Pages: delete, move by ±1, duplicate; and the notebook's paper and tutoring. */
+    val pages: PageChanges = PageChanges(),
+)
+
+/** What can be done to the pages of a notebook, and its paper and tutoring (no-ops in plain-ink tests). */
+class PageChanges(
+    val delete: suspend (NotebookId, PageId) -> com.nisaba.domain.shared.Outcome<Unit> = { _, _ -> DONE },
+    val move: suspend (NotebookId, PageId, Int) -> com.nisaba.domain.shared.Outcome<Unit> = { _, _, _ -> DONE },
+    val duplicate: suspend (NotebookId, Page) -> Unit = { _, _ -> },
+    val setPaper: suspend (NotebookId, com.nisaba.domain.notebook.Paper) -> Unit = { _, _ -> },
+    val setTeachGoal: suspend (NotebookId, String?) -> Unit = { _, _ -> },
 )
 
 /** What answers draw on besides the ink: the document, its printed text, saved exchanges. */
@@ -86,6 +97,10 @@ class NotebookSources(
     val voices: () -> com.nisaba.domain.persona.Voices = { com.nisaba.domain.persona.Voices() },
     /** When this notebook last had an exchange (null: never). */
     val lastExchangeMillis: suspend () -> Long? = { null },
+    /** A page as a small picture on [paper] (for the page grid). */
+    val thumbnail: suspend (Page, com.nisaba.domain.notebook.Paper?) -> android.graphics.Bitmap? = { _, _ -> null },
+    /** Writes this notebook to a document the person picked: a PDF (true) or Markdown text. */
+    val export: suspend (Boolean, String) -> Boolean = { _, _ -> false },
 )
 
 /** What the app remembers for the user between visits: the first-run hint, where each endless canvas was left, the pen. */
@@ -104,3 +119,5 @@ class NotebookMemory(
     val lastDaily: (NotebookId) -> String? = { null },
     val saveLastDaily: (NotebookId, String) -> Unit = { _, _ -> },
 )
+
+private val DONE = com.nisaba.domain.shared.Outcome.Ok(Unit)

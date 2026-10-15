@@ -119,8 +119,10 @@ internal suspend fun NotebookViewModel.eraseAnswerEverywhere(ex: ExchangeId) {
     deps.changes.markErased(ex) // it leaves the conversation's history too
     val pages = notebook?.pages ?: return
     val here = pageIndex
-    for (i in here downTo 0) if (!eraseAnswerOn(pages[i].id, ex) && i < here) break
-    for (i in here + 1 until pages.size) if (!eraseAnswerOn(pages[i].id, ex)) break
+    val touched = ArrayList<com.nisaba.domain.shared.PageId>()
+    for (i in here downTo 0) if (eraseAnswerOn(pages[i].id, ex)) touched += pages[i].id else if (i < here) break
+    for (i in here + 1 until pages.size) if (eraseAnswerOn(pages[i].id, ex)) touched += pages[i].id else break
+    dropEmptyPages(touched) // a spill page the answer filled alone is not left behind blank
 }
 
 internal suspend fun NotebookViewModel.eraseAnswerOn(pageId: PageId, ex: ExchangeId): Boolean {
@@ -257,7 +259,7 @@ internal fun NotebookViewModel.startSession(page: Page) {
             ::memoryNote, onCutShort = { mutableState.update { it.copy(notice = CUT_SHORT_NOTICE) } },
             onReminder = { r -> mutableState.update { it.copy(reminder = r) } },
         ),
-        voices = { deps.sources.voices().of(it) },
+        voices = { deps.sources.voices().of(it) }, paper = { notebook?.notebook?.paper ?: com.nisaba.domain.notebook.Paper.Blank },
     )
     answerScribe = scribe
     val context = object : ConversationContextPorts {

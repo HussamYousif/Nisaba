@@ -15,9 +15,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -63,6 +60,13 @@ data class LibraryActions(
     val onLearn: (goal: String) -> Unit = {},
     val animateWordmark: Boolean = false,
     val onWordmarkDone: () -> Unit = {},
+    // library v2: screens of covers, pins, the trash
+    val onGridPage: (Int) -> Unit = {},
+    val onPin: (NotebookId, Boolean) -> Unit = { _, _ -> },
+    val onTrash: () -> Unit = {},
+    val onRestore: (NotebookId) -> Unit = {},
+    val onDeleteForever: (NotebookId) -> Unit = {},
+    val onEmptyTrash: () -> Unit = {},
 )
 
 /** Short names are written smaller so a two-letter notebook doesn't get gigantic letters. */
@@ -79,6 +83,10 @@ fun LibraryScreen(state: LibraryUiState, actions: LibraryActions) {
                         "Nisaba", c.lapis, Modifier.width(230.dp), animate = actions.animateWordmark, onDone = actions.onWordmarkDone,
                     )
                 }
+                state.latest?.let { NisabaButton("Continue ›", { actions.onOpen(it.id) }); Spacer(Modifier.width(12.dp)) }
+                if (state.trash.isNotEmpty()) {
+                    NisabaButton("Trash (${state.trash.size})", actions.onTrash); Spacer(Modifier.width(12.dp))
+                }
                 NisabaButton("Search", actions.onSearch)
                 Spacer(Modifier.width(12.dp))
                 NisabaButton("Settings", actions.onSettings)
@@ -91,7 +99,8 @@ fun LibraryScreen(state: LibraryUiState, actions: LibraryActions) {
                     Text("Begin a notebook", style = MaterialTheme.typography.titleLarge, color = c.faint, textAlign = TextAlign.Center)
                 }
             } else {
-                NotebookGrid(state.notebooks, actions)
+                NotebookGrid(state.visible, actions, Modifier.weight(1f))
+                if (state.gridPages > 1) GridPager(state, actions)
             }
         }
         state.importing?.let { p ->
@@ -99,57 +108,82 @@ fun LibraryScreen(state: LibraryUiState, actions: LibraryActions) {
                 Text("Reading the pages of your PDF: ${(p * 100).toInt()}%", style = MaterialTheme.typography.bodyLarge)
             }
         }
-        LibraryDialogs(state.dialog, actions)
+        LibraryDialogs(state.dialog, state.trash, actions)
         NewNotebookComponent(state.dialog, actions)
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+/** One screenful of covers, three across and two down (no scrolling on e-ink). */
 @Composable
-private fun NotebookGrid(notebooks: List<CoverItem>, actions: LibraryActions) {
-    val c = Nisaba.colors
-    val voices = LocalVoices.current
-    LazyVerticalGrid(
-        GridCells.Fixed(3),
-        horizontalArrangement = Arrangement.spacedBy(28.dp), verticalArrangement = Arrangement.spacedBy(32.dp),
-    ) {
-        items(notebooks, key = { it.id.value }) { item ->
-            Column(Modifier.combinedClickable(onClick = { actions.onOpen(item.id) }, onLongClick = { actions.onMenu(item) })) {
-                Box(Modifier.fillMaxWidth().aspectRatio(0.75f).background(c.paper)) {
-                    val voice = voices.of(item.personaId)
-                    Canvas(Modifier.fillMaxSize()) {
-                        drawCover(item.seed, c.ink, c.lapis)
-                        drawSigil(voice, inkOf(voice, c.lapis), Offset(size.width * SIGIL_X, size.width * SIGIL_Y), size.width * SIGIL_R)
-                    }
-                    HandTextComponent(
-                        item.name, c.ink,
-                        Modifier.align(Alignment.BottomCenter).padding(bottom = 22.dp).fillMaxWidth(coverNameWidth(item.name)),
-                    )
-                }
-                Spacer(Modifier.height(10.dp))
-                Text(item.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(
-                    when {
-                        item.endless -> "Endless canvas"
-                        item.lesson -> "Lesson · PDF"
-                        else -> "${item.pageCount} page${if (item.pageCount == 1) "" else "s"}" + if (item.hasDocument) " · PDF" else ""
-                    } + " · " + voices.of(item.personaId).name + if (item.isPrivate) " · Private" else "",
-                    style = MaterialTheme.typography.labelSmall, color = c.faint, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                )
+private fun NotebookGrid(notebooks: List<CoverItem>, actions: LibraryActions, modifier: Modifier) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(28.dp)) {
+        for (row in notebooks.chunked(COLUMNS)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
+                for (item in row) CoverComponent(item, actions, Modifier.weight(1f))
+                repeat(COLUMNS - row.size) { Spacer(Modifier.weight(1f)) }
             }
         }
     }
 }
 
 @Composable
-private fun LibraryDialogs(dialog: LibraryDialog, actions: LibraryActions) {
+private fun GridPager(state: LibraryUiState, actions: LibraryActions) {
+    Row(
+        Modifier.fillMaxWidth().padding(top = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically,
+    ) {
+        NisabaButton("‹ Earlier", { actions.onGridPage(-1) }, enabled = state.gridPage > 0)
+        Text("${state.gridPage + 1} of ${state.gridPages}", style = MaterialTheme.typography.labelLarge)
+        NisabaButton("Later ›", { actions.onGridPage(1) }, enabled = state.gridPage < state.gridPages - 1)
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun CoverComponent(item: CoverItem, actions: LibraryActions, modifier: Modifier) {
+    val c = Nisaba.colors
+    val voices = LocalVoices.current
+    Column(modifier.combinedClickable(onClick = { actions.onOpen(item.id) }, onLongClick = { actions.onMenu(item) })) {
+        Box(Modifier.fillMaxWidth().aspectRatio(COVER_ASPECT).background(c.paper)) {
+            val voice = voices.of(item.personaId)
+            Canvas(Modifier.fillMaxSize()) {
+                drawCover(item.seed, c.ink, c.lapis)
+                drawSigil(voice, inkOf(voice, c.lapis), Offset(size.width * SIGIL_X, size.width * SIGIL_Y), size.width * SIGIL_R)
+            }
+            HandTextComponent(
+                item.name, c.ink,
+                Modifier.align(Alignment.BottomCenter).padding(bottom = 22.dp).fillMaxWidth(coverNameWidth(item.name)),
+            )
+        }
+        Spacer(Modifier.height(10.dp))
+        val title = (if (item.pinned) "• " else "") + item.name // a pinned one is marked
+        Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(
+            when {
+                item.endless -> "Endless canvas"
+                item.lesson -> "Lesson · PDF"
+                else -> "${item.pageCount} page${if (item.pageCount == 1) "" else "s"}" + if (item.hasDocument) " · PDF" else ""
+            } + " · " + voices.of(item.personaId).name + if (item.isPrivate) " · Private" else "",
+            style = MaterialTheme.typography.labelSmall, color = c.faint, maxLines = 1, overflow = TextOverflow.Ellipsis,
+        )
+        Text(item.edited, style = MaterialTheme.typography.labelSmall, color = c.faint, maxLines = 1)
+    }
+}
+
+private const val COLUMNS = 3
+private const val COVER_ASPECT = 0.8f
+
+@Composable
+private fun LibraryDialogs(dialog: LibraryDialog, trash: List<CoverItem>, actions: LibraryActions) {
     val onDismiss = actions.onDismiss
     when (val d = dialog) {
         LibraryDialog.None -> Unit
         is LibraryDialog.Menu -> NisabaDialog(d.name, onDismiss) {
             NisabaButton("Rename", { actions.onRenameRequested(d.id, d.name) }, Modifier.fillMaxWidth())
-            NisabaButton("Delete", { actions.onDeleteRequested(d.id, d.name) }, Modifier.fillMaxWidth())
+            NisabaButton(if (d.pinned) "Unpin" else "Pin to the front", { actions.onPin(d.id, !d.pinned) }, Modifier.fillMaxWidth())
+            NisabaButton("Move to the trash", { actions.onDeleteRequested(d.id, d.name) }, Modifier.fillMaxWidth())
         }
+        LibraryDialog.Trash -> TrashDialog(trash, actions)
         is LibraryDialog.Rename -> {
             var name by remember { mutableStateOf(d.name) }
             NisabaDialog("Rename", onDismiss) {
@@ -168,6 +202,31 @@ private fun LibraryDialogs(dialog: LibraryDialog, actions: LibraryActions) {
         else -> Unit // the steps of "New" (NewNotebookComponent)
     }
 }
+
+/** Deleted notebooks (kept 30 days): one row each, a screenful at most. */
+@Composable
+private fun TrashDialog(trash: List<CoverItem>, actions: LibraryActions) {
+    NisabaDialog("Trash", actions.onDismiss) {
+        if (trash.isEmpty()) Text("Nothing in the trash.", style = MaterialTheme.typography.bodyLarge)
+        for (item in trash.take(TRASH_ROWS)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(Modifier.weight(1f)) {
+                    Text(item.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(item.edited, style = MaterialTheme.typography.labelSmall, color = Nisaba.colors.faint)
+                }
+                NisabaButton("Restore", { actions.onRestore(item.id) })
+                NisabaButton("Delete", { actions.onDeleteForever(item.id) })
+            }
+        }
+        Text("Kept 30 days, then deleted for good.", style = MaterialTheme.typography.labelSmall, color = Nisaba.colors.faint)
+        NisabaButtonRow {
+            NisabaButton("Empty the trash", actions.onEmptyTrash, enabled = trash.isNotEmpty())
+            NisabaButton("Close", actions.onDismiss, filled = true)
+        }
+    }
+}
+
+private const val TRASH_ROWS = 8
 
 /** The voice's sign in the cover's top right corner (fractions of the cover's width). */
 private const val SIGIL_X = 0.88f

@@ -33,3 +33,22 @@ fun gapTooSmall(prev: Double, next: Double): Boolean = next - prev < MIN_POSITIO
 /** Fresh evenly spaced positions for [ids] (in their current order). */
 fun rebalancedPositions(ids: List<PageId>): List<Pair<PageId, Double>> =
     ids.mapIndexed { i, id -> id to (i + 1) * PAGE_POSITION_STEP }
+
+/**
+ * What page [index] is called: in a PDF notebook its document page ("p. 12"), or a page added after one ("p. 12 +1");
+ * elsewhere its place ("3 / 9").
+ */
+fun pageLabel(pages: List<Page>, index: Int): String {
+    if (pages.none { it.background is PageBackground.DocumentPage }) return "${index + 1} / ${pages.size}"
+    var added = 0
+    for (i in index downTo 0) {
+        val bg = pages[i].background
+        if (bg is PageBackground.DocumentPage) return "p. ${bg.index + 1}" + if (added > 0) " +$added" else ""
+        added++
+    }
+    return "${index + 1} / ${pages.size}" // pages before the first document page
+}
+
+/** Where document page [number] (1-based, as printed) is in the notebook, or null. */
+fun indexOfDocumentPage(pages: List<Page>, number: Int): Int? =
+    pages.indexOfFirst { (it.background as? PageBackground.DocumentPage)?.index == number - 1 }.takeIf { it >= 0 }

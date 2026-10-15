@@ -43,16 +43,18 @@ class PageSnapshotRenderer(
         fresh: Set<StrokeId>,
         labels: List<SnapshotLabel>,
     ): PageSnapshot = withContext(Dispatchers.Default) {
-        val page = notebooks.get(notebookId)?.pages?.firstOrNull { it.id == pageId }
+        val nb = notebooks.get(notebookId)
+        val page = nb?.pages?.firstOrNull { it.id == pageId }
+        val paper = nb?.notebook?.paper ?: com.nisaba.domain.notebook.Paper.Blank
         val size = page?.size ?: PageSize.PORTRAIT
         (page?.background as? com.nisaba.domain.notebook.PageBackground.DocumentPage)?.let { rasters?.ensure(it.documentId, it.index) }
         val strokes = ink.load(pageId).strokes
         val whole = if (size.isEndless) endlessWindow(focus ?: strokes.lastOrNull()?.bounds) else PageRect(0f, 0f, size.w, size.h)
         val argbOf = inkFor(fresh)
-        val pageJpeg = render(whole, size, page?.background, strokes, LONG_EDGE, 1f, argbOf, labels)
+        val pageJpeg = render(whole, size, page?.background, strokes, LONG_EDGE, 1f, argbOf, labels, paper)
         val focusJpeg = focus?.let { f ->
             val clipped = PageRect(max(0f, f.left), max(0f, f.top), min(size.w, f.right), min(size.h, f.bottom))
-            render(clipped, size, page?.background, strokes, LONG_EDGE, MIN_FOCUS_EDGE.toFloat(), argbOf, labels)
+            render(clipped, size, page?.background, strokes, LONG_EDGE, MIN_FOCUS_EDGE.toFloat(), argbOf, labels, paper)
         }
         PageSnapshot(pageJpeg, focusJpeg)
     }
@@ -80,6 +82,7 @@ class PageSnapshotRenderer(
         minEdge: Float,
         argbOf: (Stroke) -> Int,
         labels: List<SnapshotLabel> = emptyList(),
+        paper: com.nisaba.domain.notebook.Paper = com.nisaba.domain.notebook.Paper.Blank,
     ): ByteArray {
         val w = max(1f, area.width); val h = max(1f, area.height)
         var scale = min(1f, maxEdge / max(w, h))
@@ -88,7 +91,7 @@ class PageSnapshotRenderer(
         val color = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(color)
         canvas.scale(scale, scale); canvas.translate(-area.left, -area.top)
-        backgroundRenderer.draw(canvas, size, background ?: com.nisaba.domain.notebook.PageBackground.Blank)
+        backgroundRenderer.draw(canvas, size, background ?: com.nisaba.domain.notebook.PageBackground.Blank, paper)
         val inView = strokes.filter { s -> s.bounds.let { // an endless canvas holds far more than the window
             it.right >= area.left - PAD && it.left <= area.right + PAD && it.bottom >= area.top - PAD && it.top <= area.bottom + PAD
         } }

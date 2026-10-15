@@ -23,6 +23,12 @@ data class Notebook(
     val answerLength: AnswerLength = AnswerLength.Normal,
     /** A private notebook: nothing remembered from it, nothing recalled into it, left out of search (a journal). */
     val isPrivate: Boolean = false,
+    /** Kept at the front of the library. */
+    val pinned: Boolean = false,
+    /** In the trash since then (null: not in the trash); emptied after [TRASH_DAYS]. */
+    val deletedAtMillis: Long? = null,
+    /** What its blank pages look like. */
+    val paper: Paper = Paper.Blank,
 ) {
     val style: AnswerStyle get() = AnswerStyle(
         when {
@@ -69,6 +75,18 @@ data class NotebookSummary(
     val lesson: Boolean = false,
     val personaId: String = PersonaRegistry.DEFAULT_ID,
     val isPrivate: Boolean = false,
+    val pinned: Boolean = false,
+    val deletedAtMillis: Long? = null,
 )
 
 data class NotebookWithPages(val notebook: Notebook, val pages: List<Page>)
+
+/** The paper of a notebook's blank pages; lines and grids are [RULE] page units apart (about 7 mm on the Boox). */
+enum class Paper {
+    Blank, Lined, Grid, Dots;
+
+    companion object { const val RULE = 84f }
+}
+
+/** Days a notebook stays in the trash before it is deleted for good. */
+const val TRASH_DAYS = 30

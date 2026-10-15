@@ -16,13 +16,18 @@ import com.nisaba.domain.shared.PagePoint
 import com.nisaba.domain.shared.StrokeId
 import com.nisaba.domain.shared.toPage
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 // The pen on the page: strokes, shapes, erasing, undo/redo, all through the ink edit session.
 
 fun NotebookViewModel.onPenEvent(e: PenEvent) {
     when (e) {
-        is PenEvent.PenDown -> { session?.onPenDown(); hideToolbarLater() }
+        is PenEvent.PenDown -> {
+            session?.onPenDown(); hideToolbarLater()
+            val s = mutableState.value
+            if (s.highlight != null || s.miniBar) mutableState.update { it.copy(highlight = null, miniBar = false) }
+        }
         is PenEvent.StrokeDone -> {
             val page = currentPage()?.id ?: return
             val points = toPagePoints(e.points) // mapped now: the view may pan or turn before the commit runs
@@ -46,17 +51,27 @@ fun NotebookViewModel.onPenEvent(e: PenEvent) {
     }
 }
 
-fun NotebookViewModel.undo() = ownScope.launch {
+/** [announce]: a finger gesture did it (it can happen by accident, e.g. a palm): the page says so, and how to undo it. */
+fun NotebookViewModel.undo(announce: Boolean = false) = ownScope.launch {
     usedToolbar()
     val page = currentPage()?.id ?: return@launch
-    if (editOpenPage(page) { if (it.canUndo) deps.ink.undo(it) else null }) effectSink.emit(NotebookEffect.Refresh(full = false))
+    if (editOpenPage(page) { if (it.canUndo) deps.ink.undo(it) else null }) {
+        effectSink.emit(NotebookEffect.Refresh(full = false))
+        if (announce) mutableState.update { it.copy(notice = UNDONE) }
+    }
 }
 
-fun NotebookViewModel.redo() = ownScope.launch {
+fun NotebookViewModel.redo(announce: Boolean = false) = ownScope.launch {
     usedToolbar()
     val page = currentPage()?.id ?: return@launch
-    if (editOpenPage(page) { if (it.canRedo) deps.ink.redo(it) else null }) effectSink.emit(NotebookEffect.Refresh(full = false))
+    if (editOpenPage(page) { if (it.canRedo) deps.ink.redo(it) else null }) {
+        effectSink.emit(NotebookEffect.Refresh(full = false))
+        if (announce) mutableState.update { it.copy(notice = REDONE) }
+    }
 }
+
+internal const val UNDONE = "Undone (two-finger tap). A three-finger tap brings it back."
+internal const val REDONE = "Redone (three-finger tap)."
 
 /**
  * Applies [change] to [pageId]'s ink, serialised with every other ink change. When that page is no longer open

@@ -78,6 +78,18 @@ data class NotebookUiState(
     val isPrivate: Boolean = false,
     /** A reminder the last reply offered, until added or waved away. */
     val reminder: com.nisaba.domain.conversation.Reminder? = null,
+    /** Every page (the grid's pictures and labels) and what the open one is called ("p. 12 +1", "3 / 9"). */
+    val pages: List<com.nisaba.domain.notebook.Page> = emptyList(),
+    val pageLabel: String = "",
+    /** The page picked in the grid for Delete / Move / Duplicate. */
+    val gridSelected: Int? = null,
+    val hasDocument: Boolean = false,
+    val paper: com.nisaba.domain.notebook.Paper = com.nisaba.domain.notebook.Paper.Blank,
+    val paperOpen: Boolean = false,
+    /** The star was held: a few tools above it. */
+    val miniBar: Boolean = false,
+    /** Outlined until the pen comes down (where a search hit was asked). */
+    val highlight: com.nisaba.domain.shared.PageRect? = null,
 ) {
     val showHint: Boolean get() = hintPending && !loading && strokes.isEmpty() && background is PageBackground.Blank
 
@@ -85,7 +97,7 @@ data class NotebookUiState(
     val pickerOpen: Boolean get() = menuOpen || pageGridOpen || toolPanel != null
 
     /** Anything drawn over the page, where the pen must not ink. */
-    val overlayOpen: Boolean get() = pickerOpen || overview || answerMenu != null || progressOpen || renaming || voiceOpen
+    val overlayOpen: Boolean get() = pickerOpen || overview || answerMenu != null || progressOpen || renaming || voiceOpen || paperOpen
 }
 
 enum class ToolPanel { Pen, Shapes }
@@ -124,4 +136,7 @@ sealed interface NotebookEffect {
 
     /** Put [reminder] in the calendar (or an alarm). */
     data class Remind(val reminder: com.nisaba.domain.conversation.Reminder) : NotebookEffect
+
+    /** Ask where to save this notebook as a PDF ([asPdf]) or as text, named [name]. */
+    data class Export(val asPdf: Boolean, val name: String) : NotebookEffect
 }

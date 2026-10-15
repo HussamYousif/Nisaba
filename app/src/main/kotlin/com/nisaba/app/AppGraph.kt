@@ -2,6 +2,7 @@ package com.nisaba.app
 
 import com.nisaba.domain.shared.PagePoint
 import com.nisaba.domain.shared.PageId
+import com.nisaba.domain.shared.PageRect
 import com.nisaba.notebook.NotebookMemory
 import android.app.Application
 import androidx.lifecycle.ViewModelProvider
@@ -87,34 +88,9 @@ import java.util.UUID
 
 /** Composition root: the only place that knows every concrete class (DESIGN D13). */
 class AppGraph(private val app: Application) {
-    /** Debug only: drive the page from plain stylus MotionEvents (adb input) instead of the Onyx raw layer. */
-    var forceMotionPen: Boolean = false
+    /** The debug harness's switches (adb extras in debug builds); all off in release. */
+    val debug = DebugRegistry()
 
-    /** Debug only: text for the app's own hand to write as the user's question when a notebook opens. */
-    var debugWriteText: String? = null
-
-    /** Debug only: more writing for the open notebook (`am start --activity-single-top --es write …` while it is open). */
-    val debugWrites = kotlinx.coroutines.flow.MutableSharedFlow<String>(extraBufferCapacity = 4)
-
-    /** Debug only: a document location to import as soon as the library opens. */
-    var debugImportPdf: String? = null
-    var debugLearnGoal: String? = null
-
-    /** Debug only: the voice of the debug-imported notebook (a PersonaRegistry id). */
-    var debugPersona: String? = null
-
-    /** Debug only: create a notebook with this name (voice [debugPersona], [debugCanvas]) and open it. */
-    var debugNewNotebook: String? = null
-    var debugCanvas: Boolean = false
-
-    /** Debug only: delete every notebook whose name starts with this (test notebooks) when the library opens. */
-    var debugDeletePrefix: String? = null
-
-    /** Debug only: "host:port" of an HTTP proxy for the model (scripts/dev_proxy.py over `adb reverse`, for an offline Boox). */
-    var debugProxy: String? = null
-
-    /** Debug only: open the first notebook automatically. */
-    var debugOpenFirst: Boolean = false
 
     private val io = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val logger = AndroidLogClient()
@@ -132,8 +108,14 @@ class AppGraph(private val app: Application) {
     private val documents = FileDocumentStore(docsDir, rasterDir, app.contentResolver, idGen)
     private val rasters = DocumentRasterCache(docsDir, rasterDir)
     val settings by lazy { DataStoreSettingsStore(app) }
+
+    /** Exports, backups and restores. */
+    val files by lazy {
+        val exports = com.nisaba.infra.export.ExportRenderer(notebooks, inkStore, exchanges, BackgroundRenderer(rasters = rasters), rasters)
+        FileRegistry(app, settings, exports)
+    }
     val secrets by lazy { KeystoreSecretStore(app, BuildConfig.DEV_DEEPSEEK_API_KEY) }
-    private val oracle by lazy { DeepSeekClient(NisabaHttpClient.withProxy(debugProxy), { secrets.apiKey() }) }
+    private val oracle by lazy { DeepSeekClient(NisabaHttpClient.withProxy(debug.debugProxy), { secrets.apiKey() }) }
 
     val inkRenderer = InkRenderer()
     val backgroundRenderer = BackgroundRenderer(rasters = rasters)
@@ -158,7 +140,7 @@ class AppGraph(private val app: Application) {
 
     /** The standard pen when asked for (Settings → Pen) or off a Boox; else the Onyx pen, falling back if it can't start. */
     fun createPen(standard: Boolean = false): PenDevice = when {
-        forceMotionPen || standard || !OnyxPenDevice.isAvailable() -> MotionEventPenDevice(acceptFinger = false)
+        debug.forceMotionPen || standard || !OnyxPenDevice.isAvailable() -> MotionEventPenDevice(acceptFinger = false)
         else -> FallbackPenDevice.onyx { logger.w("Pen", "the Onyx pen could not start: using the standard pen") }
     }
 
@@ -182,11 +164,28 @@ class AppGraph(private val app: Application) {
                 ListNotebooksUseCase(notebooks), CreateNotebookUseCase(notebooks, clock, idGen),
                 RenameNotebookUseCase(notebooks, clock), DeleteNotebookUseCase(notebooks, inkStore, documents),
                 ImportDocumentUseCase(documents, CreateNotebookUseCase(notebooks, clock, idGen)), settings,
+                changes = libraryChanges(),
             )
         }
     }
 
     private val prefs by lazy { NotebookPrefsStore(app) }
+
+    private val thumbnails by lazy { com.nisaba.canvas.ThumbnailRenderer(inkStore, BackgroundRenderer(rasters = rasters), rasters) }
+
+    private fun pageChanges() = com.nisaba.notebook.PageChanges(
+        com.nisaba.domain.notebook.DeletePageUseCase(notebooks, inkStore)::invoke,
+        com.nisaba.domain.notebook.MovePageUseCase(notebooks)::invoke,
+        { nb, page -> com.nisaba.domain.notebook.DuplicatePageUseCase(InsertPageUseCase(notebooks, idGen), inkStore, idGen)(nb, page) },
+        com.nisaba.domain.notebook.SetPaperUseCase(notebooks)::invoke, com.nisaba.domain.notebook.SetTeachGoalUseCase(notebooks)::invoke,
+    )
+
+    private fun libraryChanges() = com.nisaba.library.LibraryChanges(
+        com.nisaba.domain.notebook.PinNotebookUseCase(notebooks), com.nisaba.domain.notebook.TrashNotebookUseCase(notebooks, clock),
+        com.nisaba.domain.notebook.RestoreNotebookUseCase(notebooks),
+        com.nisaba.domain.notebook.EmptyTrashUseCase(notebooks, DeleteNotebookUseCase(notebooks, inkStore, documents), clock),
+        com.nisaba.domain.notebook.ListTrashUseCase(notebooks),
+    )
 
     /** Whether there is a network at all (a question that failed offline is asked again when it comes back). */
     val online: kotlinx.coroutines.flow.StateFlow<Boolean> by lazy {
@@ -207,6 +206,7 @@ class AppGraph(private val app: Application) {
             com.nisaba.settings.SettingsViewModel(
                 settings, secrets, oracle, ObserveMemoryUseCase(facts),
                 usage = { summarizeUsage(exchanges.usage(), clock.nowMillis(), java.time.ZoneId.systemDefault()) },
+                backups = com.nisaba.settings.SettingsBackups(files::backupTo, files::restoreFrom, files::setBackupFolder),
             )
         }
     }
@@ -216,10 +216,10 @@ class AppGraph(private val app: Application) {
     }
 
     fun searchFactory(): ViewModelProvider.Factory = viewModelFactory {
-        initializer { SearchViewModel({ q -> SearchUseCase(exchanges, notebooks)(q) }) }
+        initializer { SearchViewModel({ q, limit -> SearchUseCase(exchanges, notebooks, documents)(q, limit) }) }
     }
 
-    fun notebookFactory(id: NotebookId, startPage: PageId? = null): ViewModelProvider.Factory = viewModelFactory {
+    fun notebookFactory(id: NotebookId, startPage: PageId? = null, mark: PageRect? = null): ViewModelProvider.Factory = viewModelFactory {
         initializer {
             NotebookViewModel(
                 NotebookDeps(
@@ -241,17 +241,26 @@ class AppGraph(private val app: Application) {
                     sources = NotebookSources(
                         { documentText(id) }, ::printedOccupancy, exchanges::get, lessons.observe(id), online, voices = { voices.value },
                         lastExchangeMillis = { exchanges.listByNotebook(id).maxOfOrNull { it.createdAtMillis } },
+                        thumbnail = thumbnails::of, export = { asPdf, uri -> files.export(id, asPdf, uri) },
                     ),
                     changes = com.nisaba.notebook.NotebookChanges(
                         SetPersonaUseCase(notebooks), { touchNotebook(it) },
                         com.nisaba.domain.notebook.SetAnswerStyleUseCase(notebooks)::invoke,
                         com.nisaba.domain.conversation.MarkAnswerErasedUseCase(exchanges)::invoke,
-                        com.nisaba.domain.notebook.SetPrivateUseCase(notebooks)::invoke,
+                        com.nisaba.domain.notebook.SetPrivateUseCase(notebooks)::invoke, pageChanges(),
                     ),
                 ),
-                startPage = startPage,
+                startPage = startPage, startMark = mark,
             )
         }
+    }
+
+    /** First run: a "Start here" notebook whose first page the hand has already written (once). */
+    suspend fun createStartHere() {
+        if (com.nisaba.welcome.StartHereRenderer.NAME in notebooks.allNames()) return
+        val nb = CreateNotebookUseCase(notebooks, clock, idGen)(com.nisaba.welcome.StartHereRenderer.NAME, personaId = "plain")
+        val page = notebooks.get(nb.id)?.pages?.firstOrNull() ?: return
+        inkStore.save(page.id, com.nisaba.welcome.StartHereRenderer(hand(HandStyle.Casual), idGen).strokes(page.size))
     }
 
     /** Renders a document page's picture if needed (no-op for blank pages). */

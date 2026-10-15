@@ -145,12 +145,26 @@ class MigrationTest {
         db.query("SELECT streak FROM lesson_topics").use { c -> c.moveToFirst(); assertEquals(0, c.getInt(0)) }
     }
 
+    @Test fun v10ToV11LeavesNotebooksUnpinnedOutOfTheTrashOnBlankPaper() {
+        helper.createDatabase("mig11", 10).apply {
+            execSQL(
+                "INSERT INTO notebooks (id,name,createdAt,updatedAt,documentId,listening,coverSeed,teachGoal,persona,questionsOnly," +
+                    "answerLength,isPrivate) VALUES ('n1','Old',1,2,NULL,1,7,NULL,'book',0,'Normal',0)",
+            )
+            close()
+        }
+        val db = helper.runMigrationsAndValidate("mig11", 11, true, MIGRATION_10_11)
+        db.query("SELECT pinned, deletedAt, paper FROM notebooks").use { c ->
+            c.moveToFirst(); assertEquals(0, c.getInt(0)); assertTrue(c.isNull(1)); assertEquals("Blank", c.getString(2))
+        }
+    }
+
     @Test fun v1MigratesAllTheWayToTheCurrentSchema() {
         helper.createDatabase("migAll", 1).apply {
             execSQL("INSERT INTO notebooks (id,name,createdAt,updatedAt,documentId,listening,coverSeed) VALUES ('n1','Old',1,2,NULL,1,7)")
             close()
         }
-        helper.runMigrationsAndValidate("migAll", 10, true, *MIGRATIONS)
+        helper.runMigrationsAndValidate("migAll", 11, true, *MIGRATIONS)
             .query("SELECT COUNT(*) FROM notebooks").use { c -> c.moveToFirst(); assertEquals(1, c.getInt(0)) }
     }
 }

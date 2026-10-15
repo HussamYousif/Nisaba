@@ -12,4 +12,10 @@ data class SearchHit(
     val question: String,
     val answer: String,
     val atMillis: Long,
+    /** Where on the page the question was (outlined when the page opens), when known. */
+    val focus: com.nisaba.domain.shared.PageRect? = null,
+    val kind: HitKind = HitKind.Exchange,
 )
+
+/** What matched: a question or answer, a notebook's name, or the text of a PDF page. */
+enum class HitKind { Exchange, Title, Document }

@@ -46,6 +46,16 @@ class RoomNotebookStore(private val dao: NotebookDao) : NotebookStore {
 
     override suspend fun setPrivate(id: NotebookId, isPrivate: Boolean) = dao.setPrivate(id.value, isPrivate)
 
+    override suspend fun setPinned(id: NotebookId, pinned: Boolean) = dao.setPinned(id.value, pinned)
+
+    override suspend fun setTrashed(id: NotebookId, atMillis: Long?) = dao.setTrashed(id.value, atMillis)
+
+    override suspend fun setPaper(id: NotebookId, paper: com.nisaba.domain.notebook.Paper) = dao.setPaper(id.value, paper.name)
+
+    override suspend fun setTeachGoal(id: NotebookId, goal: String?) = dao.setTeachGoal(id.value, goal)
+
+    override suspend fun deletePage(pageId: PageId) = dao.deletePage(pageId.value)
+
     override suspend fun touch(id: NotebookId, atMillis: Long) = dao.touch(id.value, atMillis)
 
     override suspend fun setStyle(id: NotebookId, style: com.nisaba.domain.notebook.AnswerStyle) = dao.setStyle(

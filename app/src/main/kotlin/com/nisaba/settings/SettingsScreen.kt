@@ -37,12 +37,14 @@ import com.nisaba.domain.settings.Settings
 import com.nisaba.domain.usage.UsageTotals
 import com.nisaba.ui.theme.Nisaba
 import com.nisaba.ui.theme.NisabaButton
+import com.nisaba.ui.theme.NisabaDialog
 import com.nisaba.ui.theme.NisabaTextField
 
 private const val PAUSE_STEP = 500
 
 private enum class Pane(val title: String) {
-    Key("Key & model"), Waiting("Waiting"), Hand("The hand"), Ink("Ink & colours"), Pen("Your pen"), Memory("Memory"), Usage("Usage"),
+    Key("Key & model"), Waiting("Waiting"), Hand("The hand"), Ink("Ink & colours"), Pen("Your pen"), Memory("Memory"), Backup("Backup"),
+    Usage("Usage"),
 }
 
 /** Settings as short panes (no scrolling on e-ink): the list on the left, one pane on the right. */
@@ -71,6 +73,7 @@ fun SettingsScreen(state: SettingsUiState, vm: SettingsViewModel, onBack: () -> 
                     Pane.Ink -> InkPane(state.settings, vm)
                     Pane.Pen -> PenPane(state.settings, vm)
                     Pane.Memory -> MemoryPane(state.factCount, onOpenMemory)
+                    Pane.Backup -> BackupPane(state, vm)
                     Pane.Usage -> state.usage?.let { UsagePane(it) }
                 }
             }
@@ -231,3 +234,59 @@ private fun Toggle(label: String, on: Boolean, onChange: (Boolean) -> Unit) {
 
 private const val MS = 1000f
 private const val PERCENT = 100
+
+/**
+ * Backups: a zip of every notebook, its ink and PDFs, and the settings (not the key). Now to a file, every week to a
+ * folder, or back from one (it replaces everything here; the app starts again).
+ */
+@Composable
+private fun BackupPane(state: SettingsUiState, vm: SettingsViewModel) {
+    val c = Nisaba.colors
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var confirm by remember { mutableStateOf(false) }
+    val now = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/zip"),
+    ) { vm.backupTo(it?.toString()) }
+    val folder = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree(),
+    ) { vm.setBackupFolder(it?.toString()) }
+    val restore = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
+    ) { vm.restoreFrom(it?.toString()) }
+    androidx.compose.runtime.LaunchedEffect(state.restartNow) { if (state.restartNow) restartApp(context) }
+    val s = state.settings
+    val last = if (s.lastBackupMillis == 0L) "No backup yet." else {
+        "Last backup: " + com.nisaba.library.ago(s.lastBackupMillis, System.currentTimeMillis())
+    }
+    Text(last, style = MaterialTheme.typography.bodyLarge)
+    NisabaButton("Back up now…", { now.launch("nisaba-" + java.time.LocalDate.now() + ".zip") })
+    val weekly = if (s.backupFolder.isBlank()) "Every week, to a folder…" else "Weekly backups: change the folder…"
+    NisabaButton(weekly, { folder.launch(null) })
+    NisabaButton("Restore from a backup…", { confirm = true })
+    state.backupNote?.let { Text(it, style = MaterialTheme.typography.bodyLarge, color = c.faint) }
+    Text(
+        "Your DeepSeek key stays out of backups: add it again after restoring on a new device.",
+        style = MaterialTheme.typography.labelSmall, color = c.faint,
+    )
+    if (confirm) {
+        NisabaDialog("Restore from a backup?", { confirm = false }) {
+            Text(
+                "Every notebook on this device is replaced by the backup's. Nisaba starts again afterwards.",
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            com.nisaba.ui.theme.NisabaButtonRow {
+                NisabaButton("Cancel", { confirm = false })
+                val pick = { confirm = false; restore.launch(arrayOf("application/zip", "application/octet-stream")) }
+                NisabaButton("Choose the backup", pick, filled = true)
+            }
+        }
+    }
+}
+
+/** After a restore: start afresh (the open database and every cache belong to what was replaced). */
+private fun restartApp(context: android.content.Context) {
+    context.packageManager.getLaunchIntentForPackage(context.packageName)?.let {
+        context.startActivity(it.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK))
+    }
+    Runtime.getRuntime().exit(0)
+}

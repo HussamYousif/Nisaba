@@ -101,4 +101,44 @@ class LibraryViewModelTest {
         assertTrue(opened.isEmpty()); assertTrue(store.allNames().isEmpty())
         assertEquals(PersonaRegistry.DEFAULT_ID, PersonaRegistry.of("whatever").id)
     }
+
+    @Test fun theLibraryPagesPinsAndKeepsATrash() = runTest {
+        val clock = FakeClock()
+        val changes = LibraryChanges(
+            com.nisaba.domain.notebook.PinNotebookUseCase(store), com.nisaba.domain.notebook.TrashNotebookUseCase(store, clock),
+            com.nisaba.domain.notebook.RestoreNotebookUseCase(store),
+            com.nisaba.domain.notebook.EmptyTrashUseCase(store, DeleteNotebookUseCase(store, FakeInkStore(), FakeDocumentStore()), clock),
+            com.nisaba.domain.notebook.ListTrashUseCase(store), now = { clock.now },
+        )
+        repeat(8) { create("N$it") }
+        val vm = LibraryViewModel(
+            ListNotebooksUseCase(store), create, RenameNotebookUseCase(store, FakeClock()),
+            DeleteNotebookUseCase(store, FakeInkStore(), FakeDocumentStore()), ImportDocumentUseCase(importer, create),
+            settings, backgroundScope, changes,
+        )
+        runCurrent()
+        assertEquals(2, vm.state.value.gridPages); assertEquals(6, vm.state.value.visible.size)
+        vm.gridPage(1); assertEquals(2, vm.state.value.visible.size)
+        val last = vm.state.value.notebooks.last()
+        vm.pin(last.id, true); runCurrent()
+        assertEquals(last.id, vm.state.value.notebooks.first().id) // pinned to the front
+        vm.onDeleteRequested(last.id, last.name); runCurrent()
+        assertEquals(listOf(last.id), vm.state.value.trash.map { it.id })
+        assertEquals(7, vm.state.value.notebooks.size)
+        vm.restore(last.id); runCurrent()
+        assertTrue(vm.state.value.trash.isEmpty())
+        vm.offerIncomingPdf("handed.pdf")
+        assertEquals(NotebookKind.Pdf, (vm.state.value.dialog as LibraryDialog.ChooseVoice).kind)
+        vm.confirmVoice(opened::add) { error("no system picker for a PDF handed over") }; runCurrent()
+        assertEquals("Thesis", store.get(opened.single())!!.notebook.name)
+    }
+
+    @Test fun timesReadLikeAPersonSaysThem() {
+        val h = 60 * 60 * 1000L
+        assertEquals("just now", ago(0, 10_000))
+        assertEquals("5 min ago", ago(0, 5 * 60_000))
+        assertEquals("3 h ago", ago(0, 3 * h))
+        assertEquals("yesterday", ago(0, 30 * h))
+        assertEquals("4 days ago", ago(0, 4 * 24 * h))
+    }
 }

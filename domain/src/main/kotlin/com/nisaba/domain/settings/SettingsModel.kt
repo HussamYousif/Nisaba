@@ -36,6 +36,9 @@ data class Settings(
     val voiceHands: Boolean = true,
     /** The first time a notebook is opened on a new day, Nisaba starts the day's page (off by default). */
     val dailyPage: Boolean = false,
+    /** A folder (a document tree) for weekly backups; "" = none. */
+    val backupFolder: String = "",
+    val lastBackupMillis: Long = 0,
 ) {
     companion object {
         const val MIN_PAUSE = 2000

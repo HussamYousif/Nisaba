@@ -68,6 +68,9 @@ class FileDocumentStore(
         } catch (e: IOException) {
             cleanup(id)
             Outcome.Err(DomainError.Storage(e.message ?: "could not read the PDF"))
+        } catch (@Suppress("TooGenericExceptionCaught") e: RuntimeException) { // a malformed PDF, a permission gone
+            cleanup(id)
+            Outcome.Err(DomainError.Storage(e.message ?: "could not read the PDF"))
         }
     }
 

@@ -2,10 +2,13 @@ package com.nisaba.notebook
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
@@ -106,11 +109,12 @@ internal fun LessonProgressDialog(state: NotebookUiState, onClose: () -> Unit) {
 /** What the star in the corner says while the bar is hidden: nothing, writing an answer, it failed, or muted. */
 internal enum class StarBadge { Working, Failed, Muted }
 
-/** The small Nisaba star in the corner while the bar is hidden: tap it to bring the bar back. Its badge is one glance. */
+/** The small Nisaba star in the corner while the bar is hidden: tap it to bring the bar back, hold it for a few tools. */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-internal fun ToolbarHandle(modifier: Modifier, badge: StarBadge?, onTap: () -> Unit) {
+internal fun ToolbarHandle(modifier: Modifier, badge: StarBadge?, onTap: () -> Unit, onHold: () -> Unit = {}) {
     val c = Nisaba.colors
-    Box(modifier.padding(HANDLE_MARGIN.dp).size(HANDLE_SIZE.dp).clickable(onClick = onTap)) {
+    Box(modifier.padding(HANDLE_MARGIN.dp).size(HANDLE_SIZE.dp).combinedClickable(onClick = onTap, onLongClick = onHold)) {
         androidx.compose.foundation.Image(
             androidx.compose.ui.res.painterResource(com.nisaba.R.drawable.ic_mark), "Show the toolbar", Modifier.fillMaxSize(),
         )
@@ -128,3 +132,57 @@ private const val BADGE = 18
 
 const val HANDLE_SIZE = 44
 const val HANDLE_MARGIN = 16
+
+/** The paper of this notebook's blank pages: blank, lined, grid or dots (answers keep to the lines on lined paper). */
+@Composable
+internal fun PaperDialogComponent(
+    current: com.nisaba.domain.notebook.Paper,
+    onPick: (com.nisaba.domain.notebook.Paper) -> Unit,
+    onClose: () -> Unit,
+) {
+    NisabaDialog("Paper", onClose) {
+        for (p in com.nisaba.domain.notebook.Paper.entries) {
+            NisabaButton(p.name, { onPick(p) }, Modifier.fillMaxWidth(), filled = p == current)
+        }
+    }
+}
+
+/** Held star: pen, eraser, undo and listening within reach, above the star, without the whole bar. */
+@Composable
+internal fun MiniBarComponent(state: NotebookUiState, vm: NotebookViewModel, modifier: Modifier) {
+    val c = Nisaba.colors
+    Column(
+        modifier.padding(end = HANDLE_MARGIN.dp, bottom = (HANDLE_SIZE + 2 * HANDLE_MARGIN).dp).background(c.paper)
+            .border(BorderStroke(1.dp, c.ink)).padding(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        com.nisaba.ui.theme.NisabaIconButton(
+            com.nisaba.ui.theme.NisabaIcon.Pen, "Pen", { vm.setTool(com.nisaba.device.PenTool.Pen); vm.closeMiniBar() },
+            selected = state.tool == com.nisaba.device.PenTool.Pen,
+        )
+        com.nisaba.ui.theme.NisabaIconButton(
+            com.nisaba.ui.theme.NisabaIcon.Eraser, "Eraser", { vm.setTool(com.nisaba.device.PenTool.StrokeEraser); vm.closeMiniBar() },
+            selected = state.tool.erases,
+        )
+        com.nisaba.ui.theme.NisabaIconButton(com.nisaba.ui.theme.NisabaIcon.Undo, "Undo", { vm.undo() }, enabled = state.canUndo)
+        if (state.aiAvailable) {
+            com.nisaba.ui.theme.NisabaIconButton(
+                if (state.listening) com.nisaba.ui.theme.NisabaIcon.Listening else com.nisaba.ui.theme.NisabaIcon.Muted,
+                "Listening", { vm.toggleListening(); vm.closeMiniBar() }, selected = state.listening,
+            )
+        }
+    }
+}
+
+/** "Export as…": the system's save dialog for a PDF or a text file, then the notebook is written there. */
+@Composable
+internal fun rememberExportHandler(vm: NotebookViewModel): (NotebookEffect.Export) -> Unit {
+    var asPdf by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(true) }
+    val pdf = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/pdf"),
+    ) { uri -> vm.exportTo(true, uri?.toString()) }
+    val text = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("text/markdown"),
+    ) { uri -> vm.exportTo(false, uri?.toString()) }
+    return { fx -> asPdf = fx.asPdf; if (fx.asPdf) pdf.launch(fx.name) else text.launch(fx.name) }
+}

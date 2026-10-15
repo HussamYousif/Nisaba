@@ -55,7 +55,7 @@ fun NotebookToolbarComponent(state: NotebookUiState, vm: NotebookViewModel, onBa
         if (!state.endless) {
             val pageChip = Modifier.border(BorderStroke(1.dp, c.faint)).clickable { vm.openPageGrid() }
             Box(pageChip.padding(horizontal = 12.dp, vertical = 10.dp)) {
-                Text("${state.pageIndex + 1} / ${state.pageCount} ▾", style = MaterialTheme.typography.labelLarge)
+                Text("${state.pageLabel} ▾", style = MaterialTheme.typography.labelLarge)
             }
             Spacer(Modifier.width(10.dp))
         }
@@ -113,6 +113,12 @@ internal fun notebookMenu(
     }
     add(MenuItem(if (state.isPrivate) "Private: on (tap to turn off)" else "Make private (nothing remembered)", vm::togglePrivate))
     if (state.aiAvailable) add(MenuItem("Voice: $voice", vm::openVoice))
+    if (!state.endless) add(MenuItem("Paper: ${state.paper.name.lowercase()}…", vm::openPaper))
+    if (state.aiAvailable && state.hasDocument) {
+        add(MenuItem(if (state.lesson) "Stop tutoring" else "Tutor me on this PDF", vm::toggleTutor))
+    }
+    add(MenuItem("Export as PDF…", { vm.export(asPdf = true) }))
+    add(MenuItem("Export as text…", { vm.export(asPdf = false) }))
     add(MenuItem("Rename", vm::beginRename))
     add(MenuItem("Settings", onOpenSettings))
 }
@@ -122,36 +128,5 @@ internal fun notebookMenu(
 fun NotebookMenuComponent(title: String, menu: List<MenuItem>, onClose: () -> Unit) {
     NisabaDialog(title.ifBlank { "Notebook" }, onClose) {
         for (item in menu) NisabaButton(item.label, { onClose(); item.onClick() }, Modifier.fillMaxWidth())
-    }
-}
-
-private const val GRID_COLUMNS = 6
-private const val GRID_ROWS = 6
-
-/** Every page as a number, a screenful at a time (no scrolling on e-ink); a tap opens it. */
-@Composable
-fun PageGridComponent(state: NotebookUiState, vm: NotebookViewModel) {
-    val perScreen = GRID_COLUMNS * GRID_ROWS
-    val screen = state.pageGridScreen
-    val first = screen * perScreen
-    NisabaDialog("Pages", vm::closePageGrid) {
-        for (r in 0 until GRID_ROWS) {
-            val start = first + r * GRID_COLUMNS
-            if (start >= state.pageCount) break
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                for (i in start until minOf(start + GRID_COLUMNS, state.pageCount)) {
-                    val cell = Modifier.size(width = 64.dp, height = 48.dp)
-                    NisabaButton("${i + 1}", { vm.goToPage(i) }, cell, filled = i == state.pageIndex)
-                }
-            }
-        }
-        val screens = (state.pageCount + perScreen - 1) / perScreen
-        if (screens > 1) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                NisabaButton("‹ Earlier", { vm.pageGridScreen(screen - 1) }, enabled = screen > 0)
-                Text("${screen + 1} of $screens", style = MaterialTheme.typography.labelLarge)
-                NisabaButton("Later ›", { vm.pageGridScreen(screen + 1) }, enabled = screen < screens - 1)
-            }
-        }
     }
 }

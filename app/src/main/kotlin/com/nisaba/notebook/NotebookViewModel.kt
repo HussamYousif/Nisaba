@@ -37,6 +37,8 @@ class NotebookViewModel(
     internal val deps: NotebookDeps,
     scopeOverride: CoroutineScope? = null,
     internal val startPage: PageId? = null,
+    /** A search hit: outlined on the page until the pen comes down. */
+    internal val startMark: com.nisaba.domain.shared.PageRect? = null,
     internal val eraserRadius: Float = ERASER_RADIUS,
     internal val toolbarHideMillis: Long = TOOLBAR_HIDE_MILLIS,
     internal val toolbarUseMillis: Long = TOOLBAR_USE_MILLIS,
@@ -82,7 +84,7 @@ class NotebookViewModel(
                     opened = true
                     val target = startPage ?: deps.memory.lastPage(deps.notebookId) // search hit, else where it was left
                     openPage(nb.pages.indexOfFirst { it.id == target }.coerceAtLeast(0), full = false)
-                    if (startPage == null) maybeDailyPage(nb)
+                    if (startPage == null) maybeDailyPage(nb) else mutableState.update { it.copy(highlight = startMark) }
                 } else {
                     publish()
                 }
@@ -214,7 +216,8 @@ class NotebookViewModel(
                 background = page.background, strokes = e.ink.strokes, canUndo = e.canUndo, canRedo = e.canRedo,
                 listening = nb.notebook.listening, loading = false, endless = page.size.isEndless, viewOrigin = viewOrigin,
                 lesson = nb.notebook.teachGoal != null, personaId = nb.notebook.personaId, style = nb.notebook.style,
-                isPrivate = nb.notebook.isPrivate,
+                isPrivate = nb.notebook.isPrivate, pages = nb.pages, pageLabel = com.nisaba.domain.notebook.pageLabel(nb.pages, pageIndex),
+                hasDocument = nb.notebook.documentId != null, paper = nb.notebook.paper,
             )
         }
         if (mutableState.value.hintPending && e.ink.strokes.isNotEmpty()) {
@@ -230,7 +233,7 @@ class NotebookViewModel(
         internal const val FLASH_EVERY = 5
         const val ERASER_RADIUS = 16f
         internal const val ANSWER_HIT = 40f
-        internal const val PAGE_GRID_SIZE = 36
+        internal const val PAGE_GRID_SIZE = PAGES_PER_SCREEN
         const val TOOLBAR_HIDE_MILLIS = 3000L
         const val TOOLBAR_USE_MILLIS = 5000L
         internal const val RESHOW_GUARD_MILLIS = 500L

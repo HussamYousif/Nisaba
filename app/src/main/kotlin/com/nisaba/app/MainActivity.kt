@@ -29,17 +29,19 @@ class MainActivity : ComponentActivity() {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         if (BuildConfig.DEBUG) {
-            graph.forceMotionPen = intent.getBooleanExtra("pen_motion", false)
-            graph.debugWriteText = intent.getStringExtra("write")
-            graph.debugOpenFirst = intent.getBooleanExtra("open_first", false)
-            graph.debugImportPdf = intent.getStringExtra("import_pdf")
-            graph.debugLearnGoal = intent.getStringExtra("learn_goal") // with import_pdf: a lesson notebook ("" = no goal)
-            graph.debugPersona = intent.getStringExtra("persona") // with import_pdf: its voice (a PersonaRegistry id)
-            graph.debugProxy = intent.getStringExtra("proxy") // "127.0.0.1:8899": scripts/dev_proxy.py over adb reverse
-            graph.debugNewNotebook = intent.getStringExtra("new_notebook") // a fresh test notebook, opened at once
-            graph.debugCanvas = intent.getBooleanExtra("canvas", false)
-            graph.debugDeletePrefix = intent.getStringExtra("delete_prefix") // test notebooks to remove
+            graph.debug.forceMotionPen = intent.getBooleanExtra("pen_motion", false)
+            graph.debug.debugWriteText = intent.getStringExtra("write")
+            graph.debug.debugOpenFirst = intent.getBooleanExtra("open_first", false)
+            graph.debug.debugImportPdf = intent.getStringExtra("import_pdf")
+            graph.debug.debugLearnGoal = intent.getStringExtra("learn_goal") // with import_pdf: a lesson notebook ("" = no goal)
+            graph.debug.debugPersona = intent.getStringExtra("persona") // with import_pdf: its voice (a PersonaRegistry id)
+            graph.debug.debugProxy = intent.getStringExtra("proxy") // "127.0.0.1:8899": scripts/dev_proxy.py over adb reverse
+            graph.debug.debugNewNotebook = intent.getStringExtra("new_notebook") // a fresh test notebook, opened at once
+            graph.debug.debugCanvas = intent.getBooleanExtra("canvas", false)
+            graph.debug.debugDeletePrefix = intent.getStringExtra("delete_prefix") // test notebooks to remove
+            graph.debug.startHere = intent.getBooleanExtra("start_here", false)
         }
+        incomingPdf(intent)?.let { graph.debug.incomingPdf = it }
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowInsetsControllerCompat(window, window.decorView).apply {
             hide(WindowInsetsCompat.Type.systemBars())
@@ -61,10 +63,19 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** A PDF handed over by another app (View or Share), as a location to import. */
+    private fun incomingPdf(i: android.content.Intent?): String? = when (i?.action) {
+        android.content.Intent.ACTION_VIEW -> i.data?.toString()
+        android.content.Intent.ACTION_SEND -> androidx.core.content.IntentCompat
+            .getParcelableExtra(i, android.content.Intent.EXTRA_STREAM, android.net.Uri::class.java)?.toString()
+        else -> null
+    }
+
     /** Debug: `am start --activity-single-top --es write '…'` writes into the notebook already open. */
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
-        if (BuildConfig.DEBUG) intent.getStringExtra("write")?.let { graph.debugWrites.tryEmit(it) }
+        incomingPdf(intent)?.let { graph.debug.incomingPdf = it; graph.debug.incoming.tryEmit(it) }
+        if (BuildConfig.DEBUG) intent.getStringExtra("write")?.let { graph.debug.debugWrites.tryEmit(it) }
     }
 
     override fun onResume() {

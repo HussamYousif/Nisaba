@@ -8,8 +8,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -29,15 +27,14 @@ import com.nisaba.ui.theme.NisabaTextField
 fun WelcomeScreen(state: SettingsUiState, vm: SettingsViewModel, onDone: () -> Unit) {
     val c = Nisaba.colors
     Column(
-        Modifier.fillMaxSize().background(c.paper).verticalScroll(rememberScrollState())
-            .padding(horizontal = 48.dp, vertical = 40.dp),
+        Modifier.fillMaxSize().background(c.paper).padding(horizontal = 48.dp, vertical = 40.dp), // one screen: no scrolling
         verticalArrangement = Arrangement.spacedBy(24.dp),
     ) {
         HandTextComponent("Nisaba", c.lapis, Modifier.width(300.dp))
         Text("Write. Pause. It answers in handwriting.", style = MaterialTheme.typography.headlineMedium)
         Text(
-            "When you stop writing for a few seconds, Nisaba looks at your page " +
-                "and, if you asked something, writes the answer beneath your ink.",
+            "When you stop writing for a few seconds, Nisaba reads your page and writes beneath your ink: an answer to a " +
+                "question, a word on a note. A \"Start here\" notebook in the library shows the rest.",
             style = MaterialTheme.typography.bodyLarge,
         )
         Text("What leaves this device", style = MaterialTheme.typography.titleLarge)

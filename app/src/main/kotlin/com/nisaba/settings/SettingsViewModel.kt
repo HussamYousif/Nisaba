@@ -25,6 +25,13 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+/** Backups: now to a picked file, a restore from one, a folder for weekly ones (null in tests). */
+class SettingsBackups(
+    val backupTo: suspend (String) -> Boolean,
+    val restoreFrom: suspend (String) -> Boolean,
+    val setFolder: suspend (String) -> Unit,
+)
+
 class SettingsViewModel(
     private val store: SettingsStore,
     private val secrets: SecretStore,
@@ -32,6 +39,7 @@ class SettingsViewModel(
     memory: ObserveMemoryUseCase? = null,
     usage: (suspend () -> UsageSummary)? = null,
     scopeOverride: CoroutineScope? = null,
+    private val backups: SettingsBackups? = null,
 ) : ViewModel() {
     private val scope = scopeOverride ?: viewModelScope
     private val _state = MutableStateFlow(SettingsUiState())
@@ -95,4 +103,32 @@ class SettingsViewModel(
     fun setInk(ink: AnswerInk) = update { it.copy(answerInk = ink) }
     fun setCodeHighlight(style: CodeHighlight) = update { it.copy(codeHighlight = style) }
     fun finishOnboarding() = update { it.copy(onboarded = true) }
+
+    fun backupTo(uri: String?) {
+        val b = backups ?: return
+        if (uri == null) return
+        _state.update { it.copy(backupNote = "Backing up…") }
+        scope.launch {
+            val ok = b.backupTo(uri)
+            _state.update { it.copy(backupNote = if (ok) "Backed up." else "The backup could not be written.") }
+        }
+    }
+
+    fun setBackupFolder(uri: String?) {
+        val b = backups ?: return
+        if (uri == null) return
+        scope.launch { b.setFolder(uri); _state.update { it.copy(backupNote = "Weekly backups go to that folder; one is there now.") } }
+    }
+
+    fun restoreFrom(uri: String?) {
+        val b = backups ?: return
+        if (uri == null) return
+        _state.update { it.copy(backupNote = "Restoring…") }
+        scope.launch {
+            val ok = b.restoreFrom(uri)
+            _state.update { if (ok) it.copy(restartNow = true) else it.copy(backupNote = NOT_A_BACKUP) }
+        }
+    }
 }
+
+private const val NOT_A_BACKUP = "That isn't a Nisaba backup; nothing was changed."

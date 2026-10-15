@@ -78,6 +78,7 @@ class PageView(
     internal var pageId: com.nisaba.domain.shared.PageId? = null
     internal var pageSize = PageSize.PORTRAIT
     internal var pageBackground: PageBackground = PageBackground.Blank
+    internal var paper = com.nisaba.domain.notebook.Paper.Blank
     internal var strokes: List<Stroke> = emptyList()
     internal var layer: Bitmap? = null
     internal var layerCanvas: Canvas? = null
@@ -98,10 +99,20 @@ class PageView(
     internal var downX = 0f; internal var downY = 0f; internal var downTime = 0L
     internal var maxPointers = 0; internal var moved = false
 
+    private fun unchanged(size: PageSize, bg: PageBackground, paper: com.nisaba.domain.notebook.Paper) =
+        size == pageSize && bg == pageBackground && paper == this.paper
+
     /** Shows page [id]; another page starts from nothing (its ink follows in [setStrokes]), so nothing carries over. */
-    fun setPage(size: PageSize, bg: PageBackground, origin: PagePoint? = null, id: com.nisaba.domain.shared.PageId? = null) {
+    fun setPage(
+        size: PageSize,
+        bg: PageBackground,
+        origin: PagePoint? = null,
+        id: com.nisaba.domain.shared.PageId? = null,
+        paper: com.nisaba.domain.notebook.Paper = com.nisaba.domain.notebook.Paper.Blank,
+    ) {
         val samePage = id == pageId
-        if (samePage && size == pageSize && bg == pageBackground) return
+        if (samePage && unchanged(size, bg, paper)) return
+        this.paper = paper
         if (!samePage) { strokes = emptyList(); drawnByHand.clear(); handPieces.clear(); liveStrokesAwaitingCommit = 0 }
         pageId = id
         pageSize = size; pageBackground = bg
@@ -114,14 +125,6 @@ class PageView(
     }
 
     /** On an endless canvas, only the strokes that reach [area] (view px; the whole view when null): the canvas is huge. */
-    internal fun visibleStrokes(area: Rect? = null): List<Stroke> {
-        if (!endless) return strokes
-        val a = area ?: Rect(0, 0, width, height)
-        val l = panX + a.left - MAX_WIDTH; val t = panY + a.top - MAX_WIDTH
-        val r = panX + a.right + MAX_WIDTH; val b = panY + a.bottom + MAX_WIDTH
-        return strokes.filter { s -> s.bounds.let { it.right >= l && it.left <= r && it.bottom >= t && it.top <= b } }
-    }
-
     /** Applies new ink: incremental when exactly one stroke was appended, full rebuild otherwise. */
     fun setStrokes(next: List<Stroke>) {
         val prev = strokes
@@ -209,7 +212,7 @@ class PageView(
         val t0 = SystemClock.uptimeMillis()
         canvas.drawColor(BackgroundRenderer.PAPER)
         withPageTransform(canvas) {
-            background.draw(canvas, pageSize, pageBackground)
+            background.draw(canvas, pageSize, pageBackground, paper)
             ink.drawAll(canvas, visibleStrokes())
             for (p in handPieces) ink.drawLive(canvas, p.points, p.argb, p.widthScale)
         }

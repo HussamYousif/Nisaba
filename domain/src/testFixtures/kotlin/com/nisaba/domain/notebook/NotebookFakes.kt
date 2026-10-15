@@ -31,7 +31,7 @@ class FakeNotebookStore : NotebookStore {
             val n = it.notebook
             NotebookSummary(
                 n.id, n.name, n.updatedAtMillis, it.pages.size, n.coverSeed, n.documentId != null, it.pages.any { p -> p.size.isEndless },
-                n.teachGoal != null, n.personaId, n.isPrivate,
+                n.teachGoal != null, n.personaId, n.isPrivate, n.pinned, n.deletedAtMillis,
             )
         }
     }
@@ -80,9 +80,18 @@ class FakeNotebookStore : NotebookStore {
         val cur = books.value[id] ?: return
         books.value += (id to cur.copy(notebook = cur.notebook.copy(personaId = personaId)))
     }
-    override suspend fun setPrivate(id: NotebookId, isPrivate: Boolean) {
+    override suspend fun setPrivate(id: NotebookId, isPrivate: Boolean) = change(id) { it.copy(isPrivate = isPrivate) }
+    override suspend fun setPinned(id: NotebookId, pinned: Boolean) = change(id) { it.copy(pinned = pinned) }
+    override suspend fun setTrashed(id: NotebookId, atMillis: Long?) = change(id) { it.copy(deletedAtMillis = atMillis) }
+    override suspend fun setPaper(id: NotebookId, paper: Paper) = change(id) { it.copy(paper = paper) }
+    override suspend fun setTeachGoal(id: NotebookId, goal: String?) = change(id) { it.copy(teachGoal = goal) }
+    override suspend fun deletePage(pageId: PageId) {
+        val (id, cur) = books.value.entries.firstOrNull { e -> e.value.pages.any { it.id == pageId } }?.toPair() ?: return
+        books.value += (id to cur.copy(pages = cur.pages.filterNot { it.id == pageId }))
+    }
+    private fun change(id: NotebookId, f: (Notebook) -> Notebook) {
         val cur = books.value[id] ?: return
-        books.value += (id to cur.copy(notebook = cur.notebook.copy(isPrivate = isPrivate)))
+        books.value += (id to cur.copy(notebook = f(cur.notebook)))
     }
 }
 

@@ -15,12 +15,13 @@ private const val BG_DOCUMENT = 1
 
 fun Notebook.toDto() = NotebookDto(
     id.value, name, createdAtMillis, updatedAtMillis, documentId?.value, listening, coverSeed, teachGoal, personaId,
-    questionsOnly, answerLength.name, isPrivate,
+    questionsOnly, answerLength.name, isPrivate, pinned, deletedAtMillis, paper.name,
 )
 
 fun NotebookDto.toModel() = Notebook(
     NotebookId(id), name, createdAt, updatedAt, documentId?.let(::DocumentId), listening, coverSeed, teachGoal, persona,
     questionsOnly, AnswerLength.entries.firstOrNull { it.name == answerLength } ?: AnswerLength.Normal, isPrivate,
+    pinned, deletedAt, com.nisaba.domain.notebook.Paper.entries.firstOrNull { it.name == paper } ?: com.nisaba.domain.notebook.Paper.Blank,
 )
 
 fun Page.toDto() = PageDto(
@@ -40,4 +41,6 @@ fun PageDto.toModel() = Page(
 )
 
 fun SummaryRowDto.toModel() =
-    NotebookSummary(NotebookId(id), name, updatedAt, pageCount, coverSeed, hasDocument, endless, lesson, persona, isPrivate)
+    NotebookSummary(
+        NotebookId(id), name, updatedAt, pageCount, coverSeed, hasDocument, endless, lesson, persona, isPrivate, pinned, deletedAt,
+    )

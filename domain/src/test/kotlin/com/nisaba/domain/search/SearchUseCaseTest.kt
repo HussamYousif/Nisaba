@@ -46,4 +46,30 @@ class SearchUseCaseTest {
         assertTrue(s.contains("fjord") && s.startsWith("…") && s.endsWith("…"))
         assertEquals("short", snippet("short", "x"))
     }
+
+    @Test fun namesAndPdfTextAreFoundTooButNeverInPrivateNotebooksOrTheTrash() = runTest {
+        val notebooks = FakeNotebookStore()
+        val create = CreateNotebookUseCase(notebooks, FakeClock(), FakeIdGen("n"))
+        val trip = create("Fjord trip")
+        val doc = com.nisaba.domain.shared.DocumentId("d")
+        val pdf = (com.nisaba.domain.document.ImportDocumentUseCase(
+            object : com.nisaba.domain.document.DocumentImporter {
+                override suspend fun import(source: String, onProgress: (Float) -> Unit) = com.nisaba.domain.shared.Outcome.Ok(
+                    com.nisaba.domain.document.DocumentInfo(doc, "Geology", List(2) { com.nisaba.domain.shared.PageSize.PORTRAIT }, true),
+                )
+            },
+            create,
+        )("x") as com.nisaba.domain.shared.Outcome.Ok).value
+        val texts = object : com.nisaba.domain.document.DocumentTextSource {
+            override suspend fun pages(id: com.nisaba.domain.shared.DocumentId) =
+                listOf("Intro", "A sill is a shallow ridge at a fjord mouth")
+        }
+        val search = SearchUseCase(FakeExchangeStore(), notebooks, texts)
+        val hits = search("fjord")
+        assertEquals(listOf(HitKind.Title, HitKind.Document), hits.map { it.kind })
+        assertEquals(2, hits.last().pageNumber) // the notebook page that shows p. 2
+        com.nisaba.domain.notebook.SetPrivateUseCase(notebooks)(pdf.id, true)
+        com.nisaba.domain.notebook.TrashNotebookUseCase(notebooks, FakeClock())(trip.id)
+        assertTrue(search("fjord").isEmpty())
+    }
 }
