@@ -250,6 +250,18 @@ Size → rough solo effort: **S** ½ day · **M** 1 day · **L** 2–3 days.
 - [x] **M9.1 Personas per notebook** (M) ✅ 2026-10-15: registry + prompt split (v11), Room v6, New wizard, ⋯ → Voice, gates
 - [ ] **M9.2** per-voice failure lines/hint, `:tools` eval runner (PLAN M9.2)
 
+### M10–M18 — Improvement programme (PLAN M10–M18, `docs/improvements.md`)
+
+- [ ] **M10** data safety and the loop (#1–#6, #17, #31, #33 part, #34) + dev proxy
+- [ ] **M11** headroom: big files split, 300-line rule (#35)
+- [ ] **M12** answer quality and cost (#7–#16, #54)
+- [ ] **M13** visibility and control (#18, #19/#38, #22, #23, #42, #44, #45)
+- [ ] **M14** voices alive (#41, #43, #53)
+- [ ] **M15** new ways to ask (#39, #40, #50, #51, #29)
+- [ ] **M16** learning and habits (#46–#49, #52)
+- [ ] **M17** library, pages, PDF, search, onboarding (#20, #21, #24–#28, #30, #37)
+- [ ] **M18** release readiness (#32, #36, #33)
+
 ---
 
 ## 6. Decisions (fill in during M0; the code reads these numbers)

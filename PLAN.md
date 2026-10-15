@@ -688,6 +688,47 @@ Goal: answers are *written*: humanized single-line glyphs drawn along the pen pa
 
 ---
 
+## M10–M18 — The improvement programme (2026-10-15)
+
+Source: `docs/improvements.md` (#1–#54). Order = risk first (data, loop), then headroom (refactor), then quality, then features, then release. Every batch ends green (`./gradlew check assembleDebug`), with tests, device checks where it draws or reads the pen, a PROGRESS log line and **a commit**. The Boox is often offline: a debug-only proxy over `adb reverse` gives it the laptop's network for live checks (M10.0).
+
+### M10 — Data safety and the loop · ~3 days
+- **M10.0** Dev proxy: `--es proxy 127.0.0.1:8899` (debug) routes OkHttp through `adb reverse` to `scripts/dev_proxy.py` (CONNECT only, localhost).
+- **M10.1** #1 spill follow-up hang: the animator starts each answer at page 0 (reset `page`/`writingOn` on a new `reqId`); `Play` carries the page the answer is written on; the session follows the page after a spill. Regression tests (animator + VM).
+- **M10.2** #2 unreadable ink file: `InkStore.load` tells missing from unreadable; unreadable → quarantined copy (`.corrupt`), saves refused for that page, one line on the page. Newer-version files likewise.
+- **M10.3** #3 durability: commit the hand's strokes per finished block; save the exchange when the stream ends (status updated after); ON_STOP = leaving the page; `planBlock`/`append` failures → Failed, not a crash.
+- **M10.4** #4 overlay: strokes still being written live in an overlay bitmap until committed (rebuilds can't wipe them); `setPage` keyed on the page id.
+- **M10.5** #5 `finish_reason`: length / resource stops → Interrupted (no memory, retry chip); `max_tokens` per purpose.
+- **M10.6** #6 document window: fixed 20-page blocks; lessons centre on the last cited page.
+- **M10.7** #17 reopen at the last page; `updatedAt` bumped by ink and exchanges.
+- **M10.8** #31 Onyx fallback to the MotionEvent pen; #34 a paint per draw call; #33 (part) area-erase bounds prefilter, hand planning off the main thread.
+
+### M11 — Headroom · ~2 days
+- #35 split `NotebookViewModel` (ink editing → `domain/ink/InkEditSession`, toolbar timing, answers/spill), `PageView`, `ConversationSession`, `AnswerParser`, `CodeHighlightRules` (data tables) under 300 lines; debug harness → `src/debug`; `verifyFileRoles` fails files over 300 lines.
+
+### M12 — Answer quality and cost · ~3 days
+- #7 snapshots: new strokes dark, the rest faded, colour JPEG; Tidy instruction matches. #8 direct answer first + #54 timings (first token, first ink) stored and shown in Usage. #9 reasoning counts as progress. #10 pen-down stops the hand, not the stream. #11 erase shrinks the utterance, tiny ones skipped, cancelled requests counted. #12 history trimmed to 70 %, token estimate calibrated. #13 memory cleanup past 150 facts. #14 ask-again escalates (thinking on), clean quote, erased exchanges leave history. #15 `:tools eval` runner. #16 temperature mapping checked and tuned.
+
+### M13 — Visibility and control · ~2 days
+- #18 status star (listening / working / muted / failed) + a pending question survives a page turn. #19 answer modes per notebook (Everything · Questions only · When I ask), default in Settings (replaces the dead `listeningDefault`, #38). #22 e-ink: restore FAST after a clean pass, flash every 5th turn, popovers without a full-screen veil, darker `faint`. #23 answer actions (Shorter · Deeper · Example · Copy text · Report). #44 length per notebook. #42 second opinion from another voice. #45 offline queue.
+
+### M14 — Voices alive · ~2 days
+- #41 a hand, ink and pace per voice. #43 custom voices (Room v7) + "someone like…" drafting. #53 voice sigils on covers; failure lines and the first-page hint in the voice.
+
+### M15 — New ways to ask · ~4 days
+- #39 circle to ask. #40 check my work (margin ✓/✗ per line). #50 margin glosses on PDFs. #51 sketch → clean diagram. #29 lasso (move · delete · recolour · ask about it).
+
+### M16 — Learning and habits · ~3 days
+- #46 review page (spaced repetition from lesson topics + cards). #47 quiz me on this notebook. #48 daily page + weekly recap. #49 private notebooks. #52 ink to reminders.
+
+### M17 — Library, pages, PDF, search, onboarding · ~4 days
+- #20 backup/restore + trash + export (PDF, Markdown, share). #21 page management (thumbnails, delete/move/duplicate, empty spill pages removed). #24 PDF page labels, Go to p., "Open with Nisaba", tutor switch. #25 paper (lined/grid/dots). #26 library v2 (paged grid, continue, pin, relative time). #27 "Start here" notebook + Welcome copy. #28 search v2. #30 mini-bar at the star. #37 PDF robustness.
+
+### M18 — Release readiness · ~2 days
+- #32 SDK 36, R8 + keep rules, signing from `keystore.properties` (you create the keystore), privacy policy + data-safety notes, narrower hidden-API exemption, character voices hidden in release builds (IP). #36 tests/CI (emulator job, no wall-clock asserts). #33 performance pass against D§2.
+
+---
+
 ## Cross-cutting
 
 ### Logging & diagnostics
