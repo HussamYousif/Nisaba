@@ -88,6 +88,7 @@ fun NotebookScreen(
         if (state.background is PageBackground.DocumentPage) { ensureRaster(state.background, state.pageIndex); v.reloadBackground() }
     }
     LaunchedEffect(pen) { pen.events.collect { vm.onPenEvent(it) } }
+    AppVisibility(vm)
     PenWiring(state, pageView, pen)
     PenExclusions(state.toolbarVisible, pageView, toolbarPx)
     DisposableEffect(Unit) { eink.fast(); onDispose { eink.normal() } }
@@ -109,7 +110,7 @@ fun NotebookScreen(
                     pageView = v
                 }
             },
-            update = { v -> v.setPage(state.pageSize, state.background, state.viewOrigin); v.setStrokes(state.strokes) },
+            update = { v -> v.setPage(state.pageSize, state.background, state.viewOrigin, state.pageId); v.setStrokes(state.strokes) },
         )
         if (state.showHint) {
             HandTextComponent("Write, then pause.", Nisaba.colors.faint, Modifier.align(Alignment.Center).fillMaxWidth(HINT_WIDTH))
@@ -118,10 +119,25 @@ fun NotebookScreen(
             if (state.toolbarVisible) NotebookToolbarComponent(state, vm, onBack)
             state.failure?.let { FailureChip(it, vm::retry) }
             state.memoryNote?.let { MemoryChip(it, vm::dismissMemoryNote) }
+            state.notice?.let { MemoryChip(it, vm::dismissNotice, mark = "!") }
         }
         if (!state.toolbarVisible) ToolbarHandle(Modifier.align(Alignment.BottomEnd), vm::showToolbar)
         if (state.menuOpen) NotebookMenuComponent(state.title, notebookMenu(state, vm, onOpenSettings), vm::closeMenu)
         NotebookOverlays(state, vm)
+    }
+}
+
+/** Screen off or another app in front: the hand stops like at a pen-down (its ink is saved); back again, a pause resumes. */
+@Composable
+private fun AppVisibility(vm: NotebookViewModel) {
+    val owner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(owner, vm) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, e ->
+            if (e == androidx.lifecycle.Lifecycle.Event.ON_STOP) vm.onAppHidden()
+            if (e == androidx.lifecycle.Lifecycle.Event.ON_START) vm.onAppShown()
+        }
+        owner.lifecycle.addObserver(observer)
+        onDispose { owner.lifecycle.removeObserver(observer) }
     }
 }
 
@@ -184,6 +200,7 @@ private fun ScribeWiring(
     DisposableEffect(animator) {
         animator.onActiveChanged = { active -> if (active) { pen.suspendRawInk(); eink.fast() } else { pen.resumeRawInk(); eink.normal() } }
         animator.onDrained = { written, ref -> view.markDrawn(vm.onScribeDrained(written, ref, animator.writingOn)) }
+        animator.onBlockWritten = { written, ref -> view.markDrawn(vm.onScribeBlockWritten(written, ref, animator.writingOn)) }
         animator.onPageBreak = { written, toPage ->
             view.markDrawn(vm.onScribePageBreak(written, toPage, animator.lastRef, animator.writingOn))
         }
@@ -227,13 +244,13 @@ private fun FailureChip(text: String, onRetry: () -> Unit) {
 }
 
 @Composable
-private fun MemoryChip(text: String, onDismiss: () -> Unit) {
+private fun MemoryChip(text: String, onDismiss: () -> Unit, mark: String = "✎") {
     val c = Nisaba.colors
     Row(
         Modifier.padding(12.dp).background(c.paper).border(BorderStroke(2.dp, c.lapis)).clickable(onClick = onDismiss).padding(16.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("✎", style = MaterialTheme.typography.titleLarge, color = c.lapis)
+        Text(mark, style = MaterialTheme.typography.titleLarge, color = c.lapis)
         Text(text, style = MaterialTheme.typography.bodyLarge)
     }
 }

@@ -66,6 +66,9 @@ class ScribeAnimator(private val view: ScribeCanvas, private val frames: ScribeF
     var writingOn: PageId? = null
         private set
     private val written = ArrayList<TimedStroke>()
+
+    /** Index of each queued block's last stroke in [queue], and the block, oldest first. */
+    private val blockEnds = ArrayDeque<Pair<Int, BlockRef?>>()
     private var bounds: FloatArray? = null // minX, minY, maxX, maxY of everything drawn in this run
 
     /** Called when the hand starts/stops being in charge of the page (the screen suspends raw ink, switches refresh). */
@@ -73,6 +76,9 @@ class ScribeAnimator(private val view: ScribeCanvas, private val frames: ScribeF
 
     /** Called when every planned stroke has been drawn: the strokes written since the last commit, and the last block. */
     var onDrained: (List<TimedStroke>, BlockRef?) -> Unit = { _, _ -> }
+
+    /** A block is written in full while more is queued: commit it now, so a long answer is saved as it is written. */
+    var onBlockWritten: (List<TimedStroke>, BlockRef?) -> Unit = { _, _ -> }
 
     /** The next stroke belongs to a later page: hand over what was written; the caller turns the page, then [pageReady]. */
     var onPageBreak: (written: List<TimedStroke>, toPage: Int) -> Unit = { _, _ -> }
@@ -84,8 +90,9 @@ class ScribeAnimator(private val view: ScribeCanvas, private val frames: ScribeF
     private val idle get() = !playing && !awaitingPage && strokeIdx >= queue.size
 
     fun enqueue(strokes: List<TimedStroke>, ref: BlockRef? = null, pageId: PageId? = null) {
-        if (paused && startsNewAnswer(ref)) {
-            // a new answer after one the pen stopped: whatever the old one still had planned is never written
+        if ((paused || idle) && startsNewAnswer(ref)) {
+            // a new answer starts on its own question's page (an earlier one may have spilled onto later pages); after
+            // one the pen stopped, whatever the old one still had planned is never written
             clearQueue(); written.clear(); paused = false; awaitingPage = false; page = 0
         }
         val wasIdle = idle
@@ -96,16 +103,17 @@ class ScribeAnimator(private val view: ScribeCanvas, private val frames: ScribeF
             return
         }
         queue += strokes
+        blockEnds.addLast(queue.lastIndex to ref)
         if (wasIdle) { t = strokes.first().startMs - LEAD_MS.toFloat(); lastFrameMs = 0L }
         if (!paused) start()
     }
 
     private fun startsNewAnswer(ref: BlockRef?): Boolean {
         val last = lastRef
-        return ref != null && last != null && ref.reqId != last.reqId
+        return ref != null && last != null && (ref.reqId != last.reqId || ref.session != last.session)
     }
 
-    private fun clearQueue() { queue.clear(); strokeIdx = 0; pointIdx = 0; pieceStart = 0 }
+    private fun clearQueue() { queue.clear(); blockEnds.clear(); strokeIdx = 0; pointIdx = 0; pieceStart = 0 }
 
     fun resume() {
         if (!paused) return
@@ -225,6 +233,11 @@ class ScribeAnimator(private val view: ScribeCanvas, private val frames: ScribeF
     private fun complete(s: TimedStroke) {
         written += if (pieceStart == 0) s else TimedStroke(s.page, s.points.slice(pieceStart, s.points.size), s.bold, s.wordIndex, s.tone)
         strokeIdx++; pointIdx = 0; pieceStart = 0
+        while (blockEnds.isNotEmpty() && blockEnds.first().first < strokeIdx) {
+            val ref = blockEnds.removeFirst().second
+            // the last block is committed by finish() (with the "done" report); earlier ones as soon as they are written
+            if (strokeIdx < queue.size && written.isNotEmpty()) { val out = ArrayList(written); written.clear(); onBlockWritten(out, ref) }
+        }
     }
 
     private fun finish() {

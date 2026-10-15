@@ -71,6 +71,13 @@ class NotebookViewModelTest {
         FloatArray(11) { x0 + (x1 - x0) * it / 10f }, FloatArray(11) { y }, FloatArray(11) { .5f }, IntArray(11) { it * 8 },
     )
 
+    @Test fun aPageWhoseInkWasKeptAsideSaysSo() = runTest {
+        ink.setAside = true
+        val (vm, _) = open(this)
+        assertEquals(NotebookViewModel.SET_ASIDE_NOTICE, vm.state.value.notice)
+        vm.dismissNotice(); assertEquals(null, vm.state.value.notice)
+    }
+
     @Test fun theVoiceCanBeChangedFromTheMenu() = runTest {
         val (vm, id) = open(this)
         assertEquals(PersonaRegistry.DEFAULT_ID, vm.state.value.personaId)
@@ -336,7 +343,8 @@ class NotebookViewModelTest {
 private class GatedInkStore : InkStore {
     val saved = mutableMapOf<PageId, List<Stroke>>()
     var gate: CompletableDeferred<Unit>? = null
-    override suspend fun load(pageId: PageId) = PageInk(pageId, saved[pageId].orEmpty())
+    var setAside = false
+    override suspend fun load(pageId: PageId) = PageInk(pageId, saved[pageId].orEmpty(), setAside)
     override suspend fun save(pageId: PageId, strokes: List<Stroke>) { gate?.await(); saved[pageId] = strokes }
     override suspend fun deletePages(ids: List<PageId>) { ids.forEach(saved::remove) }
 }

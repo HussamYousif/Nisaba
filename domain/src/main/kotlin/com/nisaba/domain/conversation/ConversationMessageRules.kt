@@ -13,6 +13,10 @@ fun failureMessage(error: DomainError): String = when (error) {
     }
     DomainError.Auth -> "The key was rejected: check Settings"
     DomainError.Quota -> "Out of credit at DeepSeek"
-    is DomainError.Invalid -> if (error.message == "empty answer") "Nothing came back" else "The request was refused"
+    is DomainError.Invalid -> when (error.message) {
+        "empty answer" -> "Nothing came back"
+        CUT_SHORT -> "The answer was cut short"
+        else -> "The request was refused"
+    }
     DomainError.NotFound, is DomainError.Storage -> "Something went wrong"
 }

@@ -58,6 +58,18 @@ class DeepSeekClientTest {
     private fun sse(vararg data: String) = data.joinToString("") { "data: $it\n\n" }
     private fun chunk(text: String) = """{"choices":[{"delta":{"content":${JsonPrimitive(text)}}}]}"""
 
+    @Test fun aReplyStoppedByTheTokenLimitSaysSo() = runBlocking {
+        val body = sse(
+            chunk("<answer>"), """{"choices":[{"delta":{"content":"Os"},"finish_reason":"length"}]}""",
+            """{"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":2,"prompt_cache_hit_tokens":0}}""", "[DONE]",
+        )
+        server.enqueue(MockResponse().setHeader("Content-Type", "text/event-stream").setBody(body))
+        val events = client().ask(request()).toList()
+        val ended = events.filterIsInstance<OracleEvent.Ended>().single()
+        assertEquals(OracleEvent.Ended(com.nisaba.domain.conversation.EndReason.TooLong), ended)
+        assertEquals(listOf(OracleEvent.Delta("<answer>"), OracleEvent.Delta("Os")), events.filterIsInstance<OracleEvent.Delta>())
+    }
+
     @Test fun streamsDeltasAndUsageEvenWhenBytesArriveOneAtATime() = runBlocking {
         val body = ": keep-alive\n\n" + sse(
             chunk("<answer>"), """{"choices":[{"delta":{"reasoning_content":"thinking…"}}]}""", chunk("Oslo."),

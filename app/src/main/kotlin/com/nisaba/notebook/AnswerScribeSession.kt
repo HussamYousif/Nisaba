@@ -45,6 +45,8 @@ sealed interface ScribeCommand {
 /**
  * The conversation's window onto the page: turns "an answer block arrived" into planned pen strokes near the question
  * and tells the view what to show. One instance per open page ([session] tells instances apart); after [close] it is mute.
+ * A long answer spills onto the next page and the instance carries on there, so an answer is written on its question's
+ * page ([pageSize], [ink] and [printed] describe the page in front of the person), not necessarily on [pageId].
  */
 class AnswerScribeSession(
     private val session: Int,
@@ -57,6 +59,8 @@ class AnswerScribeSession(
     private val emit: (ScribeCommand) -> Unit,
     private val onFailure: (DomainError?) -> Unit,
     private val onMemoryNote: (String) -> Unit = {},
+    private val onLayoutError: (Throwable) -> Unit = { android.util.Log.w("Nisaba/Scribe", "block skipped", it) },
+    private val onCutShort: () -> Unit = {},
 ) : ConversationSurface {
     private var utt: Utterance? = null
     private var anchor: PagePoint? = null
@@ -64,6 +68,9 @@ class AnswerScribeSession(
     private var planState: ScribePlanState? = null
     private var currentReq = 0
     private var blocks = 0
+
+    /** Where the current answer is written: the page of its question (after a spill that is no longer [pageId]). */
+    private var answerPage = pageId
     private var closed = false
 
     fun close() { closed = true }
@@ -81,11 +88,15 @@ class AnswerScribeSession(
         if (closed) return
         if (reqId != currentReq || planner == null) startAnswer(reqId)
         val p = planner ?: return
-        val step = p(planState ?: p.start(), block)
-        planState = step.state
         blocks++
+        // a block the hand can't lay out is skipped, never fatal: the answer carries on and still finishes
+        val strokes = try {
+            p(planState ?: p.start(), block).also { planState = it.state }.strokes
+        } catch (@Suppress("TooGenericExceptionCaught") e: RuntimeException) {
+            onLayoutError(e); emptyList()
+        }
         // strokes carry their page; the animator pauses at each break. Sent even when empty so the block is accounted for.
-        emit(ScribeCommand.Play(step.strokes, BlockRef(session, reqId, blocks, exchangeId), pageId))
+        emit(ScribeCommand.Play(strokes, BlockRef(session, reqId, blocks, exchangeId), answerPage))
     }
 
     private fun startAnswer(reqId: Int) {
@@ -94,6 +105,7 @@ class AnswerScribeSession(
         val page = pageSize()
         val s = settings()
         val u = utt
+        answerPage = u?.pageId ?: pageId
         val a = anchor ?: PagePoint(LayoutRegion.MARGIN, LayoutRegion.MARGIN_TOP)
         val userInk = when {
             u == null -> ink()
@@ -133,4 +145,5 @@ class AnswerScribeSession(
     override fun showFailure(error: DomainError) = onFailure(error)
     override fun clearFailure() = onFailure(null)
     override fun showMemoryNote(note: String) = onMemoryNote(note)
+    override fun showCutShort() = onCutShort()
 }

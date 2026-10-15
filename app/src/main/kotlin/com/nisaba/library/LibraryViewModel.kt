@@ -101,10 +101,17 @@ class LibraryViewModel(
     /** Creates the notebook or canvas being named; [onCreated] receives its id (to open it). */
     fun confirmCreate(name: String, onCreated: (NotebookId) -> Unit) {
         val d = _state.value.dialog as? LibraryDialog.NameIt ?: return
-        scope.launch {
-            val nb = create(name, endless = d.kind == NotebookKind.Canvas, personaId = d.personaId)
-            dismiss(); onCreated(nb.id)
-        }
+        createNotebook(name, d.kind, d.personaId) { dismiss(); onCreated(it) }
+    }
+
+    /** A notebook or canvas named [name], answered in the voice [personaId]. */
+    fun createNotebook(name: String, kind: NotebookKind, personaId: String, onCreated: (NotebookId) -> Unit) {
+        scope.launch { onCreated(create(name, endless = kind == NotebookKind.Canvas, personaId = personaId).id) }
+    }
+
+    /** Debug harness: removes the test notebooks whose names start with [prefix]. */
+    fun debugDeleteNamed(prefix: String) {
+        scope.launch { _state.value.notebooks.filter { it.name.startsWith(prefix) }.forEach { delete(it.id) } }
     }
 
     /** The goal for the PDF being learned is in ("" = all of it): import it as a lesson notebook. */

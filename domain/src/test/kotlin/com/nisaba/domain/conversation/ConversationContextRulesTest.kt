@@ -94,6 +94,13 @@ class ConversationContextRulesTest {
         assertTrue(lesson.instruction.endsWith(voiceReminder(zagreus, lesson = true)))
     }
 
+    @Test fun replyCeilingsFollowThePurpose() {
+        assertEquals(1200, buildRequest(input(emptyList())).options.maxTokens)
+        val tidy = ContextInput(emptyList(), null, emptyList(), snap, Settings(), purpose = Purpose.Tidy(PageId("p")))
+        assertEquals(2400, buildRequest(tidy).options.maxTokens)
+        assertEquals(2400, buildRequest(ContextInput(emptyList(), null, emptyList(), snap, Settings(thinking = true))).options.maxTokens)
+    }
+
     @Test fun everyVoiceSharesTheSameReplyContract() {
         val contracts = PersonaRegistry.all.map { systemPrompt(it).removePrefix(it.voice).replace(Regex("at most \\d+ words"), "") }
         assertEquals(1, contracts.toSet().size)

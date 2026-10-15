@@ -13,6 +13,13 @@ object NisabaHttpClient {
             .build()
     }
 
+    /** [hostPort] = "host:port" of an HTTP proxy (debug: a laptop's network over `adb reverse`); null = direct. */
+    fun withProxy(hostPort: String?): OkHttpClient {
+        val (host, port) = hostPort?.split(':')?.takeIf { it.size == 2 } ?: return shared
+        val address = java.net.InetSocketAddress.createUnresolved(host, port.toIntOrNull() ?: return shared)
+        return shared.newBuilder().proxy(java.net.Proxy(java.net.Proxy.Type.HTTP, address)).build()
+    }
+
     private const val CONNECT_SECONDS = 10L
     private const val READ_SECONDS = 90L
 }

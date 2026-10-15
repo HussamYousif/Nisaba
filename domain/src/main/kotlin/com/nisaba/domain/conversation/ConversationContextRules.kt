@@ -82,6 +82,19 @@ class ContextInput(
     val persona: Persona = PersonaRegistry.default,
 )
 
+/**
+ * A reply's ceiling: room for a long answer when asked, but a runaway reply stops after a few pages instead of filling
+ * them. A tidy copy can be a whole page of notes. Thinking may count its reasoning against the same budget: double it.
+ */
+fun maxTokensFor(purpose: Purpose, thinking: Boolean): Int {
+    val base = when (purpose) {
+        is Purpose.Tidy -> 2400
+        Purpose.Opening, Purpose.Resume -> 900
+        Purpose.Writing, is Purpose.Again -> 1200
+    }
+    return if (thinking) base * 2 else base
+}
+
 fun buildRequest(input: ContextInput): OracleRequest {
     val doc = formatDocumentContext(input.documentPages, input.currentDocumentPage)
     val memory = formatMemoryContext(input.facts, (TOKEN_BUDGET * MEMORY_SHARE).toInt())
@@ -114,7 +127,10 @@ fun buildRequest(input: ContextInput): OracleRequest {
     }
     return OracleRequest(
         system = system, documentContext = doc, history = kept, instruction = instruction, images = images,
-        options = OracleOptions(input.settings.model, input.settings.thinking, temperature = temperature),
+        options = OracleOptions(
+            input.settings.model, input.settings.thinking, maxTokens = maxTokensFor(input.purpose, input.settings.thinking),
+            temperature = temperature,
+        ),
         memoryContext = memory,
     )
 }

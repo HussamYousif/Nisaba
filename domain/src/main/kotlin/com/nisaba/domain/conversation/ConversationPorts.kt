@@ -41,6 +41,9 @@ interface ConversationSurface {
 
     /** One line after a reply changed what Nisaba remembers ("Remembered: loved Dune"). */
     fun showMemoryNote(note: String) {}
+
+    /** The answer being written was cut short by the provider (too long, overloaded); what is written stays. */
+    fun showCutShort() {}
 }
 
 /** Extra context the session needs when it builds a request. */

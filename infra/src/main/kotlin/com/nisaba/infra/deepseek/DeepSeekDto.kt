@@ -25,7 +25,7 @@ class ChatRequestDto(
 
 @Serializable class ChatChunkDto(val choices: List<ChoiceDto> = emptyList(), val usage: UsageDto? = null)
 
-@Serializable class ChoiceDto(val delta: DeltaDto? = null)
+@Serializable class ChoiceDto(val delta: DeltaDto? = null, @SerialName("finish_reason") val finishReason: String? = null)
 
 @Serializable class DeltaDto(val content: String? = null)
 

@@ -161,8 +161,11 @@ private fun onFailed(st: ConvStatus, s: ConvState, e: ConvEvent.OracleFailed) = 
             ConvState.Failed(s.utt, e.error),
             ConvEffect.HideInkwell(dry = true), ConvEffect.Record(e.reqId, ExchangeStatus.Failed), ConvEffect.ShowFailure(e.error),
         )
-    // The answer already started: keep the ink written so far and finish quietly as interrupted.
-    s is ConvState.Scribing && s.reqId == e.reqId -> finishIfDone(st, s.copy(streamDone = true, streamFailed = true))
+    // The answer already started: keep the ink written so far and finish as interrupted (quietly, unless it was cut short).
+    s is ConvState.Scribing && s.reqId == e.reqId -> {
+        val (next, fx) = finishIfDone(st, s.copy(streamDone = true, streamFailed = true))
+        next to (if (e.error == DomainError.Invalid(CUT_SHORT)) fx + ConvEffect.ShowCutShort else fx)
+    }
     else -> st.same()
 }
 

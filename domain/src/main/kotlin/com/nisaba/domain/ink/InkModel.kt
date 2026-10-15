@@ -67,7 +67,11 @@ data class Stroke(
     val bounds: PageRect = points.bounds()
 }
 
-data class PageInk(val pageId: PageId, val strokes: List<Stroke>)
+/**
+ * The ink of one page. [setAside] = some saved ink could not be read: its file was moved aside (kept, never overwritten)
+ * and the page holds what could be read.
+ */
+data class PageInk(val pageId: PageId, val strokes: List<Stroke>, val setAside: Boolean = false)
 
 enum class EraseMode { Stroke, Area }
 

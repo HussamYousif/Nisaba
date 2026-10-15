@@ -50,34 +50,47 @@ class InkFileStoreTest {
         assertEquals(strokes, store().load(page).strokes)
     }
 
-    @Test fun truncatedMainFallsBackToBackup() = runTest {
+    private fun keptAside() = dir.listFiles { f -> f.name.contains(".corrupt-") }.orEmpty().toList()
+
+    @Test fun truncatedMainFallsBackToBackupAndIsKeptAside() = runTest {
         val store = store()
         store.save(page, listOf(strokes[0])); store.flush()
         store.save(page, strokes); store.flush()
-        File(dir, "p1.ink").writeBytes(File(dir, "p1.ink").readBytes().copyOf(7))
-        assertEquals(listOf(strokes[0]), store().load(page).strokes)
+        val damaged = File(dir, "p1.ink").readBytes().copyOf(7)
+        File(dir, "p1.ink").writeBytes(damaged)
+        val loaded = store().load(page)
+        assertEquals(listOf(strokes[0]), loaded.strokes); assertTrue(loaded.setAside)
+        assertEquals(damaged.toList(), keptAside().single().readBytes().toList())
     }
 
-    @Test fun garbageEverywhereYieldsEmptyPage() = runTest {
+    @Test fun garbageEverywhereYieldsEmptyPageButKeepsTheFiles() = runTest {
         File(dir, "p1.ink").writeBytes(ByteArray(64) { 0x7F })
         File(dir, "p1.ink.bak").writeBytes(ByteArray(3) { 1 })
-        assertTrue(store().load(page).strokes.isEmpty())
+        val loaded = store().load(page)
+        assertTrue(loaded.strokes.isEmpty() && loaded.setAside)
+        assertEquals(2, keptAside().size)
     }
 
     @Test fun missingFileIsAnEmptyPage() = runTest {
-        assertTrue(store().load(PageId("never")).strokes.isEmpty())
+        val loaded = store().load(PageId("never"))
+        assertTrue(loaded.strokes.isEmpty()); assertTrue(!loaded.setAside)
     }
 
-    @Test fun newerFileVersionIsNotMisread() = runTest {
-        val future = InkFileDto(version = INK_FILE_VERSION + 1, strokes = strokes.map { it.toDto() })
-        File(dir, "p1.ink").writeBytes(ProtoBuf.encodeToByteArray(future))
-        assertTrue(store().load(page).strokes.isEmpty())
+    @Test fun newerFileVersionIsNeverOverwritten() = runTest { // an older build opening a newer page must not destroy it
+        val future = ProtoBuf.encodeToByteArray(InkFileDto(version = INK_FILE_VERSION + 1, strokes = strokes.map { it.toDto() }))
+        File(dir, "p1.ink").writeBytes(future)
+        val store = store()
+        val loaded = store.load(page)
+        assertTrue(loaded.strokes.isEmpty() && loaded.setAside)
+        store.save(page, listOf(strokes[0])); store.flush(); store.save(page, strokes); store.flush() // two saves rotate .bak
+        assertEquals(future.toList(), keptAside().single().readBytes().toList())
     }
 
     @Test fun deleteRemovesAllFilesAndPendingWrites() = runTest {
         val store = store()
         store.save(page, strokes); store.flush(); store.save(page, strokes); store.flush()
         store.save(page, strokes)
+        File(dir, "p1.ink.corrupt-1").writeBytes(ByteArray(3)) // kept aside earlier: goes with its page
         store.deletePages(listOf(page))
         advanceTimeBy(1000)
         assertTrue(dir.listFiles().orEmpty().none { it.name.startsWith("p1") })

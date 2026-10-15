@@ -81,7 +81,26 @@ class OracleRequest(
 sealed interface OracleEvent {
     data class Delta(val text: String) : OracleEvent
     data class Usage(val promptTokens: Int, val completionTokens: Int, val cachedTokens: Int) : OracleEvent
+
+    /** Why the model stopped; anything but [EndReason.Finished] means the reply is incomplete. */
+    data class Ended(val reason: EndReason) : OracleEvent
 }
+
+enum class EndReason {
+    Finished,
+
+    /** Hit the token limit mid-reply. */
+    TooLong,
+
+    /** The provider ran out of capacity mid-reply. */
+    Overloaded,
+
+    /** The provider's filter stopped it. */
+    Filtered,
+}
+
+/** A reply that ended early ([OracleEvent.Ended]): written ink stays, nothing is learned from it. */
+const val CUT_SHORT = "cut short"
 
 class OracleException(val error: DomainError, message: String? = null, cause: Throwable? = null) :
     Exception(message ?: error.toString(), cause)
@@ -152,6 +171,9 @@ sealed interface ConvEffect {
     data class ResumeScribe(val reqId: Int) : ConvEffect
     data class ShowFailure(val error: DomainError) : ConvEffect
     data object ClearFailure : ConvEffect
+
+    /** The answer being written ended early at the provider: say so (its ink stays). */
+    data object ShowCutShort : ConvEffect
 
     /** Persist the exchange of [reqId] with [status] (the session adds heard text and markup). */
     data class Record(val reqId: Int, val status: ExchangeStatus) : ConvEffect

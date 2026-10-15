@@ -21,7 +21,12 @@ class VirtualClock(private val scheduler: TestCoroutineScheduler) : Clock {
 }
 
 /** Scriptable model: emits [chunks] with [gapMillis] between them, or fails with [failure] before emitting. */
-class FakeOracle(var chunks: List<String> = emptyList(), var gapMillis: Long = 0, var failure: OracleException? = null) : Oracle {
+class FakeOracle(
+    var chunks: List<String> = emptyList(),
+    var gapMillis: Long = 0,
+    var failure: OracleException? = null,
+    var ended: EndReason? = null,
+) : Oracle {
     val requests = mutableListOf<OracleRequest>()
     var started = 0
     var cancelled = 0
@@ -31,6 +36,7 @@ class FakeOracle(var chunks: List<String> = emptyList(), var gapMillis: Long = 0
         requests += request; started++
         failure?.let { throw it }
         for (c in chunks) { delay(gapMillis); emit(OracleEvent.Delta(c)) }
+        ended?.let { emit(OracleEvent.Ended(it)) }
         emit(OracleEvent.Usage(1500, 40, 1024))
     }.onCompletion { cause -> if (cause == null) completed++ else cancelled++ }
 }
@@ -46,7 +52,7 @@ class FakeSnapshotter : PageSnapshotter {
 
 class FakeExchangeStore : ExchangeStore {
     private val all = MutableStateFlow<List<Exchange>>(emptyList())
-    override suspend fun append(exchange: Exchange) { all.value += exchange }
+    override suspend fun append(exchange: Exchange) { all.value = all.value.filter { it.id != exchange.id } + exchange } // REPLACE
     override suspend fun listByNotebook(id: NotebookId) = all.value
     override fun observeByNotebook(id: NotebookId) = all.map { it }
     override suspend fun get(id: ExchangeId) = all.value.firstOrNull { it.id == id }
@@ -75,6 +81,7 @@ class RecordingSurface : ConversationSurface {
     override fun showFailure(error: DomainError) { log += "fail"; failure = error }
     override fun clearFailure() { log += "clear"; failure = null }
     override fun showMemoryNote(note: String) { memoryNotes += note }
+    override fun showCutShort() { log += "cut" }
 }
 
 class FakeContextPorts(

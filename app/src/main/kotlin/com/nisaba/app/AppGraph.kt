@@ -85,12 +85,25 @@ class AppGraph(private val app: Application) {
     /** Debug only: text for the app's own hand to write as the user's question when a notebook opens. */
     var debugWriteText: String? = null
 
+    /** Debug only: more writing for the open notebook (`am start --activity-single-top --es write …` while it is open). */
+    val debugWrites = kotlinx.coroutines.flow.MutableSharedFlow<String>(extraBufferCapacity = 4)
+
     /** Debug only: a document location to import as soon as the library opens. */
     var debugImportPdf: String? = null
     var debugLearnGoal: String? = null
 
     /** Debug only: the voice of the debug-imported notebook (a PersonaRegistry id). */
     var debugPersona: String? = null
+
+    /** Debug only: create a notebook with this name (voice [debugPersona], [debugCanvas]) and open it. */
+    var debugNewNotebook: String? = null
+    var debugCanvas: Boolean = false
+
+    /** Debug only: delete every notebook whose name starts with this (test notebooks) when the library opens. */
+    var debugDeletePrefix: String? = null
+
+    /** Debug only: "host:port" of an HTTP proxy for the model (scripts/dev_proxy.py over `adb reverse`, for an offline Boox). */
+    var debugProxy: String? = null
 
     /** Debug only: open the first notebook automatically. */
     var debugOpenFirst: Boolean = false
@@ -111,7 +124,7 @@ class AppGraph(private val app: Application) {
     private val rasters = DocumentRasterCache(docsDir, rasterDir)
     val settings by lazy { DataStoreSettingsStore(app) }
     val secrets by lazy { KeystoreSecretStore(app, BuildConfig.DEV_DEEPSEEK_API_KEY) }
-    private val oracle by lazy { DeepSeekClient(NisabaHttpClient.shared, { secrets.apiKey() }) }
+    private val oracle by lazy { DeepSeekClient(NisabaHttpClient.withProxy(debugProxy), { secrets.apiKey() }) }
 
     val inkRenderer = InkRenderer()
     val backgroundRenderer = BackgroundRenderer(rasters = rasters)

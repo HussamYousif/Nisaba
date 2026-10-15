@@ -53,6 +53,35 @@ class ScribeAnimatorTest {
     private val p0 = PageId("p0")
     private val p1 = PageId("p1")
 
+    @Test fun eachFinishedBlockIsCommittedWhileTheRestIsStillBeingWritten() {
+        val committed = mutableListOf<Pair<Int, Int?>>()
+        animator.onBlockWritten = { w, ref -> committed += w.size to ref?.seq }
+        animator.enqueue(listOf(stroke(0, 0), stroke(0, 100)), ref(1), p0)
+        animator.enqueue(listOf(stroke(0, 300)), ref(2), p0)
+        frames.run(350) // a 120 ms lead-in, then block 1 (0–200 ms); block 2 starts at 300 ms
+        assertEquals(listOf<Pair<Int, Int?>>(2 to 1), committed, "block 1 saved as soon as it is written")
+        frames.run(400)
+        assertEquals(1, committed.size); assertEquals(listOf<Pair<Int, BlockRef?>>(1 to ref(2)), drained) // last block: onDrained
+    }
+
+    @Test fun aFollowUpOnTheSpillPageStartsOnItsOwnPage() { // it used to wait forever for a turn back to "page 0"
+        animator.enqueue(listOf(stroke(0, 0), stroke(1, 200)), ref(1), p0)
+        frames.run(400); animator.pageReady(1, p1); frames.run(400)
+        assertEquals(listOf(1), breaks); assertEquals(1, drained.size); assertFalse(animator.isActive)
+        animator.enqueue(listOf(stroke(0, 0)), ref(1, req = 2), p1) // the next question, written on the spill page
+        frames.run(400)
+        assertEquals(listOf(1), breaks, "no page break for an answer that starts on its own page")
+        assertEquals(2, drained.size); assertEquals(p1, animator.writingOn)
+    }
+
+    @Test fun anAnswerFromANewPageSessionIsANewAnswer() {
+        animator.enqueue(listOf(stroke(0, 0), stroke(1, 200)), ref(1), p0)
+        frames.run(400); animator.pageReady(1, p1); frames.run(400)
+        animator.enqueue(listOf(stroke(0, 0)), BlockRef(2, 1, 1, ExchangeId("y")), p1) // same reqId, another page's session
+        frames.run(400)
+        assertEquals(listOf(1), breaks); assertEquals(2, drained.size)
+    }
+
     @Test fun spillingToANewPageSuspendsAndResumesThePenExactlyOnce() {
         animator.enqueue(listOf(stroke(0, 0), stroke(1, 200)), ref(1), p0)
         frames.run(400)

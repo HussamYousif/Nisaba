@@ -91,6 +91,35 @@ class ConversationSessionTest {
         assertEquals("zagreus", store.saved.last().personaId)
     }
 
+    @Test fun aReplyCutShortKeepsItsInkLearnsNothingAndSaysSo() = runTest {
+        oracle.chunks = listOf("<answer>\nHello there.\n\nI am Nisa", "<remember category=\"me\">Likes kites</remember>")
+        oracle.ended = EndReason.TooLong
+        val rig = rig()
+        rig.write("a"); wait(3600); rig.handDone(); runCurrent()
+        assertEquals(ExchangeStatus.Interrupted, store.saved.single().status)
+        assertTrue("cut" in surface.log)
+        assertEquals(listOf("Is a nurse"), memory.all().map { it.text }) // the half-sent tag taught nothing
+    }
+
+    @Test fun aReplyCutShortBeforeAnyInkIsAFailureToRetry() = runTest {
+        oracle.chunks = emptyList() // stopped before a single token
+        oracle.ended = EndReason.Overloaded
+        val rig = rig()
+        rig.write("a"); wait(3600)
+        assertEquals(DomainError.Invalid(CUT_SHORT), (rig.session.status.value.state as ConvState.Failed).error)
+    }
+
+    @Test fun aReplyIsSavedWhenItEndsEvenWhileTheHandIsStillWriting() = runTest {
+        oracle.chunks = hello
+        val rig = rig()
+        rig.write("a"); wait(3600)
+        // the stream is over, the hand is not: if the app died now the answer and its question would still be there
+        assertEquals(ExchangeStatus.Interrupted, store.saved.single().status)
+        assertEquals("say hi", store.saved.single().heard)
+        rig.handDone(); runCurrent()
+        assertEquals(ExchangeStatus.Complete, store.saved.single().status) // the same row, now final
+    }
+
     @Test fun answerStrokesCanPointAtTheSavedExchange() = runTest {
         oracle.chunks = hello
         val rig = rig()
@@ -113,7 +142,7 @@ class ConversationSessionTest {
         oracle.chunks = hello
         val rig = rig()
         rig.write("a"); wait(3600)
-        assertTrue(store.saved.isEmpty())                                   // the hand is still writing
+        assertEquals(ExchangeStatus.Interrupted, store.saved.single().status) // saved at the reply's end, hand still writing
         rig.session.close(); runCurrent()
         assertEquals(ExchangeStatus.Interrupted, store.saved.single().status)
     }

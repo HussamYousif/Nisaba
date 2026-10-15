@@ -69,6 +69,7 @@ fun NisabaNavHost(graph: AppGraph) {
                     kotlinx.coroutines.delay(DEBUG_SETTLE_MILLIS)
                     vm.debugWriteAsUser(text)
                 }
+                graph.debugWrites.collect { vm.debugWriteAsUser(it) } // follow-ups while the notebook is open
             }
             NotebookScreen(
                 vm, pen, graph.eink, graph.inkRenderer, graph.backgroundRenderer, graph::ensureRaster,
@@ -114,6 +115,12 @@ private fun LibraryRoute(graph: AppGraph, nav: NavHostController) {
     }
     val open: (com.nisaba.domain.shared.NotebookId) -> Unit = { nav.navigate("notebook/${it.value}") }
     LaunchedEffect(Unit) {
+        graph.debugDeletePrefix?.let { prefix -> graph.debugDeletePrefix = null; vm.debugDeleteNamed(prefix) }
+        graph.debugNewNotebook?.let { name ->
+            graph.debugNewNotebook = null
+            val kind = if (graph.debugCanvas) com.nisaba.library.NotebookKind.Canvas else com.nisaba.library.NotebookKind.Pages
+            vm.createNotebook(name, kind, graph.debugPersona ?: com.nisaba.domain.persona.PersonaRegistry.DEFAULT_ID, open)
+        }
         graph.debugImportPdf?.let { uri ->
             graph.debugImportPdf = null
             val persona = graph.debugPersona ?: com.nisaba.domain.persona.PersonaRegistry.DEFAULT_ID

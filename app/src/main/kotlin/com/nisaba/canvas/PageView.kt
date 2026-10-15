@@ -80,6 +80,7 @@ class PageView(
     private fun dirtyOfView(b: com.nisaba.domain.shared.PageRect, pad: Float) =
         Rect(floor(b.left - pad).toInt(), floor(b.top - pad).toInt(), ceil(b.right + pad).toInt(), ceil(b.bottom + pad).toInt())
 
+    private var pageId: com.nisaba.domain.shared.PageId? = null
     private var pageSize = PageSize.PORTRAIT
     private var pageBackground: PageBackground = PageBackground.Blank
     private var strokes: List<Stroke> = emptyList()
@@ -102,8 +103,12 @@ class PageView(
     private var downX = 0f; private var downY = 0f; private var downTime = 0L
     private var maxPointers = 0; private var moved = false
 
-    fun setPage(size: PageSize, bg: PageBackground, origin: PagePoint? = null) {
-        if (size == pageSize && bg == pageBackground) return
+    /** Shows page [id]; another page starts from nothing (its ink follows in [setStrokes]), so nothing carries over. */
+    fun setPage(size: PageSize, bg: PageBackground, origin: PagePoint? = null, id: com.nisaba.domain.shared.PageId? = null) {
+        val samePage = id == pageId
+        if (samePage && size == pageSize && bg == pageBackground) return
+        if (!samePage) { strokes = emptyList(); drawnByHand.clear(); handPieces.clear(); liveStrokesAwaitingCommit = 0 }
+        pageId = id
         pageSize = size; pageBackground = bg
         endless = size.isEndless
         if (endless) {
@@ -141,7 +146,10 @@ class PageView(
         canvas.save()
         canvas.clipRect(r)
         canvas.drawColor(BackgroundRenderer.PAPER)
-        withPageTransform(canvas) { ink.drawAll(canvas, visibleStrokes(r)) }
+        withPageTransform(canvas) {
+            ink.drawAll(canvas, visibleStrokes(r))
+            for (p in handPieces) ink.drawLive(canvas, p.points, p.argb, p.widthScale)
+        }
         canvas.restore()
     }
 
@@ -161,7 +169,8 @@ class PageView(
         val canvas = layerCanvas
         if (canvas == null) { invalidate(); return }
         val appendedOnly = next.size >= prev.size && prev.indices.all { next[it] === prev[it] }
-        if (!appendedOnly) { drawnByHand.clear(); liveStrokesAwaitingCommit = 0; rebuild(); invalidate(); return }
+        val freshPage = prev.isEmpty() && next.size > 1 // a page just opened: one pass (and only what's in view on a canvas)
+        if (!appendedOnly || freshPage) { drawnByHand.clear(); liveStrokesAwaitingCommit = 0; rebuild(); invalidate(); return }
         for (s in next.subList(prev.size, next.size)) {
             if (alreadyPainted(s)) continue
             withPageTransform(canvas) { ink.drawStroke(canvas, s) }
@@ -182,6 +191,10 @@ class PageView(
     }
     private var resumeMark: PagePoint? = null
     private val drawnByHand = HashSet<StrokeId>()
+
+    /** What the hand drew that isn't committed yet: redrawn after any rebuild, so a redraw mid-answer can't wipe it. */
+    private class HandPiece(val points: InkPoints, val argb: Int, val widthScale: Float)
+    private val handPieces = ArrayList<HandPiece>()
     var onMarkTap: () -> Unit = {}
     var onSkipTap: () -> Unit = {}
     var onStylusDownWhileScribing: () -> Unit = {}
@@ -192,6 +205,7 @@ class PageView(
         val canvas = layerCanvas ?: return
         if (toExclusive <= from) return
         val part = points.slice(from, toExclusive)
+        handPieces += HandPiece(part, argb, widthScale)
         withPageTransform(canvas) { ink.drawLive(canvas, part, argb, widthScale) }
         invalidate(dirtyOf(part.bounds(), MAX_WIDTH))
         if (endless) followWriting(points.ys[toExclusive - 1])
@@ -202,8 +216,11 @@ class PageView(
         if (y - panY > height * FOLLOW_EDGE) panTo(panX, y - height * FOLLOW_TARGET)
     }
 
-    /** Strokes the hand already drew and the caller has committed: `setStrokes` must not draw them a second time. */
-    fun markDrawn(ids: Collection<StrokeId>) { drawnByHand += ids }
+    /**
+     * Everything the hand drew so far has been committed as [ids]: `setStrokes` must not draw them a second time, and
+     * they no longer need redrawing from [handPieces].
+     */
+    fun markDrawn(ids: Collection<StrokeId>) { drawnByHand += ids; handPieces.clear() }
 
     /** Shows the endless canvas from [origin] (page space): a jump, so the whole picture is redrawn. */
     fun jumpTo(origin: PagePoint) { if (endless) panTo(origin.x, origin.y) }
@@ -264,7 +281,9 @@ class PageView(
         withPageTransform(canvas) {
             background.draw(canvas, pageSize, pageBackground)
             ink.drawAll(canvas, visibleStrokes())
+            for (p in handPieces) ink.drawLive(canvas, p.points, p.argb, p.widthScale)
         }
+        drawnByHand.clear() // committed strokes not in [strokes] yet were wiped: paint them when they arrive
         val ms = SystemClock.uptimeMillis() - t0
         if (strokes.size > 50) Log.i(TAG, "rebuild ${strokes.size} strokes in ${ms}ms")
     }

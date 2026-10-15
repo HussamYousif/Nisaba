@@ -93,6 +93,9 @@ class ConversationSession(
 
         /** The reply arrived in full (its memory tags can be trusted: a cut-off reply may hold a forget without its remember). */
         var replyComplete = false
+
+        /** The provider said why it stopped; anything but Finished = the reply is incomplete. */
+        var ended: EndReason? = null
     }
 
     fun updateSettings(settings: Settings, listening: Boolean) {
@@ -182,6 +185,7 @@ class ConversationSession(
             is ConvEffect.ResumeScribe -> deps.surface.resumeScribe(fx.reqId)
             is ConvEffect.ShowFailure -> deps.surface.showFailure(fx.error)
             ConvEffect.ClearFailure -> deps.surface.clearFailure()
+            ConvEffect.ShowCutShort -> deps.surface.showCutShort()
             is ConvEffect.Record -> pending[fx.reqId]?.let { it.status = fx.status; maybeFinalize(it) }
         }
     }
@@ -222,8 +226,15 @@ class ConversationSession(
                 ),
             )
             stream(request, record)
-            record.replyComplete = true
-            dispatch(ConvEvent.OracleDone(reqId))
+            val cut = record.ended != null && record.ended != EndReason.Finished
+            if (cut) {
+                deps.logger?.w("Session", "request $reqId ended early: ${record.ended}")
+                dispatch(ConvEvent.OracleFailed(reqId, DomainError.Invalid(CUT_SHORT))) // ink stays; nothing learned
+            } else {
+                record.replyComplete = true
+                checkpoint(record)
+                dispatch(ConvEvent.OracleDone(reqId))
+            }
         } catch (e: CancellationException) {
             record.cancelled = true
             throw e
@@ -261,22 +272,51 @@ class ConversationSession(
                 is OracleEvent.Usage -> {
                     record.inputTokens = ev.promptTokens; record.outputTokens = ev.completionTokens; record.cachedTokens = ev.cachedTokens
                 }
+                is OracleEvent.Ended -> record.ended = ev.reason
             }
         }
         forward(parser.finish())
     }
 
+    /**
+     * The reply is in but the hand may write for a while yet: save it now as Interrupted (what it is if the app dies
+     * before the hand finishes). The final save replaces it. Queued like an event (after the reply's blocks, before its
+     * end) and saved under [lock], so it can never land after the final save.
+     */
+    private fun checkpoint(p: PendingExchange) {
+        scope.launch {
+            lock.withLock {
+                val writing = (_status.value.state as? ConvState.Scribing)?.reqId == p.reqId
+                if (closed || p.status != null || !writing) return@withLock
+                try {
+                    deps.exchanges.append(exchangeOf(p, ExchangeStatus.Interrupted))
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
+                    deps.logger?.e("Session", "checkpoint save failed", e)
+                }
+            }
+        }
+    }
+
+    private fun exchangeOf(p: PendingExchange, status: ExchangeStatus) = Exchange(
+        p.id, deps.notebookId, p.pageId, p.heard, p.markup.toString(), status, p.startedAt,
+        appSettings.model, PROMPT_VERSION, deps.clock.nowMillis() - p.startedAt, p.inputTokens, p.outputTokens,
+        p.cachedTokens, p.focus, p.personaId,
+    )
+
     /** Saves the exchange once its status is decided AND its stream is over (heard text arrives last). */
     private fun maybeFinalize(p: PendingExchange) {
         val status = p.status ?: return
         if (!p.streamFinished || pending.remove(p.reqId) == null) return
-        val exchange = Exchange(
-            p.id, deps.notebookId, p.pageId, p.heard, p.markup.toString(), status, p.startedAt,
-            appSettings.model, PROMPT_VERSION, deps.clock.nowMillis() - p.startedAt, p.inputTokens, p.outputTokens,
-            p.cachedTokens, p.focus, p.personaId,
-        )
+        val exchange = exchangeOf(p, status)
         scope.launch(NonCancellable) { // the page may be closing; the exchange is still saved
-            deps.exchanges.append(exchange)
+            try {
+                deps.exchanges.append(exchange)
+            } catch (@Suppress("TooGenericExceptionCaught") e: Exception) { // a full disk must not take the page down
+                deps.logger?.e("Session", "saving exchange ${exchange.id.value} failed", e)
+                return@launch
+            }
             if (p.replyComplete && (status == ExchangeStatus.Complete || status == ExchangeStatus.Interrupted)) {
                 remember(exchange); recordTopics(exchange)
             }

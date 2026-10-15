@@ -498,6 +498,19 @@ class NotebookViewModel(
     /** Back on the page: an unanswered utterance gets its pause again. */
     fun onScreenShown() { session?.onPenAborted() }
 
+    /** The app went to the background: the hand stops as at a pen-down (the Stop that follows commits its ink). */
+    fun onAppHidden() { session?.onPenDown() }
+
+    /** Back in front: a pause cut short by [onAppHidden] runs again. */
+    fun onAppShown() { session?.onPenAborted() }
+
+    /** A block of a longer answer is written: commit it now (merges with the answer's earlier blocks into one undo step). */
+    fun onScribeBlockWritten(written: List<TimedStroke>, ref: BlockRef?, pageId: PageId?): List<StrokeId> {
+        val strokes = answerStrokes(written, ref)
+        ownScope.launch { commitAnswer(pageId, strokes) }
+        return strokes.map { it.id }
+    }
+
     private fun answerStrokes(written: List<TimedStroke>, ref: BlockRef?): List<Stroke> {
         val exchange = ref?.exchangeId ?: ExchangeId(deps.idGen.next())
         return written.map { t ->
@@ -567,12 +580,15 @@ class NotebookViewModel(
 
     fun dismissMemoryNote() { memoryNoteJob?.cancel(); _state.update { it.copy(memoryNote = null) } }
 
+    fun dismissNotice() = _state.update { it.copy(notice = null) }
+
     private fun startSession(page: Page) {
         session?.close(); session = null; answerScribe?.close(); answerScribe = null
         val factory = deps.sessions ?: return
         val scribe = AnswerScribeSession(
-            ++sessionGen, page.id, deps.hands, { settings }, { page.size }, { edit?.ink?.strokes.orEmpty() }, { printedOccupancy },
-            { _scribe.tryEmit(it) }, ::failure, ::memoryNote,
+            ++sessionGen, page.id, deps.hands, { settings }, { currentPage()?.size ?: page.size }, { edit?.ink?.strokes.orEmpty() },
+            { printedOccupancy },
+            { _scribe.tryEmit(it) }, ::failure, ::memoryNote, onCutShort = { _state.update { it.copy(notice = CUT_SHORT_NOTICE) } },
         )
         answerScribe = scribe
         val context = object : ConversationContextPorts {
@@ -612,7 +628,10 @@ class NotebookViewModel(
         val start = PagePoint(PageSize.ENDLESS_ORIGIN, PageSize.ENDLESS_ORIGIN)
         viewOrigin = if (page.size.isEndless) deps.memory.loadView(page.id) ?: start else null
         affine = viewOrigin?.let { Affine(1f, -it.x, -it.y) } ?: affine
-        _state.update { it.copy(failure = null, resumeMark = if (keepAnswer) it.resumeMark else null) }
+        val setAside = edit?.ink?.setAside == true
+        _state.update {
+            it.copy(failure = null, resumeMark = if (keepAnswer) it.resumeMark else null, notice = if (setAside) SET_ASIDE_NOTICE else null)
+        }
         printedJob?.cancel(); printedOccupancy = null
         if (!keepAnswer) {
             documentPageIndex = (page.background as? PageBackground.DocumentPage)?.index
@@ -697,7 +716,7 @@ class NotebookViewModel(
         val e = edit ?: InkEditState(PageInk(page.id, emptyList()))
         _state.update {
             it.copy(
-                title = nb.notebook.name, pageIndex = pageIndex, pageCount = nb.pages.size, pageSize = page.size,
+                title = nb.notebook.name, pageIndex = pageIndex, pageCount = nb.pages.size, pageSize = page.size, pageId = page.id,
                 background = page.background, strokes = e.ink.strokes, canUndo = e.canUndo, canRedo = e.canRedo,
                 listening = nb.notebook.listening, loading = false, endless = page.size.isEndless, viewOrigin = viewOrigin,
                 lesson = nb.notebook.teachGoal != null, personaId = nb.notebook.personaId,
@@ -717,8 +736,11 @@ class NotebookViewModel(
         ownScope.launch {
             val page = currentPage()?.size ?: return@launch
             val originX = viewOrigin?.x ?: 0f; val originY = viewOrigin?.y ?: 0f
+            // below whatever is on the page already (a follow-up), else near the top
+            val top = edit?.ink?.strokes?.maxOfOrNull { it.bounds.bottom }?.plus(DEBUG_GAP)?.coerceAtMost(page.h - DEBUG_ROOM)
+                ?: (DEBUG_TOP + originY)
             val planner = ScribePlanUseCase(
-                deps.hands(HandStyle.Casual), LayoutRegion.below(page, DEBUG_LEFT + originX, DEBUG_TOP + originY, DEBUG_X_HEIGHT),
+                deps.hands(HandStyle.Casual), LayoutRegion.below(page, DEBUG_LEFT + originX, top, DEBUG_X_HEIGHT),
                 OccupancyLookup { null },
                 DEBUG_SEED, HumanParams.CASUAL, speedProfile(HandSpeed.Swift),
             )
@@ -748,9 +770,13 @@ class NotebookViewModel(
         private const val NANOS_PER_MILLI = 1_000_000L
         private const val PAGE_WAIT_MILLIS = 3000L
         private const val MEMORY_NOTE_MILLIS = 6000L
+        const val CUT_SHORT_NOTICE = "The answer was cut short. Ask for the rest, or hold a finger on it: Ask again."
+        const val SET_ASIDE_NOTICE = "Some ink on this page couldn't be read. Its file is kept aside, untouched."
         private const val SPILL_SETTLE_MILLIS = 250L
         private const val DEBUG_LEFT = 200f
         private const val DEBUG_TOP = 320f
+        private const val DEBUG_GAP = 110f
+        private const val DEBUG_ROOM = 700f
         private const val DEBUG_X_HEIGHT = 48f
         private const val DEBUG_SEED = 99L
         private const val DEBUG_STROKE_GAP = 25L

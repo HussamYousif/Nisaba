@@ -20,6 +20,18 @@ class InkHistoryRulesTest {
         assertEquals(listOf(b), applyCommand(l, InkCommand.Remove(listOf(c))))
     }
 
+    @Test fun anAnswerCommittedBlockByBlockIsOneUndoStep() {
+        fun answer(s: Stroke, ex: String) = s.copy(origin = StrokeOrigin.Oracle(com.nisaba.domain.shared.ExchangeId(ex)))
+        var h = push(InkHistory(), InkCommand.Add(listOf(answer(a, "x"))))
+        h = push(h, InkCommand.Add(listOf(answer(b, "x"))))                 // the next block of the same answer
+        assertEquals(1, h.undo.size)
+        assertEquals(InkCommand.Remove(listOf(answer(a, "x"), answer(b, "x"))), undo(h)!!.second)
+        h = push(h, InkCommand.Add(listOf(answer(c, "y"))))                 // another answer: its own step
+        assertEquals(2, h.undo.size)
+        h = push(push(h, InkCommand.Add(listOf(a))), InkCommand.Add(listOf(b))) // the person's strokes never merge
+        assertEquals(4, h.undo.size)
+    }
+
     @Test fun undoRedoWalkTheStack() {
         var h = InkHistory()
         assertNull(undo(h)); assertNull(redo(h))

@@ -25,6 +25,10 @@ class MainActivity : ComponentActivity() {
             graph.debugImportPdf = intent.getStringExtra("import_pdf")
             graph.debugLearnGoal = intent.getStringExtra("learn_goal") // with import_pdf: a lesson notebook ("" = no goal)
             graph.debugPersona = intent.getStringExtra("persona") // with import_pdf: its voice (a PersonaRegistry id)
+            graph.debugProxy = intent.getStringExtra("proxy") // "127.0.0.1:8899": scripts/dev_proxy.py over adb reverse
+            graph.debugNewNotebook = intent.getStringExtra("new_notebook") // a fresh test notebook, opened at once
+            graph.debugCanvas = intent.getBooleanExtra("canvas", false)
+            graph.debugDeletePrefix = intent.getStringExtra("delete_prefix") // test notebooks to remove
         }
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowInsetsControllerCompat(window, window.decorView).apply {
@@ -34,6 +38,12 @@ class MainActivity : ComponentActivity() {
         setContent {
             NisabaTheme { CompositionLocalProvider(LocalHandText provides graph.handText) { NisabaNavHost(graph) } }
         }
+    }
+
+    /** Debug: `am start --activity-single-top --es write '…'` writes into the notebook already open. */
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        if (BuildConfig.DEBUG) intent.getStringExtra("write")?.let { graph.debugWrites.tryEmit(it) }
     }
 
     override fun onPause() {

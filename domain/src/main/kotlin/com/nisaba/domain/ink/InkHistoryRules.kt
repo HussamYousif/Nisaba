@@ -20,8 +20,26 @@ fun invert(cmd: InkCommand): InkCommand = when (cmd) {
     is InkCommand.Replace -> InkCommand.Replace(removed = cmd.added, added = cmd.removed)
 }
 
-fun push(history: InkHistory, cmd: InkCommand): InkHistory =
-    InkHistory(undo = (history.undo + cmd).takeLast(MAX_UNDO), redo = emptyList())
+/**
+ * Pushes [cmd]. An answer is committed block by block as the hand writes it; consecutive additions of the same answer
+ * merge into one step, so undo still takes the whole answer at once.
+ */
+fun push(history: InkHistory, cmd: InkCommand): InkHistory {
+    val last = history.undo.lastOrNull()
+    val undo = if (last is InkCommand.Add && cmd is InkCommand.Add && sameAnswer(last.strokes, cmd.strokes)) {
+        history.undo.dropLast(1) + InkCommand.Add(last.strokes + cmd.strokes)
+    } else {
+        history.undo + cmd
+    }
+    return InkHistory(undo = undo.takeLast(MAX_UNDO), redo = emptyList())
+}
+
+private fun answerOf(strokes: List<Stroke>): com.nisaba.domain.shared.ExchangeId? {
+    val id = (strokes.firstOrNull()?.origin as? StrokeOrigin.Oracle)?.exchangeId ?: return null
+    return id.takeIf { strokes.all { s -> (s.origin as? StrokeOrigin.Oracle)?.exchangeId == id } }
+}
+
+private fun sameAnswer(a: List<Stroke>, b: List<Stroke>) = answerOf(a)?.let { it == answerOf(b) } ?: false
 
 /** Pops the last command; returns the new history and the command to APPLY (the inverse). */
 fun undo(history: InkHistory): Pair<InkHistory, InkCommand>? {

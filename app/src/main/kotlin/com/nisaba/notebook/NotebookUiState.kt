@@ -18,6 +18,8 @@ data class NotebookUiState(
     val pageIndex: Int = 0,
     val pageCount: Int = 0,
     val pageSize: PageSize = PageSize.PORTRAIT,
+    /** The page on screen (null until a notebook is open). */
+    val pageId: com.nisaba.domain.shared.PageId? = null,
     val background: PageBackground = PageBackground.Blank,
     val strokes: List<Stroke> = emptyList(),
     val tool: PenTool = PenTool.Pen,
@@ -36,6 +38,8 @@ data class NotebookUiState(
     val failure: String? = null,
     /** "Remembered: …" for a few seconds after a reply taught Nisaba something. */
     val memoryNote: String? = null,
+    /** Something about this page worth one line until tapped away (e.g. ink that couldn't be read was kept aside). */
+    val notice: String? = null,
     /** Where a stopped answer can be continued ("…" mark), if any. */
     val resumeMark: PagePoint? = null,
     val answerColor: Int = 0xFF27407A.toInt(),

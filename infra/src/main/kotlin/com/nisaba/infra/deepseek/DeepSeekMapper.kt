@@ -1,6 +1,7 @@
 package com.nisaba.infra.deepseek
 
 import android.util.Base64
+import com.nisaba.domain.conversation.EndReason
 import com.nisaba.domain.conversation.ImageDetail
 import com.nisaba.domain.conversation.OracleEvent
 import com.nisaba.domain.conversation.OracleRequest
@@ -55,5 +56,15 @@ private fun OracleRequest.lastUserContent(encode: (ByteArray) -> String): JsonEl
 
 fun ChatChunkDto.toEvents(): List<OracleEvent> = buildList {
     choices.firstOrNull()?.delta?.content?.takeIf { it.isNotEmpty() }?.let { add(OracleEvent.Delta(it)) }
+    choices.firstOrNull()?.finishReason?.let { add(OracleEvent.Ended(endReason(it))) }
     usage?.let { add(OracleEvent.Usage(it.promptTokens, it.completionTokens, it.cacheHitTokens)) }
+}
+
+/** DeepSeek's `finish_reason` values (OpenAI's plus `insufficient_system_resource`). */
+private fun endReason(wire: String) = when (wire) {
+    "stop" -> EndReason.Finished
+    "length" -> EndReason.TooLong
+    "content_filter" -> EndReason.Filtered
+    "insufficient_system_resource" -> EndReason.Overloaded
+    else -> EndReason.Finished // e.g. tool_calls: not used here
 }
