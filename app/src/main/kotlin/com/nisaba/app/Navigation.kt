@@ -62,7 +62,8 @@ fun NisabaNavHost(graph: AppGraph) {
             val startPage = entry.arguments?.getString("page")?.takeIf { it.isNotBlank() }?.let(::PageId)
             val factory = graph.notebookFactory(NotebookId(id), startPage)
             val vm: NotebookViewModel = viewModel(key = id + startPage?.value.orEmpty(), factory = factory)
-            val pen = remember { graph.createPen() }
+            val standardPen by produceState<Boolean?>(null) { value = graph.settings.observe().first().standardPen }
+            val pen = remember(standardPen) { standardPen?.let { graph.createPen(it) } } ?: return@composable
             LaunchedEffect(id) {
                 graph.debugWriteText?.let { text ->
                     graph.debugWriteText = null

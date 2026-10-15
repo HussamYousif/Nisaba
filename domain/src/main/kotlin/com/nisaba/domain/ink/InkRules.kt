@@ -73,9 +73,16 @@ fun hitStrokes(strokes: List<Stroke>, path: List<PagePoint>, radius: Float): Lis
  * Area eraser: cuts [stroke] where the eraser passes. Returns the original stroke untouched when nothing
  * is erased, otherwise the surviving pieces (≥ 2 points each) under fresh ids.
  */
-fun splitByEraser(stroke: Stroke, path: List<PagePoint>, radius: Float, newId: () -> StrokeId): List<Stroke> {
+fun splitByEraser(
+    stroke: Stroke,
+    path: List<PagePoint>,
+    radius: Float,
+    pathBounds: PageRect? = boundsOfPath(path),
+    newId: () -> StrokeId,
+): List<Stroke> {
     if (path.isEmpty()) return listOf(stroke)
     val reach = radius + stroke.width / 2f
+    if (pathBounds != null && !pathBounds.inflate(reach).intersects(stroke.bounds)) return listOf(stroke) // far away: untouched
     val p = stroke.points
     val erased = BooleanArray(p.size) { distToPath(p.xs[it], p.ys[it], path) <= reach }
     if (erased.none { it }) return listOf(stroke)
@@ -115,3 +122,8 @@ fun answerAt(strokes: List<Stroke>, p: PagePoint, radius: Float): ExchangeId? = 
     .filter { it.origin is StrokeOrigin.Oracle && it.bounds.inflate(radius).let { b -> p.x in b.left..b.right && p.y in b.top..b.bottom } }
     .minByOrNull { s -> (0 until s.points.size).minOf { i -> hypot(s.points.xs[i] - p.x, s.points.ys[i] - p.y) } }
     ?.let { (it.origin as StrokeOrigin.Oracle).exchangeId }
+
+
+/** The box around an eraser path (computed once per erase, not once per stroke). */
+fun boundsOfPath(path: List<PagePoint>): PageRect? =
+    if (path.isEmpty()) null else PageRect(path.minOf { it.x }, path.minOf { it.y }, path.maxOf { it.x }, path.maxOf { it.y })

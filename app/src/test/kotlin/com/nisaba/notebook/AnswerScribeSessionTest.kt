@@ -19,6 +19,7 @@ class AnswerScribeSessionTest {
     private val session = AnswerScribeSession(
         1, PageId("question-page"), { hand }, { Settings() }, { PageSize.PORTRAIT }, { emptyList() }, { null },
         { if (it is ScribeCommand.Play) played += it }, {},
+        planScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined), // plan at once, in order
     )
     private val hello = Block.Paragraph(listOf(Inline.Text("Hello there.")))
 

@@ -57,7 +57,7 @@ class NotebookViewModelTest {
                 LoadPageInkUseCase(ink), CommitStrokeUseCase(ink), CommitStrokesUseCase(ink), EraseUseCase(ink, ids),
                 UndoUseCase(ink), RedoUseCase(ink), EraseAnswerUseCase(ink),
             ),
-            SetListeningUseCase(store), ids, setPersona = SetPersonaUseCase(store),
+            SetListeningUseCase(store), ids, changes = NotebookChanges(SetPersonaUseCase(store)),
         )
         val vm = NotebookViewModel(
             deps, scope.backgroundScope, eraserRadius = 6f, toolbarHideMillis = 3000, nowMillis = { scope.testScheduler.currentTime },

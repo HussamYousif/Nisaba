@@ -42,6 +42,7 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
+    testOptions { unitTests.isReturnDefaultValues = true } // Android stubs return defaults (a View or a Log call in JVM tests)
     packaging {
         jniLibs.pickFirsts += "**/libc++_shared.so"
         resources.excludes += setOf("META-INF/*.kotlin_module", "META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*")

@@ -33,6 +33,7 @@ private object Keys {
     val penInk = intPreferencesKey("penInk")
     val penSize = stringPreferencesKey("penSize")
     val lastPersona = stringPreferencesKey("lastPersona")
+    val standardPen = booleanPreferencesKey("standardPen")
 }
 
 private inline fun <reified E : Enum<E>> String?.toEnum(default: E): E = enumValues<E>().firstOrNull { it.name == this } ?: default
@@ -52,7 +53,7 @@ class DataStoreSettingsStore(context: Context) : SettingsStore {
             it[Keys.listening] = next.listeningDefault; it[Keys.eraser] = next.eraserMode.name
             it[Keys.onboarded] = next.onboarded; it[Keys.hintSeen] = next.hintSeen
             it[Keys.codeHighlight] = next.codeHighlight.name; it[Keys.penInk] = next.penInk; it[Keys.penSize] = next.penSize.name
-            it[Keys.lastPersona] = next.lastPersona
+            it[Keys.lastPersona] = next.lastPersona; it[Keys.standardPen] = next.standardPen
         }
     }
 
@@ -67,6 +68,7 @@ class DataStoreSettingsStore(context: Context) : SettingsStore {
             onboarded = this[Keys.onboarded] ?: d.onboarded, hintSeen = this[Keys.hintSeen] ?: d.hintSeen,
             codeHighlight = this[Keys.codeHighlight].toEnum(d.codeHighlight), penInk = this[Keys.penInk] ?: d.penInk,
             penSize = this[Keys.penSize].toEnum(d.penSize), lastPersona = this[Keys.lastPersona] ?: d.lastPersona,
+            standardPen = this[Keys.standardPen] ?: d.standardPen,
         )
     }
 }

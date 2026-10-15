@@ -20,8 +20,7 @@ import kotlinx.coroutines.flow.SharedFlow
  *
  * Pressure scale and side-button/eraser behaviour are provisional until spike S1 is completed with a real pen.
  */
-class OnyxPenDevice : PenDevice {
-    private val flow = MutableSharedFlow<PenEvent>(extraBufferCapacity = 64)
+class OnyxPenDevice(private val flow: MutableSharedFlow<PenEvent> = MutableSharedFlow(extraBufferCapacity = 64)) : PenDevice {
     override val events: SharedFlow<PenEvent> = flow
     override val liveCount: Int = 0
     override fun liveSlice(from: Int, to: Int): InkPoints? = null
@@ -33,6 +32,8 @@ class OnyxPenDevice : PenDevice {
     private var penArgb = android.graphics.Color.BLACK
     private var penWidth = STROKE_WIDTH
     private var tool = PenTool.Pen
+    override var failed = false
+        private set
 
     private val callback = object : RawInputCallback() {
         override fun onBeginRawDrawing(b: Boolean, p: TouchPoint) { flow.tryEmit(PenEvent.PenDown(p.x, p.y)) }
@@ -71,7 +72,7 @@ class OnyxPenDevice : PenDevice {
                 enableSideBtnErase(true)
                 setRawDrawingEnabled(suspendCount == 0)
             }
-        }.onFailure { Log.e(TAG, "attach failed", it) }
+        }.onFailure { Log.e(TAG, "attach failed", it); helper = null; failed = true }
     }
 
     override fun setExclusions(exclude: List<Rect>) {

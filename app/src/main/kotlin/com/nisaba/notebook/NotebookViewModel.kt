@@ -121,8 +121,15 @@ class NotebookDeps(
     val sessions: SessionFactory? = null,
     val hands: (HandStyle) -> GlyphSet = { error("no hand configured") },
     val sources: NotebookSources = NotebookSources(),
-    /** Changes the voice Nisaba answers in here (null: the voice can't be changed, e.g. in plain-ink tests). */
+    val changes: NotebookChanges = NotebookChanges(),
+)
+
+/** Changes to the notebook itself made from inside it. */
+class NotebookChanges(
+    /** The voice Nisaba answers in here (null: the voice can't be changed, e.g. in plain-ink tests). */
     val setPersona: SetPersonaUseCase? = null,
+    /** Marks the notebook as just written in (the library's order). */
+    val touch: suspend (NotebookId) -> Unit = {},
 )
 
 /** What answers draw on besides the ink: the document, its printed text, saved exchanges. */
@@ -143,6 +150,9 @@ class NotebookMemory(
     val loadView: (PageId) -> PagePoint? = { null },
     val saveView: (PageId, PagePoint) -> Unit = { _, _ -> },
     val savePen: suspend (ink: Int, size: PenSize) -> Unit = { _, _ -> },
+    /** The page a notebook was left on, to open it there next time. */
+    val lastPage: (NotebookId) -> PageId? = { null },
+    val saveLastPage: (NotebookId, PageId) -> Unit = { _, _ -> },
 )
 
 /** [scopeOverride] lets tests run on a test scope; production uses [viewModelScope]. [startPage]: open there (search). */
@@ -193,7 +203,8 @@ class NotebookViewModel(
                 if (nb == null) return@collect
                 if (!opened) {
                     opened = true
-                    openPage(nb.pages.indexOfFirst { it.id == startPage }.coerceAtLeast(0), full = false)
+                    val target = startPage ?: deps.memory.lastPage(deps.notebookId) // search hit, else where it was left
+                    openPage(nb.pages.indexOfFirst { it.id == target }.coerceAtLeast(0), full = false)
                 } else {
                     publish()
                 }
@@ -279,7 +290,7 @@ class NotebookViewModel(
     /** From the next reply on, Nisaba answers in this notebook in the voice [personaId]. */
     fun setVoice(personaId: String) {
         closeVoice()
-        val set = deps.setPersona ?: return
+        val set = deps.changes.setPersona ?: return
         ownScope.launch { set(deps.notebookId, personaId) }
     }
 
@@ -547,6 +558,7 @@ class NotebookViewModel(
     private suspend fun commitAnswer(pageId: PageId?, strokes: List<Stroke>) {
         if (pageId == null || strokes.isEmpty()) return
         editAnyPage(pageId) { deps.ink.commitMany(it, strokes) }
+        deps.changes.touch(deps.notebookId)
     }
 
     /**
@@ -625,6 +637,7 @@ class NotebookViewModel(
             edit = nearby.remove(page.id) ?: deps.ink.load(page.id)
         }
         preloadAround(nb, index)
+        deps.memory.saveLastPage(deps.notebookId, page.id)
         val start = PagePoint(PageSize.ENDLESS_ORIGIN, PageSize.ENDLESS_ORIGIN)
         viewOrigin = if (page.size.isEndless) deps.memory.loadView(page.id) ?: start else null
         affine = viewOrigin?.let { Affine(1f, -it.x, -it.y) } ?: affine
@@ -678,6 +691,7 @@ class NotebookViewModel(
         val stroke = Stroke(StrokeId(deps.idGen.next()), points, s.penSize.width, InkColor(s.penInk), StrokeOrigin.User)
         editAnyPage(pageId) { deps.ink.commit(it, stroke) }
         if (currentPage()?.id == pageId) session?.onPenUp(stroke.id, stroke.bounds, pageId)
+        deps.changes.touch(deps.notebookId)
         hideToolbarLater()
     }
 

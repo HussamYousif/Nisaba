@@ -86,6 +86,7 @@ class SettingsViewModel(
 
     fun setModel(model: String) = update { it.copy(model = model) }
     fun setThinking(on: Boolean) = update { it.copy(thinking = on) }
+    fun setStandardPen(on: Boolean) = update { it.copy(standardPen = on) }
     fun setPause(millis: Int) = update { it.copy(pauseMillis = millis.coerceIn(Settings.MIN_PAUSE, Settings.MAX_PAUSE)) }
     fun setSpeed(speed: HandSpeed) = update { it.copy(handSpeed = speed) }
     fun setStyle(style: HandStyle) = update { it.copy(handStyle = style) }

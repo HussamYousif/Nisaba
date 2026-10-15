@@ -15,8 +15,9 @@ class EraseUseCase(private val store: InkStore, private val idGen: IdGen) {
             }
             EraseMode.Area -> {
                 val removed = ArrayList<Stroke>(); val added = ArrayList<Stroke>()
+                val pathBounds = boundsOfPath(path)
                 for (s in strokes) {
-                    val pieces = splitByEraser(s, path, radius) { StrokeId(idGen.next()) }
+                    val pieces = splitByEraser(s, path, radius, pathBounds) { StrokeId(idGen.next()) }
                     if (pieces.size == 1 && pieces[0] === s) continue
                     removed += s; added += pieces
                 }

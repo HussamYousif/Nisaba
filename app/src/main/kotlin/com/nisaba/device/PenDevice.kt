@@ -48,4 +48,7 @@ interface PenDevice {
 
     /** Called from the view's onTouchEvent. Returns true if the event was consumed as pen input. */
     fun handleTouch(e: MotionEvent): Boolean
+
+    /** The device could not start (e.g. its SDK failed to attach): another one should take over. */
+    val failed: Boolean get() = false
 }

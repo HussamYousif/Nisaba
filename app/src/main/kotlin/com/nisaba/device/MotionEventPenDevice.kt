@@ -9,9 +9,11 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 
 /** Fallback for emulators/non-Boox and for `adb input stylus` testing: draws from plain MotionEvents. */
-class MotionEventPenDevice(private val acceptFinger: Boolean = false) : PenDevice {
+class MotionEventPenDevice(
+    private val acceptFinger: Boolean = false,
+    private val flow: MutableSharedFlow<PenEvent> = MutableSharedFlow(extraBufferCapacity = 64),
+) : PenDevice {
     override var onLiveChanged: () -> Unit = {}
-    private val flow = MutableSharedFlow<PenEvent>(extraBufferCapacity = 64)
     override val events: SharedFlow<PenEvent> = flow
     override val liveCount: Int get() = if (erasing) 0 else n
 

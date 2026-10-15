@@ -50,6 +50,17 @@ class NotebookUseCasesTest {
         assertEquals(PersonaRegistry.DEFAULT_ID, CreateNotebookUseCase(store, clock, ids)("Odd", personaId = "gone").personaId)
     }
 
+    @Test fun writingMovesANotebookToTheTopAtMostOnceAMinute() = runTest {
+        val nb = CreateNotebookUseCase(store, clock, ids)("Maths")
+        val touch = TouchNotebookUseCase(store, clock)
+        clock.now = 50_000; touch(nb.id)
+        assertEquals(50_000, store.get(nb.id)!!.notebook.updatedAtMillis)
+        clock.now = 80_000; touch(nb.id)                                        // within the minute: no write
+        assertEquals(50_000, store.get(nb.id)!!.notebook.updatedAtMillis)
+        clock.now = 111_000; touch(nb.id)
+        assertEquals(111_000, store.get(nb.id)!!.notebook.updatedAtMillis)
+    }
+
     @Test fun renameKeepsOwnNameAvailableButDedupesBlank() = runTest {
         val nb = CreateNotebookUseCase(store, clock, ids)("Untitled")
         assertEquals("Untitled", RenameNotebookUseCase(store, clock)(nb.id, "  "))

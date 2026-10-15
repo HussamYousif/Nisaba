@@ -27,6 +27,11 @@ import com.nisaba.scribe.motion.ScribePlanState
 import com.nisaba.scribe.motion.ScribePlanUseCase
 import com.nisaba.scribe.motion.TimedStroke
 import com.nisaba.scribe.motion.speedProfile
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 
 /** Instructions from the ViewModel to the view layer that draws the hand. */
 sealed interface ScribeCommand {
@@ -61,11 +66,15 @@ class AnswerScribeSession(
     private val onMemoryNote: (String) -> Unit = {},
     private val onLayoutError: (Throwable) -> Unit = { android.util.Log.w("Nisaba/Scribe", "block skipped", it) },
     private val onCutShort: () -> Unit = {},
+    /** Where the hand's planning runs: one block after another, off the main thread (layout must not stall frames). */
+    private val planScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default.limitedParallelism(1)),
 ) : ConversationSurface {
     private var utt: Utterance? = null
     private var anchor: PagePoint? = null
-    private var planner: ScribePlanUseCase? = null
-    private var planState: ScribePlanState? = null
+
+    /** One answer's planner and where it got to; only ever touched inside [planScope] once created. */
+    private class PlanRun(val planner: ScribePlanUseCase) { var state: ScribePlanState = planner.start() }
+    private var run: PlanRun? = null
     private var currentReq = 0
     private var blocks = 0
 
@@ -73,7 +82,7 @@ class AnswerScribeSession(
     private var answerPage = pageId
     private var closed = false
 
-    fun close() { closed = true }
+    fun close() { closed = true; planScope.cancel() }
 
     private fun emitIfOpen(cmd: ScribeCommand) { if (!closed) emit(cmd) }
 
@@ -86,17 +95,20 @@ class AnswerScribeSession(
 
     override fun planBlock(reqId: Int, block: Block, exchangeId: ExchangeId) {
         if (closed) return
-        if (reqId != currentReq || planner == null) startAnswer(reqId)
-        val p = planner ?: return
-        blocks++
-        // a block the hand can't lay out is skipped, never fatal: the answer carries on and still finishes
-        val strokes = try {
-            p(planState ?: p.start(), block).also { planState = it.state }.strokes
-        } catch (@Suppress("TooGenericExceptionCaught") e: RuntimeException) {
-            onLayoutError(e); emptyList()
+        if (reqId != currentReq || run == null) startAnswer(reqId) // reads the page as it is now, on the caller's thread
+        val r = run ?: return
+        val ref = BlockRef(session, reqId, ++blocks, exchangeId)
+        val page = answerPage
+        planScope.launch {
+            // a block the hand can't lay out is skipped, never fatal: the answer carries on and still finishes
+            val strokes = try {
+                r.planner(r.state, block).also { r.state = it.state }.strokes
+            } catch (@Suppress("TooGenericExceptionCaught") e: RuntimeException) {
+                onLayoutError(e); emptyList()
+            }
+            // strokes carry their page; the animator pauses at each break. Sent even when empty so the block counts.
+            emitIfOpen(ScribeCommand.Play(strokes, ref, page))
         }
-        // strokes carry their page; the animator pauses at each break. Sent even when empty so the block is accounted for.
-        emit(ScribeCommand.Play(strokes, BlockRef(session, reqId, blocks, exchangeId), answerPage))
     }
 
     private fun startAnswer(reqId: Int) {
@@ -117,11 +129,12 @@ class AnswerScribeSession(
         val region = LayoutRegion.below(page, a.x, a.y, xHeight)
         val occupancy = (printed()?.copy() ?: emptyOccupancy(page, region))
             .also { o -> ink().forEach { s -> o.mark(s.bounds.inflate(INK_PAD)) } }
-        planner = ScribePlanUseCase(
-            hands(s.handStyle), region, OccupancyLookup { if (it == 0) occupancy else null }, seedFor(reqId, u),
-            if (s.handStyle == HandStyle.Formal) HumanParams.FORMAL else HumanParams.CASUAL, speedProfile(s.handSpeed),
+        run = PlanRun(
+            ScribePlanUseCase(
+                hands(s.handStyle), region, OccupancyLookup { if (it == 0) occupancy else null }, seedFor(reqId, u),
+                if (s.handStyle == HandStyle.Formal) HumanParams.FORMAL else HumanParams.CASUAL, speedProfile(s.handSpeed),
+            ),
         )
-        planState = planner!!.start()
     }
 
     /** A whole-page grid, or on an endless canvas just a window around the answer's column (the canvas is far too big). */

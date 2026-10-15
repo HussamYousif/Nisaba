@@ -30,6 +30,8 @@ data class Settings(
     val penSize: PenSize = PenSize.Medium,
     /** The voice the last new notebook got; the picker starts there. */
     val lastPersona: String = PersonaRegistry.DEFAULT_ID,
+    /** Plain stylus events instead of the Boox's fast pen (if writing ever stops working after an update). */
+    val standardPen: Boolean = false,
 ) {
     companion object {
         const val MIN_PAUSE = 2000

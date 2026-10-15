@@ -16,4 +16,7 @@ interface NotebookStore {
     suspend fun repositionPages(notebookId: NotebookId, positions: List<Pair<PageId, Double>>)
     suspend fun setListening(id: NotebookId, listening: Boolean)
     suspend fun setPersona(id: NotebookId, personaId: String)
+
+    /** Something was written in the notebook at [atMillis] (the library lists the most recent first). */
+    suspend fun touch(id: NotebookId, atMillis: Long)
 }

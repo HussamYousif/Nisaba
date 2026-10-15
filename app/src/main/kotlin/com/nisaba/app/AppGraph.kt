@@ -9,6 +9,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.nisaba.BuildConfig
 import com.nisaba.device.EinkDevice
+import com.nisaba.device.FallbackPenDevice
 import com.nisaba.device.MotionEventPenDevice
 import com.nisaba.device.NoopEinkDevice
 import com.nisaba.device.OnyxEinkDevice
@@ -147,8 +148,11 @@ class AppGraph(private val app: Application) {
         }
     }
 
-    fun createPen(): PenDevice =
-        if (!forceMotionPen && OnyxPenDevice.isAvailable()) OnyxPenDevice() else MotionEventPenDevice(acceptFinger = false)
+    /** The standard pen when asked for (Settings → Pen) or off a Boox; else the Onyx pen, falling back if it can't start. */
+    fun createPen(standard: Boolean = false): PenDevice = when {
+        forceMotionPen || standard || !OnyxPenDevice.isAvailable() -> MotionEventPenDevice(acceptFinger = false)
+        else -> FallbackPenDevice.onyx { logger.w("Pen", "the Onyx pen could not start: using the standard pen") }
+    }
 
     fun libraryFactory(): ViewModelProvider.Factory = viewModelFactory {
         initializer {
@@ -161,6 +165,8 @@ class AppGraph(private val app: Application) {
     }
 
     private val viewPrefs by lazy { app.getSharedPreferences("views", android.content.Context.MODE_PRIVATE) }
+    private val lastPagePrefs by lazy { app.getSharedPreferences("last_page", android.content.Context.MODE_PRIVATE) }
+    private val touchNotebook by lazy { com.nisaba.domain.notebook.TouchNotebookUseCase(notebooks, clock) }
 
     private fun loadView(page: PageId): PagePoint? =
         viewPrefs.getString(page.value, null)?.split(',')?.let { if (it.size == 2) PagePoint(it[0].toFloat(), it[1].toFloat()) else null }
@@ -199,9 +205,11 @@ class AppGraph(private val app: Application) {
                     memory = NotebookMemory(
                         { settings.update { it.copy(hintSeen = true) } }, ::loadView, ::saveView,
                         { ink, size -> settings.update { it.copy(penInk = ink, penSize = size) } },
+                        { nb -> lastPagePrefs.getString(nb.value, null)?.let(::PageId) },
+                        { nb, page -> lastPagePrefs.edit().putString(nb.value, page.value).apply() },
                     ),
                     sources = NotebookSources({ documentText(id) }, ::printedOccupancy, exchanges::get, lessons.observe(id)),
-                    setPersona = SetPersonaUseCase(notebooks),
+                    changes = com.nisaba.notebook.NotebookChanges(SetPersonaUseCase(notebooks)) { touchNotebook(it) },
                 ),
                 startPage = startPage,
             )
@@ -228,7 +236,7 @@ class AppGraph(private val app: Application) {
         ConversationSession(
             ConversationDeps(
                 notebookId = id, oracle = oracle,
-                snapshotter = PageSnapshotRenderer(id, notebooks, inkStore, inkRenderer, backgroundRenderer, rasters),
+                snapshotter = PageSnapshotRenderer(id, notebooks, inkStore, InkRenderer(), BackgroundRenderer(rasters = rasters), rasters),
                 exchanges = exchanges, surface = surface, context = context, clock = clock, idGen = idGen, logger = logger,
                 memory = facts, lessons = lessons,
             ),

@@ -121,9 +121,27 @@ class ConversationContextRulesTest {
     @Test fun hugeDocumentsAreWindowedAroundTheCurrentPage() {
         val pages = List(400) { "page-$it " + "x".repeat(2000) }
         val ctx = formatDocumentContext(pages, currentPage = 200, maxTokens = 60_000)!!
-        assertTrue(ctx.contains("[p.201]") && ctx.contains("[p.171]") && ctx.contains("[p.231]"))
+        assertTrue(ctx.contains("[p.201]") && ctx.contains("[p.181]") && ctx.contains("[p.239]"))
         assertTrue(!ctx.contains("[p.1]") && !ctx.contains("[p.400]"))
         assertTrue(estimateTokens(ctx) <= 60_000)
+    }
+
+    @Test fun turningPagesInsideABlockKeepsTheWindowSoTheCacheHolds() {
+        val pages = List(400) { "page-$it " + "x".repeat(2000) }
+        val a = formatDocumentContext(pages, currentPage = 200, maxTokens = 60_000)
+        assertEquals(a, formatDocumentContext(pages, currentPage = 219, maxTokens = 60_000))
+        assertTrue(a != formatDocumentContext(pages, currentPage = 220, maxTokens = 60_000)) // the next block moves it
+        val dense = List(400) { "page-$it " + "x".repeat(9000) } // the window must shrink, still around the block
+        assertEquals(formatDocumentContext(dense, 203, 60_000), formatDocumentContext(dense, 214, 60_000))
+        assertTrue(formatDocumentContext(dense, 219, 60_000)!!.contains("[p.220]"))
+    }
+
+    @Test fun aLessonReadsTheDocumentWhereItLastCited() {
+        val pages = List(400) { "page-$it " + "x".repeat(2000) }
+        val taught = listOf(ex(1, "q", "Mitosis splits the nucleus (p. 12)."), ex(2, "next?", "Then cytokinesis (p. 141)."))
+        assertEquals(140, lastCitedPage(taught))
+        val r = buildRequest(ContextInput(pages, null, taught, snap, Settings(), teachGoal = ""))
+        assertTrue(r.documentContext!!.contains("[p.141]") && !r.documentContext!!.contains("[p.1] "))
     }
 
     @Test fun oldestPairsAreDroppedWhenOverBudget() {

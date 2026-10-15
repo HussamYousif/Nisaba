@@ -61,6 +61,10 @@ class FakeNotebookStore : NotebookStore {
         val cur = books.value[id] ?: return
         books.value += (id to cur.copy(notebook = cur.notebook.copy(listening = listening)))
     }
+    override suspend fun touch(id: NotebookId, atMillis: Long) {
+        val cur = books.value[id] ?: return
+        books.value += (id to cur.copy(notebook = cur.notebook.copy(updatedAtMillis = atMillis)))
+    }
     override suspend fun setPersona(id: NotebookId, personaId: String) {
         val cur = books.value[id] ?: return
         books.value += (id to cur.copy(notebook = cur.notebook.copy(personaId = personaId)))

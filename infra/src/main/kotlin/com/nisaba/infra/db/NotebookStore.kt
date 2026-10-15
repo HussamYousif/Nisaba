@@ -43,4 +43,6 @@ class RoomNotebookStore(private val dao: NotebookDao) : NotebookStore {
     override suspend fun setListening(id: NotebookId, listening: Boolean) = dao.setListening(id.value, listening)
 
     override suspend fun setPersona(id: NotebookId, personaId: String) = dao.setPersona(id.value, personaId)
+
+    override suspend fun touch(id: NotebookId, atMillis: Long) = dao.touch(id.value, atMillis)
 }

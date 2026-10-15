@@ -12,13 +12,16 @@ const val IMAGE_TOKENS = 1_024
 private const val DOCUMENT_SHARE = 0.6
 private const val MEMORY_SHARE = 0.25
 private const val CHARS_PER_TOKEN = 3.5
-private const val WINDOW_PAGES = 30
+private const val WINDOW_BLOCK = 20
+private const val PAGE_TAG_TOKENS = 4
 
 fun estimateTokens(text: String): Int = ceil(text.length / CHARS_PER_TOKEN).toInt()
 
 /**
- * Document pages as `[p.N] text`. Whole document when it fits [maxTokens]; otherwise a window of ±[WINDOW_PAGES] pages
- * around [currentPage] (0-based). Returns null when there is no text at all (scanned PDFs: the page image carries it).
+ * Document pages as `[p.N] text`. Whole document when it fits [maxTokens]; otherwise the [WINDOW_BLOCK]-page block
+ * holding [currentPage] (0-based) with the blocks either side, shrunk a page at a time until it fits. The window only
+ * moves when the reader crosses into another block, so turning pages inside one keeps the cached prompt prefix (the
+ * document sits in the system message). Returns null when there is no text at all (scanned PDFs: the image carries it).
  */
 fun formatDocumentContext(pages: List<String>, currentPage: Int?, maxTokens: Int = (TOKEN_BUDGET * DOCUMENT_SHARE).toInt()): String? {
     if (pages.all { it.isBlank() }) return null
@@ -26,8 +29,29 @@ fun formatDocumentContext(pages: List<String>, currentPage: Int?, maxTokens: Int
     val all = render(pages.indices)
     if (estimateTokens(all) <= maxTokens) return all
     val center = (currentPage ?: 0).coerceIn(0, pages.lastIndex)
-    val window = render((center - WINDOW_PAGES).coerceAtLeast(0)..(center + WINDOW_PAGES).coerceAtMost(pages.lastIndex))
-    return if (estimateTokens(window) <= maxTokens) window else window.take((maxTokens * CHARS_PER_TOKEN).toInt())
+    val block = center / WINDOW_BLOCK
+    var first = ((block - 1) * WINDOW_BLOCK).coerceAtLeast(0)
+    var last = ((block + 2) * WINDOW_BLOCK - 1).coerceAtMost(pages.lastIndex)
+    val anchor = (block * WINDOW_BLOCK + WINDOW_BLOCK / 2).coerceAtMost(pages.lastIndex) // shrink around the block, not the page
+    fun cost(i: Int) = estimateTokens(pages[i]) + PAGE_TAG_TOKENS
+    var tokens = (first..last).sumOf(::cost)
+    while (tokens > maxTokens && first < last) {
+        val dropFirst = when {
+            center == first -> false
+            center == last -> true
+            else -> anchor - first > last - anchor
+        }
+        if (dropFirst) { tokens -= cost(first); first++ } else { tokens -= cost(last); last-- }
+    }
+    val window = render(first..last)
+    return if (estimateTokens(window) <= maxTokens) window else window.take((maxTokens * CHARS_PER_TOKEN).toInt()) // one giant page
+}
+
+private val CITATION = Regex("""\(p\.\s*(\d+)""")
+
+/** The page the newest answer cited, 0-based (a lesson's place in its document: lesson pages are blank). */
+fun lastCitedPage(exchanges: List<Exchange>): Int? = exchanges.sortedByDescending { it.createdAtMillis }.firstNotNullOfOrNull { e ->
+    CITATION.findAll(e.answerMarkup).lastOrNull()?.groupValues?.get(1)?.toIntOrNull()?.minus(1)?.takeIf { it >= 0 }
 }
 
 /**
@@ -96,7 +120,7 @@ fun maxTokensFor(purpose: Purpose, thinking: Boolean): Int {
 }
 
 fun buildRequest(input: ContextInput): OracleRequest {
-    val doc = formatDocumentContext(input.documentPages, input.currentDocumentPage)
+    val doc = formatDocumentContext(input.documentPages, input.currentDocumentPage ?: lastCitedPage(input.exchanges))
     val memory = formatMemoryContext(input.facts, (TOKEN_BUDGET * MEMORY_SHARE).toInt())
     val (history, trailingNotes) = historyTurns(input.exchanges)
     val imageTokens = IMAGE_TOKENS * (if (input.snapshot.focus != null) 2 else 1)

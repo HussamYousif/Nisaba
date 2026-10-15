@@ -61,6 +61,9 @@ interface NotebookDao {
     @Query("UPDATE notebooks SET persona = :persona WHERE id = :id")
     suspend fun setPersona(id: String, persona: String)
 
+    @Query("UPDATE notebooks SET updatedAt = :at WHERE id = :id")
+    suspend fun touch(id: String, at: Long)
+
     @Transaction
     suspend fun createWithPages(n: NotebookDto, p: List<PageDto>) {
         insertNotebook(n)
