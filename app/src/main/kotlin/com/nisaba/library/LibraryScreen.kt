@@ -53,6 +53,7 @@ data class LibraryActions(
     // "New", step by step (NewNotebookComponent)
     val onChooseKind: (NotebookKind) -> Unit = {},
     val onSelectVoice: (String) -> Unit = {},
+    val onSelectStyle: (com.nisaba.domain.notebook.AnswerStyle) -> Unit = {},
     val onConfirmVoice: () -> Unit = {},
     val onBack: () -> Unit = {},
     val onCreate: (name: String) -> Unit = {},

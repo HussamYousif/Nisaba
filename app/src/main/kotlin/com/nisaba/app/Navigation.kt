@@ -121,19 +121,19 @@ private fun LibraryRoute(graph: AppGraph, nav: NavHostController) {
         graph.debugNewNotebook?.let { name ->
             graph.debugNewNotebook = null
             val kind = if (graph.debugCanvas) com.nisaba.library.NotebookKind.Canvas else com.nisaba.library.NotebookKind.Pages
-            vm.createNotebook(name, kind, graph.debugPersona ?: com.nisaba.domain.persona.PersonaRegistry.DEFAULT_ID, open)
+            vm.createNotebook(name, kind, graph.debugPersona ?: com.nisaba.domain.persona.PersonaRegistry.DEFAULT_ID, onCreated = open)
         }
         graph.debugImportPdf?.let { uri ->
             graph.debugImportPdf = null
             val persona = graph.debugPersona ?: com.nisaba.domain.persona.PersonaRegistry.DEFAULT_ID
-            vm.importPdf(uri, graph.debugLearnGoal, persona, open)
+            vm.importPdf(uri, graph.debugLearnGoal, persona, onCreated = open)
         }
     }
     val pickPdf = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> vm.onPdfPicked(uri?.toString(), open) }
     LibraryScreen(
         state,
         LibraryActions(
-            onChooseKind = vm::chooseKind, onSelectVoice = vm::selectVoice, onBack = vm::back,
+            onChooseKind = vm::chooseKind, onSelectVoice = vm::selectVoice, onSelectStyle = vm::selectStyle, onBack = vm::back,
             onConfirmVoice = { vm.confirmVoice { pickPdf.launch(arrayOf("application/pdf")) } },
             onCreate = { name -> vm.confirmCreate(name, open) },
             onLearn = { goal -> vm.confirmLearn(goal, open) },

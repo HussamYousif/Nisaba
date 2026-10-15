@@ -2,17 +2,18 @@ package com.nisaba.infra.snapshot
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.graphics.ColorMatrix
-import android.graphics.ColorMatrixColorFilter
-import android.graphics.Paint
 import com.nisaba.domain.conversation.PageSnapshot
 import com.nisaba.domain.conversation.PageSnapshotter
+import com.nisaba.domain.ink.InkColor
 import com.nisaba.domain.ink.InkStore
+import com.nisaba.domain.ink.Stroke
+import com.nisaba.domain.ink.StrokeOrigin
 import com.nisaba.domain.notebook.NotebookStore
 import com.nisaba.domain.shared.NotebookId
 import com.nisaba.domain.shared.PageId
 import com.nisaba.domain.shared.PageRect
 import com.nisaba.domain.shared.PageSize
+import com.nisaba.domain.shared.StrokeId
 import com.nisaba.infra.render.BackgroundRenderer
 import com.nisaba.infra.render.InkRenderer
 import kotlinx.coroutines.Dispatchers
@@ -22,8 +23,9 @@ import kotlin.math.max
 import kotlin.math.min
 
 /**
- * Renders a page (background + all ink, including earlier answers) off-screen for the vision model:
- * grayscale JPEG, at most [LONG_EDGE] px on the long side, plus an optional crop around the new writing.
+ * Renders a page (background + all ink, including earlier answers) off-screen for the vision model: a colour JPEG at
+ * most [LONG_EDGE] px on the long side, plus an optional crop around the new writing. The new writing is drawn as
+ * written, older ink faded, earlier answers always in lapis (whatever ink the person reads them in).
  */
 class PageSnapshotRenderer(
     private val notebookId: NotebookId,
@@ -34,18 +36,25 @@ class PageSnapshotRenderer(
     private val rasters: com.nisaba.infra.document.DocumentRasterCache? = null,
 ) : PageSnapshotter {
 
-    override suspend fun snapshot(pageId: PageId, focus: PageRect?): PageSnapshot = withContext(Dispatchers.Default) {
+    override suspend fun snapshot(pageId: PageId, focus: PageRect?, fresh: Set<StrokeId>): PageSnapshot = withContext(Dispatchers.Default) {
         val page = notebooks.get(notebookId)?.pages?.firstOrNull { it.id == pageId }
         val size = page?.size ?: PageSize.PORTRAIT
         (page?.background as? com.nisaba.domain.notebook.PageBackground.DocumentPage)?.let { rasters?.ensure(it.documentId, it.index) }
         val strokes = ink.load(pageId).strokes
         val whole = if (size.isEndless) endlessWindow(focus ?: strokes.lastOrNull()?.bounds) else PageRect(0f, 0f, size.w, size.h)
-        val pageJpeg = render(whole, size, page?.background, strokes, LONG_EDGE, 1f)
+        val argbOf = inkFor(fresh)
+        val pageJpeg = render(whole, size, page?.background, strokes, LONG_EDGE, 1f, argbOf)
         val focusJpeg = focus?.let { f ->
             val clipped = PageRect(max(0f, f.left), max(0f, f.top), min(size.w, f.right), min(size.h, f.bottom))
-            render(clipped, size, page?.background, strokes, LONG_EDGE, MIN_FOCUS_EDGE.toFloat())
+            render(clipped, size, page?.background, strokes, LONG_EDGE, MIN_FOCUS_EDGE.toFloat(), argbOf)
         }
         PageSnapshot(pageJpeg, focusJpeg)
+    }
+
+    /** New writing as written; older ink faded toward the paper; answers in lapis (faded too when there is new writing). */
+    private fun inkFor(fresh: Set<StrokeId>): (Stroke) -> Int = { s ->
+        val base = if (s.origin is StrokeOrigin.Oracle) InkColor.LAPIS.argb else s.color.argb
+        if (fresh.isEmpty() || s.id in fresh) base else (base and 0x00FFFFFF) or (FADED_ALPHA shl 24)
     }
 
     /** An endless canvas has no "whole page": show the neighbourhood of the new writing, with room above for context. */
@@ -63,6 +72,7 @@ class PageSnapshotRenderer(
         strokes: List<com.nisaba.domain.ink.Stroke>,
         maxEdge: Int,
         minEdge: Float,
+        argbOf: (Stroke) -> Int,
     ): ByteArray {
         val w = max(1f, area.width); val h = max(1f, area.height)
         var scale = min(1f, maxEdge / max(w, h))
@@ -72,16 +82,13 @@ class PageSnapshotRenderer(
         val canvas = Canvas(color)
         canvas.scale(scale, scale); canvas.translate(-area.left, -area.top)
         backgroundRenderer.draw(canvas, size, background ?: com.nisaba.domain.notebook.PageBackground.Blank)
-        inkRenderer.drawAll(canvas, strokes.filter { s -> s.bounds.let { // an endless canvas holds far more than the window
+        val inView = strokes.filter { s -> s.bounds.let { // an endless canvas holds far more than the window
             it.right >= area.left - PAD && it.left <= area.right + PAD && it.bottom >= area.top - PAD && it.top <= area.bottom + PAD
-        } })
-        val gray = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888)
-        val paint = Paint().apply { colorFilter = ColorMatrixColorFilter(ColorMatrix().apply { setSaturation(0f) }) }
-        Canvas(gray).drawBitmap(color, 0f, 0f, paint)
-        color.recycle()
+        } }
+        inkRenderer.drawAll(canvas, inView, argbOf)
         val out = ByteArrayOutputStream()
-        gray.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out)
-        gray.recycle()
+        color.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out) // in colour: blue answers vs the person's ink
+        color.recycle()
         return out.toByteArray()
     }
 
@@ -94,5 +101,6 @@ class PageSnapshotRenderer(
         const val WINDOW_MIN_WIDTH = 2000f
         const val MIN_FOCUS_EDGE = 512
         const val JPEG_QUALITY = 85
+        const val FADED_ALPHA = 0x70 // older ink at ~44%: still readable as context, clearly not the new writing
     }
 }

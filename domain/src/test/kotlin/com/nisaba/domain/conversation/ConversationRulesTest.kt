@@ -131,25 +131,47 @@ class ConversationRulesTest {
         assertEquals(ExchangeStatus.Complete, r.effect<ConvEffect.Record>().single().status)
     }
 
-    @Test fun penDownWhileScribingInterruptsAndRecordsPartial() {
+    @Test fun penDownWhileScribingStopsTheHandButNotTheReply() {
         val r = toThinking().send(ConvEvent.OracleBlock(1, block)).send(ConvEvent.PenDown)
-        assertEquals(ConvState.Interrupted(1, blocks = 1), r.state)
+        assertEquals(ConvState.Interrupted(1, blocks = 1, streamOpen = true), r.state)
         assertEquals(ConvEffect.StopScribe(1), r.effect<ConvEffect.StopScribe>().single())
-        assertEquals(ConvEffect.CancelRequest(1), r.effect<ConvEffect.CancelRequest>().single())      // stream still open
+        assertTrue(r.effect<ConvEffect.CancelRequest>().isEmpty()) // its <heard> and memory still arrive
         assertEquals(ExchangeStatus.Interrupted, r.effect<ConvEffect.Record>().single().status)
+        r.send(ConvEvent.OracleBlock(1, block))                     // the rest keeps coming: planned for Continue
+        assertEquals(ConvState.Interrupted(1, blocks = 2, streamOpen = true), r.state)
+        assertEquals(2, r.effect<ConvEffect.PlanBlock>().size)
+        r.send(ConvEvent.TapContinue)
+        assertEquals(ConvState.Scribing(1, streamDone = false, blocks = 2), r.state)
+    }
+
+    @Test fun aDotIsNotWorthARequest() {
+        val r = run().send(ConvEvent.PenDown).send(up("dot", 1000, PageRect(500f, 500f, 504f, 503f))).send(ConvEvent.Tick(4500))
+        assertEquals(ConvState.Idle, r.state)
+        assertTrue(r.effect<ConvEffect.SendRequest>().isEmpty())
+    }
+
+    @Test fun erasingTheQuestionAwayAsksNothingAndErasingPartOfItShrinksIt() {
+        val whole = run().send(ConvEvent.PenDown).send(up("a", 1000)).send(ConvEvent.PenDown)
+            .send(ConvEvent.Erased(emptySet(), null)).send(ConvEvent.PenAborted(1200)).send(ConvEvent.Tick(9000))
+        assertEquals(ConvState.Idle, whole.state); assertTrue(whole.effect<ConvEffect.SendRequest>().isEmpty())
+        val part = run().send(ConvEvent.PenDown).send(up("a", 1000)).send(ConvEvent.PenDown).send(up("b", 1500)).send(ConvEvent.PenDown)
+            .send(ConvEvent.Erased(setOf(StrokeId("a")), PageRect(100f, 200f, 150f, 260f))).send(ConvEvent.PenAborted(1600))
+        assertEquals(setOf(StrokeId("a")), (part.state as ConvState.Pausing).utt.strokeIds)
+        assertEquals(PageRect(100f, 200f, 150f, 260f), (part.state as ConvState.Pausing).utt.bounds)
     }
 
     @Test fun interruptionAfterTheStreamEndedDoesNotCancelAnything() {
         val r = toThinking().send(ConvEvent.OracleBlock(1, block)).send(ConvEvent.OracleDone(1)).send(ConvEvent.PenDown)
         assertTrue(r.effect<ConvEffect.CancelRequest>().isEmpty())
+        assertEquals(ConvState.Interrupted(1, blocks = 1, streamOpen = false), r.state)
     }
 
     @Test fun tapContinueResumesAndWritingAfterInterruptionStartsAFreshUtterance() {
         val r = toThinking().send(ConvEvent.OracleBlock(1, block)).send(ConvEvent.PenDown)
         r.send(ConvEvent.TapContinue)
         assertEquals(ConvEffect.ResumeScribe(1), r.effect<ConvEffect.ResumeScribe>().single())
-        assertEquals(ConvState.Scribing(1, streamDone = true, blocks = 1), r.state)
-        r.send(ConvEvent.ScribeFinished(1, 1))
+        assertEquals(ConvState.Scribing(1, streamDone = false, blocks = 1), r.state) // the reply was still arriving
+        r.send(ConvEvent.ScribeFinished(1, 1)).send(ConvEvent.OracleDone(1))
         assertEquals(ConvState.Idle, r.state)
         val r2 = toThinking().send(ConvEvent.OracleBlock(1, block)).send(ConvEvent.PenDown).send(up("z", 9000))
         assertEquals(setOf(StrokeId("z")), (r2.state as ConvState.Pausing).utt.strokeIds)

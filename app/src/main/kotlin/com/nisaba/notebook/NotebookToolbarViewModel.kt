@@ -35,10 +35,10 @@ fun NotebookViewModel.openVoice() = mutableState.update { it.copy(voiceOpen = tr
 fun NotebookViewModel.closeVoice() = mutableState.update { it.copy(voiceOpen = false) }
 
 /** From the next reply on, Nisaba answers in this notebook in the voice [personaId]. */
-fun NotebookViewModel.setVoice(personaId: String) {
+fun NotebookViewModel.setVoice(personaId: String, style: com.nisaba.domain.notebook.AnswerStyle) {
     closeVoice()
     val set = deps.changes.setPersona ?: return
-    ownScope.launch { set(deps.notebookId, personaId) }
+    ownScope.launch { set(deps.notebookId, personaId); deps.changes.setStyle(deps.notebookId, style) }
 }
 
 fun NotebookViewModel.showProgress() = mutableState.update { it.copy(progressOpen = true) }

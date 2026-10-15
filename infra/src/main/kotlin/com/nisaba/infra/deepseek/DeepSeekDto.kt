@@ -27,7 +27,7 @@ class ChatRequestDto(
 
 @Serializable class ChoiceDto(val delta: DeltaDto? = null, @SerialName("finish_reason") val finishReason: String? = null)
 
-@Serializable class DeltaDto(val content: String? = null)
+@Serializable class DeltaDto(val content: String? = null, @SerialName("reasoning_content") val reasoning: String? = null)
 
 @Serializable
 class UsageDto(

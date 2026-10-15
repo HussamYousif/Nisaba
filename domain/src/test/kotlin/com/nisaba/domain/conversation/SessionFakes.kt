@@ -44,8 +44,9 @@ class FakeOracle(
 class FakeSnapshotter : PageSnapshotter {
     val focuses = mutableListOf<PageRect?>()
     val pages = mutableListOf<PageId>()
-    override suspend fun snapshot(pageId: PageId, focus: PageRect?): PageSnapshot {
-        focuses += focus; pages += pageId
+    val fresh = mutableListOf<Set<com.nisaba.domain.shared.StrokeId>>()
+    override suspend fun snapshot(pageId: PageId, focus: PageRect?, fresh: Set<com.nisaba.domain.shared.StrokeId>): PageSnapshot {
+        focuses += focus; pages += pageId; this.fresh += fresh
         return PageSnapshot(byteArrayOf(1), byteArrayOf(2))
     }
 }

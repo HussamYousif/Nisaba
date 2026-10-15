@@ -66,34 +66,9 @@ class ConversationSession(
     internal var requestJob: Job? = null
     internal val pending = HashMap<Int, PendingExchange>()
     internal val applyMemory = deps.memory?.let { ApplyMemoryUseCase(it, deps.clock) }
+    internal val consolidate = deps.memory?.let { com.nisaba.domain.memory.ConsolidateMemoryUseCase(it, deps.oracle, deps.clock) }
     internal var closed = false
 
-    /** Book-keeping for one request so the exchange can be saved once both its outcome and its stream are final. */
-    /** [transcribes] = the reply's `<heard>` is a transcription of new writing (not of a whole page Nisaba was asked about). */
-    internal class PendingExchange(
-        val reqId: Int,
-        val id: ExchangeId,
-        val pageId: PageId,
-        val startedAt: Long,
-        val focus: PageRect?,
-        val transcribes: Boolean,
-        val personaId: String,
-    ) {
-        val markup = StringBuilder()
-        var heard = ""
-        var inputTokens = 0
-        var outputTokens = 0
-        var cachedTokens = 0
-        var status: ExchangeStatus? = null
-        var streamFinished = false
-        var cancelled = false
-
-        /** The reply arrived in full (its memory tags can be trusted: a cut-off reply may hold a forget without its remember). */
-        var replyComplete = false
-
-        /** The provider said why it stopped; anything but Finished = the reply is incomplete. */
-        var ended: EndReason? = null
-    }
 
     fun updateSettings(settings: Settings, listening: Boolean) {
         appSettings = settings
@@ -104,6 +79,13 @@ class ConversationSession(
     fun onPenUp(strokeId: StrokeId, bounds: PageRect, pageId: PageId) =
         dispatch(ConvEvent.PenUp(strokeId, bounds, pageId, deps.clock.nowMillis()))
     fun onPenAborted() = dispatch(ConvEvent.PenAborted(deps.clock.nowMillis()))
+
+    /** Ink was erased: the utterance keeps only its strokes still on the page; none left = nothing to ask. */
+    fun onErased(onPage: List<com.nisaba.domain.ink.Stroke>) {
+        val utt = (statusFlow.value.state as? ConvState.Writing)?.utt ?: return
+        val alive = onPage.filter { it.id in utt.strokeIds }
+        dispatch(ConvEvent.Erased(alive.mapTo(HashSet()) { it.id }, com.nisaba.domain.ink.utteranceBounds(alive)))
+    }
     fun onScribeFinished(reqId: Int, blocksDrawn: Int) = dispatch(ConvEvent.ScribeFinished(reqId, blocksDrawn))
     fun onTapContinue() = dispatch(ConvEvent.TapContinue)
     fun onTapRetry() = dispatch(ConvEvent.TapRetry)
@@ -117,7 +99,9 @@ class ConversationSession(
     fun beginLesson(pageId: PageId, belowY: Float? = null) {
         if (closed) return
         scope.launch {
-            val last = deps.exchanges.listByNotebook(deps.notebookId).maxOfOrNull { it.createdAtMillis }
+            val last = deps.exchanges.listByNotebook(deps.notebookId)
+                .filter { it.status == ExchangeStatus.Complete || it.status == ExchangeStatus.Interrupted }
+                .maxOfOrNull { it.createdAtMillis }
             val purpose = when {
                 last == null -> Purpose.Opening.takeIf { belowY == null }
                 deps.clock.nowMillis() - last >= RESUME_AFTER_MILLIS -> Purpose.Resume
@@ -211,27 +195,21 @@ class ConversationSession(
             Purpose.Writing -> ""
         }
         lock.withLock { pending[reqId] = record }
+        var sent: OracleRequest? = null
         try {
             val margin = utt.bounds.height.coerceAtLeast(FOCUS_MIN) * FOCUS_MARGIN
             val source = (purpose as? Purpose.Tidy)?.sourcePageId ?: utt.pageId
-            val snapshot = deps.snapshotter.snapshot(source, if (answersWriting) utt.bounds.inflate(margin) else null)
+            val snapshot = deps.snapshotter.snapshot(source, if (answersWriting) utt.bounds.inflate(margin) else null, utt.strokeIds)
             val request = buildRequest(
                 ContextInput(
                     deps.context.documentPages(), deps.context.currentDocumentPage,
                     deps.exchanges.listByNotebook(deps.notebookId), snapshot, appSettings,
-                    deps.memory?.all().orEmpty(), deps.context.teachGoal, purpose, lessonProgress(), persona,
+                    deps.memory?.all().orEmpty(), deps.context.teachGoal, purpose, lessonProgress(), persona, deps.context.style,
                 ),
             )
+            sent = request
             stream(request, record)
-            val cut = record.ended != null && record.ended != EndReason.Finished
-            if (cut) {
-                deps.logger?.w("Session", "request $reqId ended early: ${record.ended}")
-                dispatch(ConvEvent.OracleFailed(reqId, DomainError.Invalid(CUT_SHORT))) // ink stays; nothing learned
-            } else {
-                record.replyComplete = true
-                checkpoint(record)
-                dispatch(ConvEvent.OracleDone(reqId))
-            }
+            streamEnded(record)
         } catch (e: CancellationException) {
             record.cancelled = true
             throw e
@@ -247,10 +225,26 @@ class ConversationSession(
                     record.streamFinished = true
                     // Leaving the page mid-answer: keep what was already written.
                     if (closed && record.status == null && record.markup.isNotEmpty()) record.status = ExchangeStatus.Interrupted
-                    // Cancelled before any outcome was recorded (pen-down while thinking): nothing to keep.
-                    if (record.cancelled && record.status == null) pending.remove(record.reqId) else maybeFinalize(record)
+                    // Cancelled before any outcome (pen-down while thinking): nothing to show, but it was paid for.
+                    if (record.cancelled && record.status == null) {
+                        pending.remove(record.reqId); sent?.let { recordCancelled(record, it) }
+                    } else {
+                        maybeFinalize(record)
+                    }
                 }
             }
+        }
+    }
+
+    /** The reply stopped: in full (saved at once, the hand may still be writing) or cut short (ink stays, nothing learned). */
+    private fun streamEnded(record: PendingExchange) {
+        if (record.ended != null && record.ended != EndReason.Finished) {
+            deps.logger?.w("Session", "request ${record.reqId} ended early: ${record.ended}")
+            dispatch(ConvEvent.OracleFailed(record.reqId, DomainError.Invalid(CUT_SHORT)))
+        } else {
+            record.replyComplete = true
+            checkpoint(record)
+            dispatch(ConvEvent.OracleDone(record.reqId))
         }
     }
 
@@ -259,13 +253,19 @@ class ConversationSession(
         fun forward(events: List<ParseEvent>) = events.forEach { ev ->
             when (ev) {
                 ParseEvent.Silent -> dispatch(ConvEvent.OracleSilent(record.reqId))
-                is ParseEvent.BlockReady -> dispatch(ConvEvent.OracleBlock(record.reqId, ev.block))
+                is ParseEvent.BlockReady -> {
+                    if (record.firstBlockMillis == null) record.firstBlockMillis = deps.clock.nowMillis() - record.startedAt
+                    dispatch(ConvEvent.OracleBlock(record.reqId, ev.block))
+                }
                 is ParseEvent.Heard -> if (record.transcribes && ev.text.isNotBlank()) record.heard = ev.text
             }
         }
         deps.oracle.ask(request).collect { ev ->
             when (ev) {
-                is OracleEvent.Delta -> { record.markup.append(ev.text); forward(parser.feed(ev.text)) }
+                is OracleEvent.Delta -> {
+                    if (record.firstTokenMillis == null) record.firstTokenMillis = deps.clock.nowMillis() - record.startedAt
+                    record.markup.append(ev.text); forward(parser.feed(ev.text))
+                }
                 is OracleEvent.Usage -> {
                     record.inputTokens = ev.promptTokens; record.outputTokens = ev.completionTokens; record.cachedTokens = ev.cachedTokens
                 }

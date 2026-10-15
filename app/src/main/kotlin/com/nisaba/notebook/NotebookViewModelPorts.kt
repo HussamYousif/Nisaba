@@ -62,6 +62,10 @@ class NotebookChanges(
     val setPersona: SetPersonaUseCase? = null,
     /** Marks the notebook as just written in (the library's order). */
     val touch: suspend (NotebookId) -> Unit = {},
+    /** When Nisaba answers here and how long its answers are. */
+    val setStyle: suspend (NotebookId, com.nisaba.domain.notebook.AnswerStyle) -> Unit = { _, _ -> },
+    /** An answer was erased from the page: it leaves the conversation's history. */
+    val markErased: suspend (com.nisaba.domain.shared.ExchangeId) -> Unit = {},
 )
 
 /** What answers draw on besides the ink: the document, its printed text, saved exchanges. */

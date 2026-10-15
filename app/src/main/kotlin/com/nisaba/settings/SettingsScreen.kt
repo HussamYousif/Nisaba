@@ -177,6 +177,11 @@ private fun MemoryPane(factCount: Int, onOpenMemory: () -> Unit) {
 private fun UsagePane(u: com.nisaba.domain.usage.UsageSummary) {
     Text("This month: ${describe(u.thisMonth)}", style = MaterialTheme.typography.bodyLarge)
     Text("All time: ${describe(u.allTime)}", style = MaterialTheme.typography.bodyLarge)
+    val body = MaterialTheme.typography.bodyLarge
+    u.firstInkMedianMillis?.let {
+        Text("First ink about %.1f s after the pause (typical of the last answers)".format(it / MS), style = body)
+    }
+    u.silentShare?.let { Text("${(it * PERCENT).toInt()}% of this month's pauses needed no answer", style = body) }
     Text(
         "Cost is estimated from DeepSeek's list prices (peak hours cost double).",
         style = MaterialTheme.typography.labelSmall, color = Nisaba.colors.faint,
@@ -211,3 +216,6 @@ private fun Toggle(label: String, on: Boolean, onChange: (Boolean) -> Unit) {
         Text(label, style = MaterialTheme.typography.bodyLarge)
     }
 }
+
+private const val MS = 1000f
+private const val PERCENT = 100

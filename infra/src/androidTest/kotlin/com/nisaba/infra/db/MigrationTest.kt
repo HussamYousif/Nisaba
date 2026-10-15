@@ -90,12 +90,38 @@ class MigrationTest {
         db.query("SELECT persona FROM exchanges").use { c -> c.moveToFirst(); assertTrue(c.isNull(0)) }
     }
 
+    @Test fun v6ToV7AddsAnswerTimings() {
+        helper.createDatabase("mig7", 6).apply {
+            execSQL("INSERT INTO notebooks (id,name,createdAt,updatedAt,documentId,listening,coverSeed,teachGoal,persona) VALUES ('n1','Old',1,2,NULL,1,7,NULL,'book')")
+            execSQL(
+                "INSERT INTO exchanges (id,notebookId,pageId,heard,answerMarkup,status,createdAt,model,promptVersion,latencyMillis,inputTokens,outputTokens," +
+                    "cachedTokens,persona) VALUES ('e1','n1','p1','q','a',0,5,'m',1,900,10,20,0,'book')",
+            )
+            close()
+        }
+        val db = helper.runMigrationsAndValidate("mig7", 7, true, MIGRATION_6_7)
+        db.query("SELECT firstTokenMillis, firstBlockMillis FROM exchanges").use { c -> c.moveToFirst(); assertTrue(c.isNull(0) && c.isNull(1)) }
+    }
+
+    @Test fun v7ToV8GivesOldNotebooksTheirUsualAnswers() {
+        helper.createDatabase("mig8", 7).apply {
+            execSQL("INSERT INTO notebooks (id,name,createdAt,updatedAt,documentId,listening,coverSeed,teachGoal,persona) VALUES ('n1','Old',1,2,NULL,1,7,NULL,'book')")
+            close()
+        }
+        val db = helper.runMigrationsAndValidate("mig8", 8, true, MIGRATION_7_8)
+        db.query("SELECT questionsOnly, answerLength FROM notebooks").use { c ->
+            c.moveToFirst(); assertEquals(0, c.getInt(0)); assertEquals("Normal", c.getString(1))
+        }
+    }
+
     @Test fun v1MigratesAllTheWayToTheCurrentSchema() {
         helper.createDatabase("migAll", 1).apply {
             execSQL("INSERT INTO notebooks (id,name,createdAt,updatedAt,documentId,listening,coverSeed) VALUES ('n1','Old',1,2,NULL,1,7)")
             close()
         }
-        helper.runMigrationsAndValidate("migAll", 6, true, MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+        helper.runMigrationsAndValidate(
+            "migAll", 8, true, MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8,
+        )
             .query("SELECT COUNT(*) FROM notebooks").use { c -> c.moveToFirst(); assertEquals(1, c.getInt(0)) }
     }
 }

@@ -3,7 +3,7 @@ package com.nisaba.domain.conversation
 import com.nisaba.domain.persona.Persona
 
 /** Bump when [systemPrompt] or a voice changes; stored on every exchange so answers can be compared across versions. */
-const val PROMPT_VERSION = 11
+const val PROMPT_VERSION = 13
 
 private const val WORDS = "{words}"
 
@@ -11,14 +11,29 @@ private const val WORDS = "{words}"
  * Provider-agnostic contract with the model (DESIGN §5.2–5.3), in the notebook's voice: the [persona]'s own paragraph,
  * then the rules every voice shares. Stable for a notebook (until its voice is changed), so the cached prefix hits.
  */
-fun systemPrompt(persona: Persona): String = persona.voice + "\n\n" + CONTRACT.replace(WORDS, persona.words.toString())
+fun systemPrompt(persona: Persona, questionsOnly: Boolean = false, words: Int = persona.words): String =
+    persona.voice + "\n\n" +
+        CONTRACT.replace(WORDS, words.toString()).replace(RESPOND, if (questionsOnly) RESPOND_QUESTIONS else RESPOND_ALL)
+
+private const val RESPOND = "{respond}"
+
+/** Everything written gets a reply (the default). */
+private val RESPOND_ALL: String = """
+Respond to whatever the NEW writing (the second image, the focus) says. A question or request: answer it. A statement, note, list, joke or remark: react to it like a friend at the table would, briefly and in your voice (agree, add a fact, play along, encourage), and answer any question hidden in it. Never lecture, never refuse to engage, never say that no question was asked. Reply exactly <silent/> followed by <heard> only when the new writing is literally empty: a blank page or a stray dot. Any word, list, fragment, drawing or scribble gets a reply, even one word ("hmm") or a bare list.
+""".trim()
+
+/** "Questions only": notes stay the person's own, transcribed for search but not answered. */
+private val RESPOND_QUESTIONS: String = """
+Answer only writing that is addressed to you: a question, a request, a "?", or anything that clearly expects a reply (and any question hidden inside a note). Plain notes, lists, reminders, drawings and crossed-out words are the person's own: reply exactly <silent/> followed by <heard> with their transcription, so the notebook can find them later.
+""".trim()
 
 private val CONTRACT: String = """
 The person writes by hand; you see the page as images and answer in ink, beneath their writing. Whatever your voice, it wraps the answer and never replaces it: the real, correct answer comes first or plainly within it. Never be cruel about anything real (health, grief, identity, hardship): drop the act for a warm, plain line. Never repeat yourself: vary how your replies open. Earlier replies in this notebook may be in another voice: always answer in this one.
 
-Respond to whatever the NEW writing (the second image, the focus) says. A question or request: answer it. A statement, note, list, joke or remark: react to it like a friend at the table would, briefly and in your voice (agree, add a fact, play along, encourage), and answer any question hidden in it. Never lecture, never refuse to engage, never say that no question was asked. Reply exactly <silent/> followed by <heard> only when the new writing is literally empty: a blank page or a stray dot. Any word, list, fragment, drawing or scribble gets a reply, even one word ("hmm") or a bare list.
+{respond}
 
 When you answer:
+- Put the direct answer alone in a short first paragraph, then anything more: the hand starts writing as soon as that paragraph is complete.
 - Be brief and exact; it will be handwritten. Default to at most {words} words, voice included, unless asked for more; the correct answer must always be in there. Prefer a short table, formula or small diagram over long prose.
 - Always answer in the language they wrote in, whatever the language of these instructions and of your voice.
 - The document text (if any) and earlier exchanges are context; cite pages as (p. 12) when you use the document.
@@ -63,9 +78,9 @@ This notebook is a lesson: you are this person's tutor for the document below (s
  * The last line of every request that speaks in the voice: rules near the end of a long context are the ones the model
  * keeps, and after a change of voice the history is full of the old one. Lessons set their own length.
  */
-fun voiceReminder(persona: Persona, lesson: Boolean): String = when {
+fun voiceReminder(persona: Persona, lesson: Boolean, words: Int = persona.words): String = when {
     lesson -> "Stay in your voice (${persona.name}), in the language they wrote in."
-    else -> "Stay in your voice (${persona.name}), in the language they wrote in, at most ${persona.words} words unless asked for more."
+    else -> "Stay in your voice (${persona.name}), in the language they wrote in, at most $words words unless asked for more."
 } + " Always end with <heard>…</heard>."
 
 
@@ -84,10 +99,12 @@ const val INSTRUCTION_TIDY = "The image is a page of their handwritten notes. Ne
 
 private const val MAX_PREVIOUS = 600
 
-/** Asking again: the previous answer, so the new one can differ. */
+/** Asking again: the previous answer (as plain words, no markup or tags), so the new one can differ. */
 fun againInstruction(previous: String): String =
     "They erased your previous answer to this and asked again: answer it afresh, clearer or more correct, not the same way. " +
-        "Your previous answer was: \"" + previous.take(MAX_PREVIOUS) + "\""
+        "Your previous answer was: \"" + com.nisaba.domain.search.plainText(previous).take(MAX_PREVIOUS) + "\""
 
-const val INSTRUCTION_WITH_FOCUS = "First image: the whole page. Second image: the new writing (focus). Answer only the new writing."
-const val INSTRUCTION_PAGE_ONLY = "The image is the whole page. Answer the new writing on it."
+const val INSTRUCTION_WITH_FOCUS = "First image: the whole page. Second image: the new writing (focus), in dark ink; " +
+    "faded ink is older, and blue ink is your own earlier answers. Answer only the new writing."
+const val INSTRUCTION_PAGE_ONLY = "The image is the whole page; the new writing is in dark ink, faded ink is older, " +
+    "and blue ink is your own earlier answers. Answer the new writing."

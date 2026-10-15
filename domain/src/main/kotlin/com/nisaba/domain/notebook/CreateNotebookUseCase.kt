@@ -22,12 +22,16 @@ class CreateNotebookUseCase(private val store: NotebookStore, private val clock:
         endless: Boolean = false,
         teachGoal: String? = null,
         personaId: String = PersonaRegistry.DEFAULT_ID,
+        style: AnswerStyle = AnswerStyle(),
     ): Notebook {
         val name = validateNotebookName(rawName, store.allNames())
         val now = clock.nowMillis()
         val id = NotebookId(idGen.next())
         val goal = teachGoal?.trim()?.take(MAX_GOAL)
-        val notebook = Notebook(id, name, now, now, documentId, listening, coverSeed(name, id), goal, PersonaRegistry.of(personaId).id)
+        val notebook = Notebook(
+            id, name, now, now, documentId, listening && style.mode != AnswerMode.WhenAsked, coverSeed(name, id), goal,
+            PersonaRegistry.of(personaId).id, style.mode == AnswerMode.QuestionsOnly, style.length,
+        )
         val pages = if (documentId != null && documentPages.isNotEmpty() && teachGoal == null) {
             documentPages.mapIndexed { i, size ->
                 Page(PageId(idGen.next()), id, (i + 1) * PAGE_POSITION_STEP, size, PageBackground.DocumentPage(documentId, i))

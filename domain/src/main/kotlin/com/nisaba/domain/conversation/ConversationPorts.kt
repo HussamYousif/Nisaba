@@ -11,8 +11,11 @@ interface Oracle {
 }
 
 interface PageSnapshotter {
-    /** Whole page (background + all ink) and, when [focus] is given, a crop around the new writing. */
-    suspend fun snapshot(pageId: PageId, focus: PageRect?): PageSnapshot
+    /**
+     * Whole page (background + all ink) and, when [focus] is given, a crop around the new writing. [fresh] = the new
+     * writing's strokes: drawn dark, everything else faded, so the model can tell what is new.
+     */
+    suspend fun snapshot(pageId: PageId, focus: PageRect?, fresh: Set<com.nisaba.domain.shared.StrokeId> = emptySet()): PageSnapshot
 }
 
 interface ExchangeStore {
@@ -54,6 +57,7 @@ interface ConversationContextPorts {
     /** Non-null in a lesson notebook: the learner's goal (see [teachingPrompt]). */
     val teachGoal: String? get() = null
 
-    /** The notebook's voice, read per request (it can change while the notebook is open). */
+    /** The notebook's voice and answering habits, read per request (they can change while the notebook is open). */
     val persona: com.nisaba.domain.persona.Persona get() = com.nisaba.domain.persona.PersonaRegistry.default
+    val style: com.nisaba.domain.notebook.AnswerStyle get() = com.nisaba.domain.notebook.AnswerStyle()
 }

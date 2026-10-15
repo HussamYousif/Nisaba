@@ -45,4 +45,9 @@ class RoomNotebookStore(private val dao: NotebookDao) : NotebookStore {
     override suspend fun setPersona(id: NotebookId, personaId: String) = dao.setPersona(id.value, personaId)
 
     override suspend fun touch(id: NotebookId, atMillis: Long) = dao.touch(id.value, atMillis)
+
+    override suspend fun setStyle(id: NotebookId, style: com.nisaba.domain.notebook.AnswerStyle) = dao.setStyle(
+        id.value, style.mode != com.nisaba.domain.notebook.AnswerMode.WhenAsked,
+        style.mode == com.nisaba.domain.notebook.AnswerMode.QuestionsOnly, style.length.name,
+    )
 }

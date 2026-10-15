@@ -209,7 +209,11 @@ class AppGraph(private val app: Application) {
                         { nb, page -> lastPagePrefs.edit().putString(nb.value, page.value).apply() },
                     ),
                     sources = NotebookSources({ documentText(id) }, ::printedOccupancy, exchanges::get, lessons.observe(id)),
-                    changes = com.nisaba.notebook.NotebookChanges(SetPersonaUseCase(notebooks)) { touchNotebook(it) },
+                    changes = com.nisaba.notebook.NotebookChanges(
+                        SetPersonaUseCase(notebooks), { touchNotebook(it) },
+                        com.nisaba.domain.notebook.SetAnswerStyleUseCase(notebooks)::invoke,
+                        com.nisaba.domain.conversation.MarkAnswerErasedUseCase(exchanges)::invoke,
+                    ),
                 ),
                 startPage = startPage,
             )

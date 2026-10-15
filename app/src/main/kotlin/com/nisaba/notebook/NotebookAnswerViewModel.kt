@@ -81,6 +81,7 @@ fun NotebookViewModel.askAgain(ex: ExchangeId) {
 
 /** An answer may have spilled onto the pages after the one it started on: erase it there too. */
 internal suspend fun NotebookViewModel.eraseAnswerEverywhere(ex: ExchangeId) {
+    deps.changes.markErased(ex) // it leaves the conversation's history too
     val pages = notebook?.pages ?: return
     val here = pageIndex
     for (i in here downTo 0) if (!eraseAnswerOn(pages[i].id, ex) && i < here) break
@@ -217,6 +218,7 @@ internal fun NotebookViewModel.startSession(page: Page) {
         override val currentDocumentPage: Int? get() = documentPageIndex
         override val teachGoal: String? get() = notebook?.notebook?.teachGoal
         override val persona get() = PersonaRegistry.of(notebook?.notebook?.personaId)
+        override val style get() = notebook?.notebook?.style ?: com.nisaba.domain.notebook.AnswerStyle()
     }
     val created = factory.create(scribe, ownScope, settings, notebook?.notebook?.listening ?: true, context)
     session = created

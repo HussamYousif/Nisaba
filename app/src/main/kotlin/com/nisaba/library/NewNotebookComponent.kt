@@ -17,6 +17,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.nisaba.domain.persona.PersonaRegistry
+import com.nisaba.persona.AnswerStyleComponent
 import com.nisaba.persona.PersonaPickerComponent
 import com.nisaba.ui.theme.Nisaba
 import com.nisaba.ui.theme.NisabaButton
@@ -37,6 +38,7 @@ fun NewNotebookComponent(dialog: LibraryDialog, actions: LibraryActions) {
         }
         is LibraryDialog.ChooseVoice -> NisabaDialog("Who answers?", onDismiss) {
             PersonaPickerComponent(d.personaId, actions.onSelectVoice)
+            AnswerStyleComponent(d.style, actions.onSelectStyle)
             val pdf = d.kind == NotebookKind.Pdf || d.kind == NotebookKind.Lesson
             NisabaButtonRow {
                 NisabaButton("‹ Back", actions.onBack)

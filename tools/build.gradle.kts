@@ -19,3 +19,6 @@ dependencies {
     implementation(libs.okhttp)
     testImplementation(libs.kotlin.test)
 }
+
+// `./gradlew :tools:run --args=…` resolves paths (.env, captures/, --in files) from the repository root.
+tasks.named<JavaExec>("run") { workingDir = rootDir }

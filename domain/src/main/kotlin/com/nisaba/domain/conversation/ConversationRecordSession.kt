@@ -1,10 +1,12 @@
 package com.nisaba.domain.conversation
 
-import com.nisaba.domain.conversation.ConversationSession.PendingExchange
 
 import com.nisaba.domain.lesson.formatLessonProgress
 import com.nisaba.domain.lesson.parseTopics
 import com.nisaba.domain.memory.memoryNote
+import com.nisaba.domain.shared.ExchangeId
+import com.nisaba.domain.shared.PageId
+import com.nisaba.domain.shared.PageRect
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
@@ -36,7 +38,7 @@ internal fun ConversationSession.checkpoint(p: PendingExchange) {
 internal fun ConversationSession.exchangeOf(p: PendingExchange, status: ExchangeStatus) = Exchange(
     p.id, deps.notebookId, p.pageId, p.heard, p.markup.toString(), status, p.startedAt,
     appSettings.model, PROMPT_VERSION, deps.clock.nowMillis() - p.startedAt, p.inputTokens, p.outputTokens,
-    p.cachedTokens, p.focus, p.personaId,
+    p.cachedTokens, p.focus, p.personaId, p.firstTokenMillis, p.firstBlockMillis,
 )
 
 /** Saves the exchange once its status is decided AND its stream is over (heard text arrives last). */
@@ -81,10 +83,57 @@ internal suspend fun ConversationSession.recordTopics(exchange: Exchange) {
 internal suspend fun ConversationSession.remember(exchange: Exchange) {
     val apply = applyMemory ?: return
     try {
-        apply(exchange.answerMarkup, exchange.id)?.let(::memoryNote)?.let(deps.surface::showMemoryNote)
+        val plan = apply(exchange.answerMarkup, exchange.id)
+        plan?.let(::memoryNote)?.let(deps.surface::showMemoryNote)
+        if (plan != null && plan.add.isNotEmpty()) consolidate?.invoke(appSettings.model) // now and then, merge and tidy
     } catch (e: CancellationException) {
         throw e
     } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
         deps.logger?.e("Session", "memory update failed", e)
     }
+}
+
+/** A request the pen cut off before any answer: never shown, but billed, so Usage still counts it (estimated). */
+internal fun ConversationSession.recordCancelled(p: PendingExchange, request: OracleRequest) {
+    val billed = exchangeOf(p, ExchangeStatus.Cancelled).copy(
+        inputTokens = estimateTokens(request), outputTokens = estimateTokens(p.markup.toString()),
+    )
+    scope.launch(NonCancellable) {
+        try {
+            deps.exchanges.append(billed)
+        } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
+            deps.logger?.e("Session", "saving a cancelled request failed", e)
+        }
+    }
+}
+
+/** Book-keeping for one request so the exchange can be saved once both its outcome and its stream are final. */
+/** [transcribes] = the reply's `<heard>` is a transcription of new writing (not of a whole page Nisaba was asked about). */
+internal class PendingExchange(
+    val reqId: Int,
+    val id: ExchangeId,
+    val pageId: PageId,
+    val startedAt: Long,
+    val focus: PageRect?,
+    val transcribes: Boolean,
+    val personaId: String,
+) {
+    val markup = StringBuilder()
+    var heard = ""
+    var inputTokens = 0
+    var outputTokens = 0
+    var cachedTokens = 0
+    var status: ExchangeStatus? = null
+    var streamFinished = false
+    var cancelled = false
+
+    /** The reply arrived in full (its memory tags can be trusted: a cut-off reply may hold a forget without its remember). */
+    var replyComplete = false
+
+    /** The provider said why it stopped; anything but Finished = the reply is incomplete. */
+    var ended: EndReason? = null
+
+    /** Milliseconds from the request to its first token, and to its first block (when the hand can start). */
+    var firstTokenMillis: Long? = null
+    var firstBlockMillis: Long? = null
 }

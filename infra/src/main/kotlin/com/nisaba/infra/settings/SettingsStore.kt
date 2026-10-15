@@ -25,7 +25,6 @@ private object Keys {
     val ink = stringPreferencesKey("answerInk")
     val model = stringPreferencesKey("model")
     val thinking = booleanPreferencesKey("thinking")
-    val listening = booleanPreferencesKey("listeningDefault")
     val eraser = stringPreferencesKey("eraserMode")
     val onboarded = booleanPreferencesKey("onboarded")
     val hintSeen = booleanPreferencesKey("hintSeen")
@@ -34,6 +33,8 @@ private object Keys {
     val penSize = stringPreferencesKey("penSize")
     val lastPersona = stringPreferencesKey("lastPersona")
     val standardPen = booleanPreferencesKey("standardPen")
+    val styleMode = stringPreferencesKey("answerMode")
+    val styleLength = stringPreferencesKey("answerLength")
 }
 
 private inline fun <reified E : Enum<E>> String?.toEnum(default: E): E = enumValues<E>().firstOrNull { it.name == this } ?: default
@@ -50,7 +51,8 @@ class DataStoreSettingsStore(context: Context) : SettingsStore {
             it[Keys.pause] = next.pauseMillis.coerceIn(Settings.MIN_PAUSE, Settings.MAX_PAUSE)
             it[Keys.speed] = next.handSpeed.name; it[Keys.style] = next.handStyle.name; it[Keys.ink] = next.answerInk.name
             it[Keys.model] = next.model; it[Keys.thinking] = next.thinking
-            it[Keys.listening] = next.listeningDefault; it[Keys.eraser] = next.eraserMode.name
+            it[Keys.eraser] = next.eraserMode.name
+            it[Keys.styleMode] = next.lastStyle.mode.name; it[Keys.styleLength] = next.lastStyle.length.name
             it[Keys.onboarded] = next.onboarded; it[Keys.hintSeen] = next.hintSeen
             it[Keys.codeHighlight] = next.codeHighlight.name; it[Keys.penInk] = next.penInk; it[Keys.penSize] = next.penSize.name
             it[Keys.lastPersona] = next.lastPersona; it[Keys.standardPen] = next.standardPen
@@ -64,7 +66,10 @@ class DataStoreSettingsStore(context: Context) : SettingsStore {
             handSpeed = this[Keys.speed].toEnum(d.handSpeed), handStyle = this[Keys.style].toEnum(d.handStyle),
             answerInk = this[Keys.ink].toEnum(d.answerInk),
             model = this[Keys.model] ?: d.model, thinking = this[Keys.thinking] ?: d.thinking,
-            listeningDefault = this[Keys.listening] ?: d.listeningDefault, eraserMode = this[Keys.eraser].toEnum(d.eraserMode),
+            eraserMode = this[Keys.eraser].toEnum(d.eraserMode),
+            lastStyle = com.nisaba.domain.notebook.AnswerStyle(
+                this[Keys.styleMode].toEnum(d.lastStyle.mode), this[Keys.styleLength].toEnum(d.lastStyle.length),
+            ),
             onboarded = this[Keys.onboarded] ?: d.onboarded, hintSeen = this[Keys.hintSeen] ?: d.hintSeen,
             codeHighlight = this[Keys.codeHighlight].toEnum(d.codeHighlight), penInk = this[Keys.penInk] ?: d.penInk,
             penSize = this[Keys.penSize].toEnum(d.penSize), lastPersona = this[Keys.lastPersona] ?: d.lastPersona,

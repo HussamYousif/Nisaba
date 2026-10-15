@@ -149,6 +149,16 @@ class DeepSeekClientTest {
         assertEquals(3, server.requestCount)
     }
 
+    @Test fun aLongThinkIsProgressNotAStall() = runBlocking {
+        val thinking = """{"choices":[{"delta":{"reasoning_content":"hmm "}}]}"""
+        val body = sse(*Array(8) { thinking }, chunk("<answer>"), chunk("Oslo."), "[DONE]")
+        server.enqueue(
+            MockResponse().setHeader("Content-Type", "text/event-stream").setBody(body).throttleBody(64, 100, TimeUnit.MILLISECONDS),
+        )
+        val events = client(firstTokenMillis = 300).ask(request()).toList() // the answer itself starts well after 300 ms
+        assertEquals(listOf(OracleEvent.Delta("<answer>"), OracleEvent.Delta("Oslo.")), events.filterIsInstance<OracleEvent.Delta>())
+    }
+
     @Test fun keepAlivesWithoutATokenEndInATimeout() = runBlocking {
         // the server only ever sends comments; each one would reset a plain read timeout
         server.enqueue(MockResponse().setBody(": keep-alive\n\n".repeat(200)).throttleBody(16, 50, TimeUnit.MILLISECONDS))

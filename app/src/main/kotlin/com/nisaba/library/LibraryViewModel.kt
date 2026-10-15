@@ -8,6 +8,7 @@ import com.nisaba.domain.notebook.CreateNotebookUseCase
 import com.nisaba.domain.notebook.DeleteNotebookUseCase
 import com.nisaba.domain.notebook.ListNotebooksUseCase
 import com.nisaba.domain.notebook.RenameNotebookUseCase
+import com.nisaba.domain.notebook.AnswerStyle
 import com.nisaba.domain.persona.PersonaRegistry
 import com.nisaba.domain.settings.SettingsStore
 import com.nisaba.domain.shared.NotebookId
@@ -33,6 +34,7 @@ class LibraryViewModel(
     private val _state = MutableStateFlow(LibraryUiState())
     val state: StateFlow<LibraryUiState> = _state.asStateFlow()
     private var lastPersona = PersonaRegistry.DEFAULT_ID
+    private var lastStyle = AnswerStyle()
 
     /** "New" sent the person to the system picker for this PDF (kind + voice), until it answers. */
     private var picking: LibraryDialog.ChooseVoice? = null
@@ -50,7 +52,7 @@ class LibraryViewModel(
                 }
             }
         }
-        settings?.let { s -> scope.launch { s.observe().collect { lastPersona = it.lastPersona } } }
+        settings?.let { s -> scope.launch { s.observe().collect { lastPersona = it.lastPersona; lastStyle = it.lastStyle } } }
     }
 
     fun onNew() = _state.update { it.copy(dialog = LibraryDialog.ChooseKind) }
@@ -61,7 +63,11 @@ class LibraryViewModel(
 
     // ---- "New": what kind → who answers → a name (or a PDF) ------------------------------------------------------
 
-    fun chooseKind(kind: NotebookKind) = _state.update { it.copy(dialog = LibraryDialog.ChooseVoice(kind, lastPersona)) }
+    fun chooseKind(kind: NotebookKind) = _state.update { it.copy(dialog = LibraryDialog.ChooseVoice(kind, lastPersona, lastStyle)) }
+
+    fun selectStyle(style: AnswerStyle) = _state.update { s ->
+        (s.dialog as? LibraryDialog.ChooseVoice)?.let { s.copy(dialog = it.copy(style = style)) } ?: s
+    }
 
     fun selectVoice(personaId: String) = _state.update { s ->
         (s.dialog as? LibraryDialog.ChooseVoice)?.let { s.copy(dialog = it.copy(personaId = personaId)) } ?: s
@@ -71,7 +77,7 @@ class LibraryViewModel(
     fun back() = _state.update { s ->
         when (val d = s.dialog) {
             is LibraryDialog.ChooseVoice -> s.copy(dialog = LibraryDialog.ChooseKind)
-            is LibraryDialog.NameIt -> s.copy(dialog = LibraryDialog.ChooseVoice(d.kind, d.personaId))
+            is LibraryDialog.NameIt -> s.copy(dialog = LibraryDialog.ChooseVoice(d.kind, d.personaId, d.style))
             else -> s
         }
     }
@@ -79,9 +85,10 @@ class LibraryViewModel(
     /** The voice is picked: a notebook or canvas is named next; for a PDF, [pickPdf] opens the system picker. */
     fun confirmVoice(pickPdf: () -> Unit) {
         val d = _state.value.dialog as? LibraryDialog.ChooseVoice ?: return
-        rememberVoice(d.personaId)
+        rememberVoice(d.personaId, d.style)
         when (d.kind) {
-            NotebookKind.Pages, NotebookKind.Canvas -> _state.update { it.copy(dialog = LibraryDialog.NameIt(d.kind, d.personaId)) }
+            NotebookKind.Pages, NotebookKind.Canvas ->
+                _state.update { it.copy(dialog = LibraryDialog.NameIt(d.kind, d.personaId, d.style)) }
             NotebookKind.Pdf, NotebookKind.Lesson -> { picking = d; dismiss(); pickPdf() }
         }
     }
@@ -92,21 +99,27 @@ class LibraryViewModel(
         picking = null
         if (uri == null) return
         if (p.kind == NotebookKind.Lesson) {
-            _state.update { it.copy(dialog = LibraryDialog.LearnGoal(uri, p.personaId)) }
+            _state.update { it.copy(dialog = LibraryDialog.LearnGoal(uri, p.personaId, p.style)) }
         } else {
-            importPdf(uri, teachGoal = null, personaId = p.personaId, onCreated = onCreated)
+            importPdf(uri, teachGoal = null, personaId = p.personaId, style = p.style, onCreated = onCreated)
         }
     }
 
     /** Creates the notebook or canvas being named; [onCreated] receives its id (to open it). */
     fun confirmCreate(name: String, onCreated: (NotebookId) -> Unit) {
         val d = _state.value.dialog as? LibraryDialog.NameIt ?: return
-        createNotebook(name, d.kind, d.personaId) { dismiss(); onCreated(it) }
+        createNotebook(name, d.kind, d.personaId, d.style) { dismiss(); onCreated(it) }
     }
 
     /** A notebook or canvas named [name], answered in the voice [personaId]. */
-    fun createNotebook(name: String, kind: NotebookKind, personaId: String, onCreated: (NotebookId) -> Unit) {
-        scope.launch { onCreated(create(name, endless = kind == NotebookKind.Canvas, personaId = personaId).id) }
+    fun createNotebook(
+        name: String,
+        kind: NotebookKind,
+        personaId: String,
+        style: AnswerStyle = AnswerStyle(),
+        onCreated: (NotebookId) -> Unit,
+    ) {
+        scope.launch { onCreated(create(name, endless = kind == NotebookKind.Canvas, personaId = personaId, style = style).id) }
     }
 
     /** Debug harness: removes the test notebooks whose names start with [prefix]. */
@@ -117,23 +130,29 @@ class LibraryViewModel(
     /** The goal for the PDF being learned is in ("" = all of it): import it as a lesson notebook. */
     fun confirmLearn(goal: String, onCreated: (NotebookId) -> Unit) {
         val d = _state.value.dialog as? LibraryDialog.LearnGoal ?: return
-        importPdf(d.uri, teachGoal = goal, personaId = d.personaId, onCreated = onCreated)
+        importPdf(d.uri, teachGoal = goal, personaId = d.personaId, style = d.style, onCreated = onCreated)
     }
 
-    private fun rememberVoice(personaId: String) {
-        lastPersona = personaId
-        settings?.let { s -> scope.launch { s.update { it.copy(lastPersona = personaId) } } }
+    private fun rememberVoice(personaId: String, style: AnswerStyle) {
+        lastPersona = personaId; lastStyle = style
+        settings?.let { s -> scope.launch { s.update { it.copy(lastPersona = personaId, lastStyle = style) } } }
     }
 
     /**
      * Imports the picked PDF (copy, measure, extract text) and hands its notebook to [onCreated]. With a [teachGoal]
      * ("" = no particular goal) it becomes a lesson notebook. Nisaba answers in it in the voice [personaId].
      */
-    fun importPdf(uri: String, teachGoal: String? = null, personaId: String = lastPersona, onCreated: (NotebookId) -> Unit) {
+    fun importPdf(
+        uri: String,
+        teachGoal: String? = null,
+        personaId: String = lastPersona,
+        style: AnswerStyle = lastStyle,
+        onCreated: (NotebookId) -> Unit,
+    ) {
         if (_state.value.importing != null) return
         _state.update { it.copy(importing = 0f, dialog = LibraryDialog.None) }
         scope.launch {
-            val result = importDocument(uri, teachGoal, personaId) { p -> _state.update { it.copy(importing = p) } }
+            val result = importDocument(uri, teachGoal, personaId, style) { p -> _state.update { it.copy(importing = p) } }
             _state.update { it.copy(importing = null) }
             when (result) {
                 is Outcome.Ok -> onCreated(result.value.id)

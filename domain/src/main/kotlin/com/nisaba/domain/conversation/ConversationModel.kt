@@ -32,7 +32,11 @@ sealed interface Purpose {
  */
 data class Utterance(val pageId: PageId, val strokeIds: Set<StrokeId>, val bounds: PageRect, val purpose: Purpose = Purpose.Writing)
 
-enum class ExchangeStatus { Complete, Interrupted, Silent, Failed }
+/**
+ * Stored by ordinal: only ever append. [Cancelled] = the person wrote on before an answer came (billed, never shown);
+ * [Erased] = the answer was erased from the page (it leaves the conversation's history).
+ */
+enum class ExchangeStatus { Complete, Interrupted, Silent, Failed, Cancelled, Erased }
 
 data class Exchange(
     val id: ExchangeId,
@@ -53,6 +57,9 @@ data class Exchange(
     val focus: PageRect? = null,
     /** The voice that answered (a `PersonaRegistry` id); null for exchanges from before voices. */
     val personaId: String? = null,
+    /** Milliseconds from sending to the first token, and to the first block the hand could write (null: none came). */
+    val firstTokenMillis: Long? = null,
+    val firstBlockMillis: Long? = null,
 )
 
 sealed interface Turn {
@@ -128,7 +135,8 @@ sealed interface ConvState {
         val blocks: Int = 0,
     ) : ConvState
 
-    data class Interrupted(val reqId: Int, val blocks: Int = 0) : ConvState
+    /** The pen stopped the hand. [streamOpen] = the reply is still arriving (its blocks wait for Continue). */
+    data class Interrupted(val reqId: Int, val blocks: Int = 0, val streamOpen: Boolean = false) : ConvState
     data class Failed(val utt: Utterance, val error: DomainError) : ConvState
 }
 
@@ -142,6 +150,9 @@ sealed interface ConvEvent {
     data class PenUp(val strokeId: StrokeId, val bounds: PageRect, val pageId: PageId, val atMillis: Long) : ConvEvent
     /** The pen lifted without leaving a stroke (an erase, a cancelled touch). */
     data class PenAborted(val atMillis: Long) : ConvEvent
+
+    /** Ink was erased: of the utterance being written only [alive] is left, inside [bounds] (null when none is). */
+    data class Erased(val alive: Set<StrokeId>, val bounds: PageRect?) : ConvEvent
     data class Tick(val atMillis: Long) : ConvEvent
     data object AskNow : ConvEvent
 

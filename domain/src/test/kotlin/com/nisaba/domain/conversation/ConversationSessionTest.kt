@@ -76,6 +76,7 @@ class ConversationSessionTest {
         assertEquals("say hi", saved.heard)
         assertTrue(saved.answerMarkup.contains("Hello there."))
         assertEquals(1500, saved.inputTokens)
+        assertTrue(saved.firstTokenMillis != null && saved.firstBlockMillis != null, "how long it took to start is kept")
     }
 
     @Test fun eachRequestSpeaksInTheNotebooksVoiceOfTheMomentAndTheExchangeRecordsIt() = runTest {
@@ -89,6 +90,31 @@ class ConversationSessionTest {
         rig.write("b"); wait(3600); rig.handDone(); runCurrent()
         assertTrue(oracle.requests.last().system.startsWith("You are Zagreus"))
         assertEquals("zagreus", store.saved.last().personaId)
+    }
+
+    @Test fun stoppingTheHandStillGetsTheTranscriptionAndWhatItTeaches() = runTest {
+        oracle.chunks = listOf(
+            "<answer>\nFirst.\n\n", "Second.\n</answer>", "<remember category=\"books\">Loved Dune</remember>", "<heard>q</heard>",
+        )
+        oracle.gapMillis = 300
+        val rig = rig()
+        rig.write("a"); wait(3500 + 400) // the first block is being written
+        rig.session.onPenDown(); runCurrent() // the pen stops the hand
+        wait(2000)
+        assertEquals(0, oracle.cancelled)
+        val saved = store.saved.single()
+        assertEquals(ExchangeStatus.Interrupted, saved.status); assertEquals("q", saved.heard)
+        assertTrue(memory.all().any { it.text == "Loved Dune" })
+    }
+
+    @Test fun aRequestCutOffByThePenIsStillCountedInUsage() = runTest {
+        oracle.chunks = hello; oracle.gapMillis = 500
+        val rig = rig()
+        rig.write("a"); wait(3500 + 100)
+        rig.session.onPenDown(); runCurrent() // still thinking: cancelled
+        val billed = store.saved.single()
+        assertEquals(ExchangeStatus.Cancelled, billed.status)
+        assertTrue(billed.inputTokens > 1000) // the system prompt + two images, estimated
     }
 
     @Test fun aReplyCutShortKeepsItsInkLearnsNothingAndSaysSo() = runTest {
@@ -153,7 +179,7 @@ class ConversationSessionTest {
         rig.write("a"); wait(3600)
         rig.session.close(); runCurrent()
         rig.write("b"); wait(10_000)
-        assertTrue(store.saved.isEmpty())
+        assertEquals(listOf(ExchangeStatus.Cancelled), store.saved.map { it.status }) // billed, never shown
         assertEquals(1, oracle.started)
     }
 
@@ -256,7 +282,7 @@ class ConversationSessionTest {
         oracle.gapMillis = 1_000
         val rig = rig()
         rig.write("a"); wait(3600); wait(1_200)                          // the forget arrived, the remember did not
-        rig.session.onPenDown(); runCurrent()
+        rig.session.close(); runCurrent()                                // leaving the page cuts the reply off
         assertEquals(ExchangeStatus.Interrupted, store.saved.single().status)
         assertEquals(listOf("Is a nurse"), memory.facts.value.map { it.text })
     }
@@ -300,7 +326,7 @@ class ConversationSessionTest {
         rig.session.onPenDown(); runCurrent()
         assertEquals(1, oracle.cancelled)
         assertEquals("ink-dry", surface.log.last())
-        assertTrue(store.saved.isEmpty(), "a cancelled request leaves no exchange")
+        assertEquals(listOf(ExchangeStatus.Cancelled), store.saved.map { it.status }, "only its bill is kept")
         oracle.gapMillis = 0
         rig.session.onPenUp(StrokeId("b"), PageRect(320f, 210f, 500f, 300f), page); runCurrent()
         wait(3600)
@@ -308,6 +334,7 @@ class ConversationSessionTest {
         assertEquals(2, snapshotter.focuses.size)
         val f2 = snapshotter.focuses.last()!!
         assertTrue(f2.right >= 500f && f2.left <= 100f, "second focus covers both strokes: $f2")
+        assertEquals(setOf(StrokeId("a"), StrokeId("b")), snapshotter.fresh.last(), "both are drawn as the new writing")
     }
 
     @Test fun failureShowsMessageAndRetrySucceeds() = runTest {
@@ -323,7 +350,7 @@ class ConversationSessionTest {
         assertEquals(2, surface.blocks.size)
     }
 
-    @Test fun interruptingTheHandKeepsThePartialAnswerAndCancelsTheStream() = runTest {
+    @Test fun interruptingTheHandKeepsThePartialAnswerAndLetsTheReplyFinish() = runTest {
         oracle.chunks = hello; oracle.gapMillis = 1_000
         val rig = rig()
         rig.write("a"); wait(3600)
@@ -331,8 +358,11 @@ class ConversationSessionTest {
         assertEquals(1, surface.blocks.size)
         rig.session.onPenDown(); runCurrent()
         assertTrue(surface.log.contains("stop1"))
-        assertEquals(1, oracle.cancelled)
+        wait(3_000)                                                         // the rest of the reply still arrives
+        assertEquals(0, oracle.cancelled)
+        assertEquals(2, surface.blocks.size, "the second block is planned, waiting for Continue")
         val saved = store.saved.single()
+        assertEquals("say hi", saved.heard)
         assertEquals(ExchangeStatus.Interrupted, saved.status)
         assertTrue(saved.answerMarkup.contains("Hello there."))
         rig.session.onTapContinue(); runCurrent()

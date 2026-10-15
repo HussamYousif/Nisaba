@@ -11,6 +11,18 @@ import kotlin.test.assertTrue
 class UsageRulesTest {
     private fun at(y: Int, m: Int, d: Int, h: Int) = ZonedDateTime.of(y, m, d, h, 0, 0, 0, ZoneOffset.UTC).toInstant().toEpochMilli()
 
+    @Test fun theSummaryTellsTimeToFirstInkAndHowOftenAPauseNeededNothing() {
+        val rows = listOf(
+            ExchangeUsage("deepseek-flash", at(2026, 10, 1, 12), 2000, 0, 70, firstInkMillis = 1800),
+            ExchangeUsage("deepseek-flash", at(2026, 10, 1, 13), 2000, 0, 70, firstInkMillis = 2600),
+            ExchangeUsage("deepseek-flash", at(2026, 10, 1, 14), 2000, 0, 70, firstInkMillis = 2200),
+            ExchangeUsage("deepseek-flash", at(2026, 10, 1, 15), 1500, 0, 8, silent = true),
+        )
+        val s = summarizeUsage(rows, at(2026, 10, 2, 9), ZoneOffset.UTC)
+        assertEquals(2200L, s.firstInkMedianMillis)
+        assertEquals(0.25, s.silentShare)
+    }
+
     @Test fun peakIsWeekdayMorningsUtc() {
         assertTrue(isPeak(at(2026, 10, 2, 7)))      // Friday 07:00
         assertFalse(isPeak(at(2026, 10, 2, 5)))     // Friday 05:00

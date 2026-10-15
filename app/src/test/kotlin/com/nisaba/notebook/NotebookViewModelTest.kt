@@ -58,7 +58,8 @@ class NotebookViewModelTest {
                 LoadPageInkUseCase(ink), CommitStrokeUseCase(ink), CommitStrokesUseCase(ink), EraseUseCase(ink, ids),
                 UndoUseCase(ink), RedoUseCase(ink), EraseAnswerUseCase(ink),
             ),
-            SetListeningUseCase(store), ids, changes = NotebookChanges(SetPersonaUseCase(store)),
+            SetListeningUseCase(store), ids,
+            changes = NotebookChanges(SetPersonaUseCase(store), setStyle = com.nisaba.domain.notebook.SetAnswerStyleUseCase(store)::invoke),
         )
         val vm = NotebookViewModel(
             deps, scope.backgroundScope, eraserRadius = 6f, toolbarHideMillis = 3000, nowMillis = { scope.testScheduler.currentTime },
@@ -83,10 +84,15 @@ class NotebookViewModelTest {
         val (vm, id) = open(this)
         assertEquals(PersonaRegistry.DEFAULT_ID, vm.state.value.personaId)
         vm.openVoice(); assertTrue(vm.state.value.voiceOpen && vm.state.value.overlayOpen) // the pen pauses under it
-        vm.setVoice("writer"); runCurrent()
+        val habits = com.nisaba.domain.notebook.AnswerStyle(
+            com.nisaba.domain.notebook.AnswerMode.QuestionsOnly, com.nisaba.domain.notebook.AnswerLength.Brief,
+        )
+        vm.setVoice("writer", habits); runCurrent()
         assertFalse(vm.state.value.voiceOpen)
         assertEquals("writer", store.get(id)!!.notebook.personaId)
         assertEquals("writer", vm.state.value.personaId)
+        assertEquals(habits, store.get(id)!!.notebook.style)
+        assertEquals(habits, vm.state.value.style)
     }
 
     @Test fun opensFirstPage() = runTest {

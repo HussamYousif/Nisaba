@@ -37,7 +37,7 @@ fun NotebookViewModel.onPenEvent(e: PenEvent) {
             val page = currentPage()?.id ?: return
             val path = e.path.map { affine.toPage(it.x, it.y) }
             val mode = if (mutableState.value.tool == PenTool.AreaEraser) EraseMode.Area else EraseMode.Stroke
-            ownScope.launch { erase(page, mode, path); session?.onPenAborted() }
+            ownScope.launch { erase(page, mode, path); session?.onErased(edit?.ink?.strokes.orEmpty()); session?.onPenAborted() }
         }
     }
 }

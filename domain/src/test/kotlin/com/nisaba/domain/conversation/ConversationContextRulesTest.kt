@@ -94,6 +94,17 @@ class ConversationContextRulesTest {
         assertTrue(lesson.instruction.endsWith(voiceReminder(zagreus, lesson = true)))
     }
 
+    @Test fun questionsOnlyKeepsNotesSilentAndBriefShortensTheAnswers() {
+        val style = com.nisaba.domain.notebook.AnswerStyle(
+            com.nisaba.domain.notebook.AnswerMode.QuestionsOnly, com.nisaba.domain.notebook.AnswerLength.Brief,
+        )
+        val r = buildRequest(ContextInput(emptyList(), null, emptyList(), snap, Settings(), style = style))
+        assertTrue(r.system.contains("Answer only writing that is addressed to you") && !r.system.contains("Respond to whatever"))
+        assertTrue(r.system.contains("at most 30 words") && r.instruction.contains("at most 30 words")) // the book's 50 × 0.6
+        val everything = buildRequest(input(emptyList()))
+        assertTrue(everything.system.contains("Respond to whatever") && everything.system.contains("at most 50 words"))
+    }
+
     @Test fun replyCeilingsFollowThePurpose() {
         assertEquals(1200, buildRequest(input(emptyList())).options.maxTokens)
         val tidy = ContextInput(emptyList(), null, emptyList(), snap, Settings(), purpose = Purpose.Tidy(PageId("p")))
@@ -142,6 +153,35 @@ class ConversationContextRulesTest {
         assertEquals(140, lastCitedPage(taught))
         val r = buildRequest(ContextInput(pages, null, taught, snap, Settings(), teachGoal = ""))
         assertTrue(r.documentContext!!.contains("[p.141]") && !r.documentContext!!.contains("[p.1] "))
+    }
+
+    @Test fun overBudgetHistoryIsTrimmedWellBelowItSoTheNextRequestsKeepTheirPrefix() {
+        val big = "y".repeat(35_000)
+        val history = (1..8).flatMap { listOf(Turn.User("u$it $big"), Turn.Assistant("a$it")) }
+        val kept = trimHistory(history, budget = 70_000)
+        assertTrue(kept.sumOf { estimateTokens((it as? Turn.User)?.text ?: (it as Turn.Assistant).text) } <= 49_000)
+        assertEquals(history, trimHistory(history, budget = 200_000), "under budget: untouched")
+    }
+
+    @Test fun cjkCountsAboutATokenPerCharacter() {
+        assertEquals(11, estimateTokens("日本語のテキストです。")) // 11 characters, punctuation included
+        assertEquals(4, estimateTokens("hello world")) // 11 characters / 3.5, rounded up
+    }
+
+    @Test fun askingAgainThinksAndQuotesThePreviousAnswerAsPlainWords() {
+        val again = Purpose.Again(
+            "why?", "<answer>\n**Because** $2+2$.\n</answer><remember category=\"me\">x</remember><heard>why?</heard>",
+        )
+        val r = buildRequest(ContextInput(emptyList(), null, emptyList(), snap, Settings(), purpose = again))
+        assertTrue(r.options.thinking)
+        assertTrue(r.instruction.contains("\"Because 2+2.\"") && !r.instruction.contains("<remember") && !r.instruction.contains("**"))
+    }
+
+    @Test fun erasedAndCancelledExchangesLeaveTheHistory() {
+        val (turns, _) = historyTurns(
+            listOf(ex(1, "a", "A"), ex(2, "b", "B", ExchangeStatus.Erased), ex(3, "c", "", ExchangeStatus.Cancelled)),
+        )
+        assertEquals(listOf(Turn.User("a"), Turn.Assistant("A")), turns)
     }
 
     @Test fun oldestPairsAreDroppedWhenOverBudget() {

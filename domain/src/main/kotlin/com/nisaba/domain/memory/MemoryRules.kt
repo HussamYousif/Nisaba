@@ -13,14 +13,14 @@ private fun cleaned(text: String) = text.replace(Regex("""\s+"""), " ").trim().t
  * Checks a reply's ops against what is already known: drops blanks, duplicates (of kept facts or within the reply),
  * forgets of unknown ids, and anything past [MAX_ADDS_PER_REPLY]. A forget followed by a remember is how a fact changes.
  */
-fun planMemory(ops: List<MemoryOp>, existing: List<Fact>): MemoryPlan {
+fun planMemory(ops: List<MemoryOp>, existing: List<Fact>, maxAdds: Int = MAX_ADDS_PER_REPLY): MemoryPlan {
     val known = existing.associateBy { it.id }
     val forget = ops.filterIsInstance<MemoryOp.Forget>().map { it.id }.filter { it in known }.distinct()
     val seen = existing.filter { it.id !in forget }.mapTo(HashSet()) { normalized(it.text) }
     val add = ops.filterIsInstance<MemoryOp.Remember>()
         .map { it.copy(text = cleaned(it.text)) }
         .filter { it.text.isNotEmpty() && seen.add(normalized(it.text)) }
-        .take(MAX_ADDS_PER_REPLY)
+        .take(maxAdds)
     return MemoryPlan(add, forget)
 }
 

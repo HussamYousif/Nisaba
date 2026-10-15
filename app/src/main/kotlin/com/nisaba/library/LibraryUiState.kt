@@ -1,5 +1,6 @@
 package com.nisaba.library
 
+import com.nisaba.domain.notebook.AnswerStyle
 import com.nisaba.domain.persona.PersonaRegistry
 import com.nisaba.domain.shared.NotebookId
 
@@ -29,17 +30,17 @@ sealed interface LibraryDialog {
     data object ChooseKind : LibraryDialog
 
     /** "New", step 2: who answers in it ([personaId] = the voice picked so far). */
-    data class ChooseVoice(val kind: NotebookKind, val personaId: String) : LibraryDialog
+    data class ChooseVoice(val kind: NotebookKind, val personaId: String, val style: AnswerStyle = AnswerStyle()) : LibraryDialog
 
     /** "New", step 3 for a notebook or a canvas: its name. (A PDF goes to the system picker instead.) */
-    data class NameIt(val kind: NotebookKind, val personaId: String) : LibraryDialog
+    data class NameIt(val kind: NotebookKind, val personaId: String, val style: AnswerStyle = AnswerStyle()) : LibraryDialog
     data class Menu(val id: NotebookId, val name: String) : LibraryDialog
     data class Rename(val id: NotebookId, val name: String) : LibraryDialog
     data class ConfirmDelete(val id: NotebookId, val name: String) : LibraryDialog
     data class Message(val text: String) : LibraryDialog
 
     /** A PDF was picked to learn from: ask what for (optional) before importing it. */
-    data class LearnGoal(val uri: String, val personaId: String) : LibraryDialog
+    data class LearnGoal(val uri: String, val personaId: String, val style: AnswerStyle = AnswerStyle()) : LibraryDialog
 }
 
 data class LibraryUiState(

@@ -68,6 +68,7 @@ data class NotebookUiState(
     val askable: Boolean = false,
     /** The voice Nisaba answers in here; [voiceOpen] = its picker is up. */
     val personaId: String = PersonaRegistry.DEFAULT_ID,
+    val style: com.nisaba.domain.notebook.AnswerStyle = com.nisaba.domain.notebook.AnswerStyle(),
     val voiceOpen: Boolean = false,
 ) {
     val showHint: Boolean get() = hintPending && !loading && strokes.isEmpty() && background is PageBackground.Blank

@@ -17,13 +17,14 @@ class ImportDocumentUseCase(
         source: String,
         teachGoal: String? = null,
         personaId: String = PersonaRegistry.DEFAULT_ID,
+        style: com.nisaba.domain.notebook.AnswerStyle = com.nisaba.domain.notebook.AnswerStyle(),
         onProgress: (Float) -> Unit = {},
     ): Outcome<Notebook> =
         when (val imported = importer.import(source, onProgress)) {
             is Outcome.Err -> imported
             is Outcome.Ok -> {
                 val doc = imported.value
-                Outcome.Ok(createNotebook(doc.title, doc.id, doc.pageSizes, teachGoal = teachGoal, personaId = personaId))
+                Outcome.Ok(createNotebook(doc.title, doc.id, doc.pageSizes, teachGoal = teachGoal, personaId = personaId, style = style))
             }
         }
 }

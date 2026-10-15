@@ -46,5 +46,15 @@ fun summarizeUsage(rows: List<ExchangeUsage>, nowMillis: Long, zone: ZoneId, pri
     val counted = rows.filter { it.inputTokens > 0 || it.outputTokens > 0 }
     val now = Instant.ofEpochMilli(nowMillis).atZone(zone)
     val monthStart = now.toLocalDate().withDayOfMonth(1).atStartOfDay(zone).toInstant().toEpochMilli()
-    return UsageSummary(total(counted.filter { it.createdAtMillis >= monthStart }, prices), total(counted, prices))
+    val month = counted.filter { it.createdAtMillis >= monthStart }
+    val inked = rows.mapNotNull { r -> r.firstInkMillis?.let { r.createdAtMillis to it } }
+        .sortedBy { it.first }.takeLast(RECENT).map { it.second }
+    return UsageSummary(
+        total(month, prices), total(counted, prices),
+        firstInkMedianMillis = inked.sorted().getOrNull(inked.size / 2),
+        silentShare = if (month.isEmpty()) null else month.count { it.silent }.toDouble() / month.size,
+    )
 }
+
+/** How many of the latest answers the first-ink median looks at. */
+private const val RECENT = 50

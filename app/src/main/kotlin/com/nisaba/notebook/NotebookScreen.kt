@@ -174,7 +174,7 @@ private fun NotebookOverlays(state: NotebookUiState, vm: NotebookViewModel) {
         }
     }
     if (state.progressOpen) LessonProgressDialog(state, vm::closeProgress)
-    if (state.voiceOpen) VoiceDialogComponent(state.personaId, vm::setVoice, vm::closeVoice)
+    if (state.voiceOpen) VoiceDialogComponent(state.personaId, state.style, vm::setVoice, vm::closeVoice)
     if (state.renaming) {
         var name by remember { mutableStateOf(state.title) }
         NisabaDialog("Rename notebook", vm::cancelRename) {

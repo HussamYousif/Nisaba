@@ -64,6 +64,9 @@ interface NotebookDao {
     @Query("UPDATE notebooks SET updatedAt = :at WHERE id = :id")
     suspend fun touch(id: String, at: Long)
 
+    @Query("UPDATE notebooks SET listening = :listening, questionsOnly = :questionsOnly, answerLength = :length WHERE id = :id")
+    suspend fun setStyle(id: String, listening: Boolean, questionsOnly: Boolean, length: String)
+
     @Transaction
     suspend fun createWithPages(n: NotebookDto, p: List<PageDto>) {
         insertNotebook(n)
@@ -90,12 +93,12 @@ interface ExchangeDao {
 
     /** [like] is a LIKE pattern with `\\` as the escape character. */
     @Query(
-        "SELECT * FROM exchanges WHERE status != 3 AND (heard LIKE :like ESCAPE '\\' OR answerMarkup LIKE :like ESCAPE '\\') " +
+        "SELECT * FROM exchanges WHERE status NOT IN (3, 4, 5) AND (heard LIKE :like ESCAPE '\\' OR answerMarkup LIKE :like ESCAPE '\\') " +
             "ORDER BY createdAt DESC LIMIT :limit",
     )
     suspend fun search(like: String, limit: Int): List<ExchangeDto>
 
-    @Query("SELECT model, createdAt, inputTokens, cachedTokens, outputTokens FROM exchanges")
+    @Query("SELECT model, createdAt, inputTokens, cachedTokens, outputTokens, status, firstBlockMillis FROM exchanges")
     suspend fun usage(): List<UsageRowDto>
 }
 
@@ -149,7 +152,7 @@ interface FactDao {
 
 @Database(
     entities = [NotebookDto::class, PageDto::class, DocumentDto::class, ExchangeDto::class, FactDto::class, LessonTopicDto::class],
-    version = 6,
+    version = 8,
     exportSchema = true,
 )
 abstract class NisabaDatabase : RoomDatabase() {
@@ -164,7 +167,8 @@ abstract class NisabaDatabase : RoomDatabase() {
         /** One connection pool for the whole process (notebooks, exchanges and facts share it). */
         fun shared(context: Context): NisabaDatabase = shared ?: synchronized(this) {
             shared ?: Room.databaseBuilder(context.applicationContext, NisabaDatabase::class.java, "nisaba.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6).build().also { shared = it }
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+                .build().also { shared = it }
         }
 
         fun inMemory(context: Context): NisabaDatabase =
@@ -227,5 +231,21 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE `notebooks` ADD COLUMN `persona` TEXT NOT NULL DEFAULT 'book'")
         db.execSQL("ALTER TABLE `exchanges` ADD COLUMN `persona` TEXT")
+    }
+}
+
+/** v6 → v7: how long each answer took to start (first token, first block the hand could write), for Usage. */
+val MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `exchanges` ADD COLUMN `firstTokenMillis` INTEGER")
+        db.execSQL("ALTER TABLE `exchanges` ADD COLUMN `firstBlockMillis` INTEGER")
+    }
+}
+
+/** v7 → v8: answering habits per notebook (everything / questions only; brief / normal / detailed). */
+val MIGRATION_7_8 = object : Migration(7, 8) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `notebooks` ADD COLUMN `questionsOnly` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE `notebooks` ADD COLUMN `answerLength` TEXT NOT NULL DEFAULT 'Normal'")
     }
 }

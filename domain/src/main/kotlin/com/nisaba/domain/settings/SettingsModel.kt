@@ -20,7 +20,6 @@ data class Settings(
     val answerInk: AnswerInk = AnswerInk.Lapis,
     val model: String = "deepseek-flash",
     val thinking: Boolean = false,
-    val listeningDefault: Boolean = true,
     val eraserMode: EraseMode = EraseMode.Stroke,
     val onboarded: Boolean = false,
     val hintSeen: Boolean = false,
@@ -28,8 +27,9 @@ data class Settings(
     /** The user's own pen: its ink (ARGB) and thickness. */
     val penInk: Int = 0xFF111111.toInt(),
     val penSize: PenSize = PenSize.Medium,
-    /** The voice the last new notebook got; the picker starts there. */
+    /** The voice and answering habits the last new notebook got; the picker starts there. */
     val lastPersona: String = PersonaRegistry.DEFAULT_ID,
+    val lastStyle: com.nisaba.domain.notebook.AnswerStyle = com.nisaba.domain.notebook.AnswerStyle(),
     /** Plain stylus events instead of the Boox's fast pen (if writing ever stops working after an update). */
     val standardPen: Boolean = false,
 ) {

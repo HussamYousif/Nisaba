@@ -6,6 +6,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -19,6 +22,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.nisaba.domain.notebook.AnswerLength
+import com.nisaba.domain.notebook.AnswerMode
+import com.nisaba.domain.notebook.AnswerStyle
 import com.nisaba.domain.persona.PersonaRegistry
 import com.nisaba.ui.brand.HandTextComponent
 import com.nisaba.ui.brand.LocalHandText
@@ -58,15 +64,45 @@ fun PersonaPickerComponent(selected: String, onSelect: (String) -> Unit, modifie
     }
 }
 
-/** Changes the voice of an open notebook: [current] is picked to start with; [onPick] gets the new one. */
+/** When Nisaba answers and how long its answers are: two short rows of choices (small buttons, no scrolling). */
 @Composable
-fun VoiceDialogComponent(current: String, onPick: (String) -> Unit, onDismiss: () -> Unit) {
+fun AnswerStyleComponent(style: AnswerStyle, onChange: (AnswerStyle) -> Unit) {
+    val label = MaterialTheme.typography.labelSmall
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Answers", style = label, modifier = Modifier.width(STYLE_LABEL.dp))
+        for ((mode, name) in MODES) SmallChoice(name, style.mode == mode) { onChange(style.copy(mode = mode)) }
+    }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Length", style = label, modifier = Modifier.width(STYLE_LABEL.dp))
+        for (len in AnswerLength.entries) SmallChoice(len.name, style.length == len) { onChange(style.copy(length = len)) }
+    }
+}
+
+private val MODES = listOf(
+    AnswerMode.Everything to "Everything", AnswerMode.QuestionsOnly to "Questions only", AnswerMode.WhenAsked to "When I ask",
+)
+private const val STYLE_LABEL = 64
+
+@Composable
+private fun SmallChoice(text: String, on: Boolean, onClick: () -> Unit) {
+    val c = Nisaba.colors
+    Box(
+        Modifier.then(if (on) Modifier.background(c.ink) else Modifier).border(BorderStroke(1.dp, c.ink)).clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+    ) { Text(text, style = MaterialTheme.typography.labelLarge, color = if (on) c.paper else c.ink) }
+}
+
+/** Changes the voice and answering habits of an open notebook; [onPick] gets the new ones. */
+@Composable
+fun VoiceDialogComponent(current: String, style: AnswerStyle, onPick: (String, AnswerStyle) -> Unit, onDismiss: () -> Unit) {
     var picked by remember(current) { mutableStateOf(current) }
+    var habits by remember(style) { mutableStateOf(style) }
     NisabaDialog("Who answers here?", onDismiss) {
         PersonaPickerComponent(picked, { picked = it })
+        AnswerStyleComponent(habits) { habits = it }
         NisabaButtonRow {
             NisabaButton("Cancel", onDismiss)
-            NisabaButton("Use this voice", { onPick(picked) }, filled = true)
+            NisabaButton("Use this voice", { onPick(picked, habits) }, filled = true)
         }
     }
 }

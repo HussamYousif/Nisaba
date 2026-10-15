@@ -25,6 +25,12 @@ class InkRenderer(private val profile: PenProfile = PenProfile.DEFAULT) {
 
     fun drawAll(canvas: Canvas, strokes: List<Stroke>) = strokes.forEach { drawStroke(canvas, it) }
 
+    /** Every stroke in the colour [argbOf] gives it (e.g. faded, or answers in one ink for the model's eyes). */
+    fun drawAll(canvas: Canvas, strokes: List<Stroke>, argbOf: (Stroke) -> Int) = strokes.forEach {
+        paint.color = argbOf(it)
+        canvas.drawPath(outline(it), paint)
+    }
+
     /** Live (uncommitted) stroke drawn straight from points, colour [argb]. */
     fun drawLive(canvas: Canvas, points: com.nisaba.domain.ink.InkPoints, argb: Int, widthScale: Float = 1f) {
         if (points.size == 0) return

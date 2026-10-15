@@ -150,7 +150,8 @@ internal class BlockSplitter {
 }
 
 /** `**bold**`, `$math$`; other markdown markers (`*`, backticks) are dropped: the hand has one style. */
-fun parseInlines(text: String): List<Inline> {
+fun parseInlines(raw: String): List<Inline> {
+    val text = scriptsToMath(raw)
     val out = ArrayList<Inline>()
     val plain = StringBuilder()
     fun flushPlain() { if (plain.isNotEmpty()) { out += Inline.Text(plain.toString()); plain.clear() } }
@@ -187,4 +188,35 @@ private fun mergeText(items: List<Inline>): List<Inline> {
         }
     }
     return out
+}
+
+private const val SUB_CHARS = "₀₁₂₃₄₅₆₇₈₉₊₋₌₍₎"
+private const val SUP_CHARS = "⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾ⁿⁱ"
+private const val SUB_PLAIN = "0123456789+-=()"
+private const val SUP_PLAIN = "0123456789+-=()ni"
+private val SCRIPT_WORD = Regex("[\\p{L}\\p{N}]*[$SUB_CHARS$SUP_CHARS]+[\\p{L}\\p{N}$SUB_CHARS$SUP_CHARS]*")
+
+/**
+ * H₂O, x², 10⁻³: Unicode sub- and superscripts the hand has no glyphs for (they came out as "?"), rewritten as inline
+ * math it can write ($H_{2}O$). Words already inside $…$ are left alone.
+ */
+fun scriptsToMath(text: String): String {
+    if (text.none { it in SUB_CHARS || it in SUP_CHARS }) return text
+    val math = Regex("""\$[^$]*\$""").findAll(text).map { it.range }.toList()
+    return SCRIPT_WORD.replace(text) { m ->
+        if (math.any { m.range.first in it }) return@replace m.value
+        val sb = StringBuilder("$")
+        var i = 0
+        val w = m.value
+        while (i < w.length) {
+            val sub = SUB_CHARS.indexOf(w[i]); val sup = SUP_CHARS.indexOf(w[i])
+            if (sub < 0 && sup < 0) { sb.append(w[i]); i++; continue }
+            val chars = if (sub >= 0) SUB_CHARS else SUP_CHARS
+            val plain = if (sub >= 0) SUB_PLAIN else SUP_PLAIN
+            sb.append(if (sub >= 0) "_{" else "^{")
+            while (i < w.length && chars.indexOf(w[i]) >= 0) { sb.append(plain[chars.indexOf(w[i])]); i++ }
+            sb.append('}')
+        }
+        sb.append('$').toString()
+    }
 }

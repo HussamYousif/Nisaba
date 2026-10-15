@@ -50,6 +50,15 @@ class NotebookUseCasesTest {
         assertEquals(PersonaRegistry.DEFAULT_ID, CreateNotebookUseCase(store, clock, ids)("Odd", personaId = "gone").personaId)
     }
 
+    @Test fun aNotebooksAnsweringHabitsAreSetAtCreationAndChangeable() = runTest {
+        val asked = CreateNotebookUseCase(store, clock, ids)("Quiet", style = AnswerStyle(AnswerMode.WhenAsked, AnswerLength.Detailed))
+        assertEquals(false, asked.listening); assertEquals(AnswerLength.Detailed, asked.answerLength)
+        assertEquals(AnswerStyle(AnswerMode.WhenAsked, AnswerLength.Detailed), store.get(asked.id)!!.notebook.style)
+        SetAnswerStyleUseCase(store)(asked.id, AnswerStyle(AnswerMode.QuestionsOnly))
+        val now = store.get(asked.id)!!.notebook
+        assertEquals(true, now.listening); assertEquals(true, now.questionsOnly); assertEquals(AnswerLength.Normal, now.answerLength)
+    }
+
     @Test fun writingMovesANotebookToTheTopAtMostOnceAMinute() = runTest {
         val nb = CreateNotebookUseCase(store, clock, ids)("Maths")
         val touch = TouchNotebookUseCase(store, clock)

@@ -34,6 +34,7 @@ fun reduce(status: ConvStatus, event: ConvEvent, settings: ConvSettings): Pair<C
         ConvEvent.PenDown -> onPenDown(status, s)
         is ConvEvent.PenUp -> onPenUp(status, s, event, settings)
         is ConvEvent.PenAborted -> onPenAborted(status, s, event, settings)
+        is ConvEvent.Erased -> onErased(status, s, event)
         is ConvEvent.Tick -> onTick(status, s, event, settings)
         ConvEvent.AskNow -> onAskNow(status, s)
         is ConvEvent.Begin -> onBegin(status, s, event, settings)
@@ -54,14 +55,9 @@ private fun onPenDown(st: ConvStatus, s: ConvState) = when (s) {
     is ConvState.Held -> st.to(ConvState.Writing(s.utt))
     is ConvState.Thinking -> // nothing was shown yet: drop the request without a trace; the next pause resends everything
         st.to(ConvState.Writing(s.utt), ConvEffect.CancelRequest(s.reqId), ConvEffect.HideInkwell(dry = true))
-    is ConvState.Scribing -> {
-        val fx = buildList {
-            add(ConvEffect.StopScribe(s.reqId))
-            if (!s.streamDone) add(ConvEffect.CancelRequest(s.reqId))
-            add(ConvEffect.Record(s.reqId, ExchangeStatus.Interrupted))
-        }
-        st.copy(state = ConvState.Interrupted(s.reqId, s.blocks)) to fx
-    }
+    // The hand stops; the reply keeps arriving: its transcription and memory still count, and Continue writes the rest.
+    is ConvState.Scribing -> st.copy(state = ConvState.Interrupted(s.reqId, s.blocks, streamOpen = !s.streamDone)) to
+        listOf(ConvEffect.StopScribe(s.reqId), ConvEffect.Record(s.reqId, ExchangeStatus.Interrupted))
     is ConvState.Interrupted -> st.same()
     is ConvState.Failed -> st.to(ConvState.Writing(s.utt), ConvEffect.ClearFailure)
 }
@@ -94,7 +90,24 @@ private fun onPenAborted(st: ConvStatus, s: ConvState, e: ConvEvent.PenAborted, 
 
 private fun onTick(st: ConvStatus, s: ConvState, e: ConvEvent.Tick, cfg: ConvSettings): Pair<ConvStatus, List<ConvEffect>> {
     if (s !is ConvState.Pausing || e.atMillis < s.deadlineMillis) return st.same()
+    if (s.utt.isSpeck()) return st.to(ConvState.Idle) // a dot or a slip of the pen: not worth a request
     return if (cfg.listening) startRequest(st, s.utt) else st.to(ConvState.Held(s.utt))
+}
+
+/** Writing too small to mean anything (page units): a dot, a tap of the nib. */
+private const val SPECK = 12f
+
+private fun Utterance.isSpeck() = purpose is Purpose.Writing && bounds.width < SPECK && bounds.height < SPECK
+
+/** Erasing starts with a pen-down (Writing): what the utterance still has; nothing left = nothing to ask. */
+private fun onErased(st: ConvStatus, s: ConvState, e: ConvEvent.Erased): Pair<ConvStatus, List<ConvEffect>> {
+    val utt = (s as? ConvState.Writing)?.utt ?: return st.same()
+    val bounds = e.bounds
+    return when {
+        e.alive.isEmpty() || bounds == null -> st.to(ConvState.Writing(null))
+        !utt.strokeIds.containsAll(e.alive) -> st.same() // computed against another utterance: ignore
+        else -> st.to(ConvState.Writing(utt.copy(strokeIds = e.alive, bounds = bounds)))
+    }
 }
 
 private fun startRequest(st: ConvStatus, utt: Utterance, vararg before: ConvEffect): Pair<ConvStatus, List<ConvEffect>> {
@@ -129,6 +142,8 @@ private fun onBlock(st: ConvStatus, s: ConvState, e: ConvEvent.OracleBlock) = wh
         st.to(ConvState.Scribing(s.reqId, blocks = 1), ConvEffect.HideInkwell(dry = false), ConvEffect.PlanBlock(e.reqId, e.block))
     s is ConvState.Scribing && s.reqId == e.reqId ->
         st.to(s.copy(scribeDone = false, blocks = s.blocks + 1), ConvEffect.PlanBlock(e.reqId, e.block))
+    // stopped by the pen, still arriving: planned now, written if they tap Continue
+    s is ConvState.Interrupted && s.reqId == e.reqId -> st.to(s.copy(blocks = s.blocks + 1), ConvEffect.PlanBlock(e.reqId, e.block))
     else -> st.same()
 }
 
@@ -140,6 +155,7 @@ private fun onDone(st: ConvStatus, s: ConvState, e: ConvEvent.OracleDone) = when
             ConvEffect.ShowFailure(DomainError.Invalid("empty answer")),
         )
     s is ConvState.Scribing && s.reqId == e.reqId -> finishIfDone(st, s.copy(streamDone = true))
+    s is ConvState.Interrupted && s.reqId == e.reqId -> st.to(s.copy(streamOpen = false))
     else -> st.same()
 }
 
@@ -166,12 +182,13 @@ private fun onFailed(st: ConvStatus, s: ConvState, e: ConvEvent.OracleFailed) = 
         val (next, fx) = finishIfDone(st, s.copy(streamDone = true, streamFailed = true))
         next to (if (e.error == DomainError.Invalid(CUT_SHORT)) fx + ConvEffect.ShowCutShort else fx)
     }
+    s is ConvState.Interrupted && s.reqId == e.reqId -> st.to(s.copy(streamOpen = false))
     else -> st.same()
 }
 
 private fun onTapContinue(st: ConvStatus, s: ConvState) =
     if (s is ConvState.Interrupted) {
-        st.to(ConvState.Scribing(s.reqId, streamDone = true, blocks = s.blocks), ConvEffect.ResumeScribe(s.reqId))
+        st.to(ConvState.Scribing(s.reqId, streamDone = !s.streamOpen, blocks = s.blocks), ConvEffect.ResumeScribe(s.reqId))
     } else st.same()
 
 private fun onTapRetry(st: ConvStatus, s: ConvState) =

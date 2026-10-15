@@ -1,5 +1,6 @@
 package com.nisaba.infra.db
 
+import com.nisaba.domain.notebook.AnswerLength
 import com.nisaba.domain.notebook.Notebook
 import com.nisaba.domain.notebook.NotebookSummary
 import com.nisaba.domain.notebook.Page
@@ -12,11 +13,15 @@ import com.nisaba.domain.shared.PageSize
 private const val BG_BLANK = 0
 private const val BG_DOCUMENT = 1
 
-fun Notebook.toDto() =
-    NotebookDto(id.value, name, createdAtMillis, updatedAtMillis, documentId?.value, listening, coverSeed, teachGoal, personaId)
+fun Notebook.toDto() = NotebookDto(
+    id.value, name, createdAtMillis, updatedAtMillis, documentId?.value, listening, coverSeed, teachGoal, personaId,
+    questionsOnly, answerLength.name,
+)
 
-fun NotebookDto.toModel() =
-    Notebook(NotebookId(id), name, createdAt, updatedAt, documentId?.let(::DocumentId), listening, coverSeed, teachGoal, persona)
+fun NotebookDto.toModel() = Notebook(
+    NotebookId(id), name, createdAt, updatedAt, documentId?.let(::DocumentId), listening, coverSeed, teachGoal, persona,
+    questionsOnly, AnswerLength.entries.firstOrNull { it.name == answerLength } ?: AnswerLength.Normal,
+)
 
 fun Page.toDto() = PageDto(
     id = id.value, notebookId = notebookId.value, position = position, width = size.w, height = size.h,

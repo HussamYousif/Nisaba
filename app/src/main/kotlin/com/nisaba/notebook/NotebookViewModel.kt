@@ -205,7 +205,7 @@ class NotebookViewModel(
                 title = nb.notebook.name, pageIndex = pageIndex, pageCount = nb.pages.size, pageSize = page.size, pageId = page.id,
                 background = page.background, strokes = e.ink.strokes, canUndo = e.canUndo, canRedo = e.canRedo,
                 listening = nb.notebook.listening, loading = false, endless = page.size.isEndless, viewOrigin = viewOrigin,
-                lesson = nb.notebook.teachGoal != null, personaId = nb.notebook.personaId,
+                lesson = nb.notebook.teachGoal != null, personaId = nb.notebook.personaId, style = nb.notebook.style,
             )
         }
         if (mutableState.value.hintPending && e.ink.strokes.isNotEmpty()) {

@@ -176,4 +176,14 @@ class AnswerParserTest {
             }
         }
     }
+
+    @Test fun unicodeSubAndSuperscriptsBecomeMathTheHandCanWrite() {
+        assertEquals(
+            listOf(Inline.Text("Water ("), Inline.Math("H_{2}O"), Inline.Text(")")),
+            parseInlines("Water (H₂O)"),
+        )
+        val d = "$"
+        assertEquals("${d}C_{6}H_{12}O_{6}$d and ${d}x^{2}$d and ${d}10^{-3}$d", scriptsToMath("C₆H₁₂O₆ and x² and 10⁻³"))
+        assertEquals("already ${d}H_2O$d math", scriptsToMath("already ${d}H_2O$d math"))
+    }
 }

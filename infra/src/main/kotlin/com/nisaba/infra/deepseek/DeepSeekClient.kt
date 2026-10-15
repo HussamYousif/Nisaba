@@ -146,13 +146,18 @@ class DeepSeekClient(
                     .onFailure { parseFailure = true } // a malformed chunk is skipped; fatal only if nothing ever parses
                     .getOrDefault(emptyList())
                 if (events.isNotEmpty()) any = true
-                if (events.any { it is OracleEvent.Delta }) produced.set(true)
+                // thinking out loud counts as progress: a long think is not a stalled server
+                if (events.any { it is OracleEvent.Delta } || isReasoning(data)) produced.set(true)
                 events.forEach { emit(it) }
                 true
             }
             if (!any && parseFailure) throw OracleException(DomainError.Network(NetworkKind.Server), "unparseable stream")
         }
     }
+
+    private fun isReasoning(data: String) =
+        runCatching { json.decodeFromString<ChatChunkDto>(data).choices.firstOrNull()?.delta?.reasoning?.isNotEmpty() == true }
+            .getOrDefault(false)
 
     private fun openStream(response: Response): BufferedSource {
         if (!response.isSuccessful) throw OracleException(mapStatus(response.code, response.body?.string()))

@@ -18,6 +18,9 @@ data class NotebookDto(
     val teachGoal: String? = null,
     /** The voice Nisaba answers in (v6): a `PersonaRegistry` id. */
     val persona: String,
+    // v8: answering habits
+    val questionsOnly: Boolean = false,
+    val answerLength: String = "Normal",
 )
 
 @Entity(
@@ -85,10 +88,21 @@ data class ExchangeDto(
     val focusBottom: Float? = null,
     // v6
     val persona: String? = null,
+    // v7
+    val firstTokenMillis: Long? = null,
+    val firstBlockMillis: Long? = null,
 )
 
 /** The token columns of an exchange, for the usage summary. */
-data class UsageRowDto(val model: String, val createdAt: Long, val inputTokens: Int, val cachedTokens: Int, val outputTokens: Int)
+data class UsageRowDto(
+    val model: String,
+    val createdAt: Long,
+    val inputTokens: Int,
+    val cachedTokens: Int,
+    val outputTokens: Int,
+    val status: Int = 0,
+    val firstBlockMillis: Long? = null,
+)
 
 /** Lesson progress (v5): one row per topic of a lesson notebook. */
 @Entity(
