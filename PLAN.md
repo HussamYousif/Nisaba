@@ -672,6 +672,22 @@ Goal: answers are *written*: humanized single-line glyphs drawn along the pen pa
 
 ---
 
+## M9 — Voices (DESIGN D17, §5.3a)
+
+### M9.1 Personas per notebook · M ✅
+- Domain `persona/` (`PersonaModel`, `PersonaRegistry`: 8 voices, ids stored, unknown → `book`); `systemPrompt(persona)` = voice + shared contract (`{words}`); `voiceReminder` at the end of the instruction; Tidy at `TIDY_TEMPERATURE`; `Notebook.personaId`, `Exchange.personaId`; `SetPersonaUseCase`; `Settings.lastPersona`.
+- Infra: Room v6 (`MIGRATION_5_6`: `notebooks.persona` default `book`, `exchanges.persona`); summary row carries the voice; DataStore `lastPersona`; settings `update` made atomic (one `edit`).
+- App: Library **New** = kind → voice → name/PDF (`NewNotebookComponent`, `PersonaPickerComponent` with a hand-written sample); ⋯ → Voice in the notebook (`VoiceDialogComponent`); cover line shows the voice. Debug: `--es persona ID` with `import_pdf`.
+- Scribe: ✓/✗ glyphs (unknown characters used to come out as "?").
+**Tests:** registry, prompt per voice (contract shared, words, temperature, Tidy), session (the voice of the moment reaches the request and the exchange), create/set/import with a voice, `LibraryViewModelTest` (the three paths + cancelled picker), VM voice change, migration 5→6 + store (device).
+**Gates:** `scripts/persona_gate.py` (contract, length, language per voice).
+
+### M9.2 Next for voices (not started)
+- Per-voice touches: failure lines and the first-page hint in the voice; an optional hand/ink per voice.
+- An eval runner in `:tools` using the real `buildRequest` + `AnswerParser` (persona × case, voice switch with 20 old-voice turns, memory precision); see `docs/improvements.md`.
+
+---
+
 ## Cross-cutting
 
 ### Logging & diagnostics

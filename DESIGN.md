@@ -27,6 +27,7 @@ Status: **v1 design, 2026-09-29** · Fresh start (prior attempt lives in git his
 | D14 | Bring-your-own API key (entered in Settings, stored Keystore-encrypted). Debug builds may read `.env` | Required for Play Store; no key ever ships in a release |
 | D15 | PDF only. No export, no sync, no backup in v1 | Your spec |
 | D16 | **Long-term memory across notebooks** (§4.5): a SQLite `facts` table the model writes via `<remember>`/`<forget>` tags; all facts ride in every request (stage 1). No embeddings, no vector DB | Your ask (2026-10-02); keyword/LLM selection covers it at notebook scale |
+| D17 | **Voices (personas), per notebook** (§5.3a): picked in "New" right after the kind; changeable in ⋯ → Voice. The sassy book (default, the Weiss persona every older notebook keeps) · The wise teacher · The writer's companion · The idea explorer · The flirt · Yukinoshita Yukino · Zagreus · Plain. A voice = one prompt paragraph + a word budget + a temperature; the reply contract is shared | Your ask (2026-10-14). The two characters are fan homages: fine for personal use, rename or drop them before a Play release (IP) |
 
 ---
 
@@ -95,8 +96,8 @@ States (pure state machine, §4.4):
 ### 1.6 Screens
 
 1. **Splash (≤ 900 ms):** paper background; the hand writes "Nisaba" in lapis, then the wedge-star mark stamps in. Cold-start work runs in parallel; the splash never waits past readiness plus the end of the stroke in progress.
-2. **Library:** a grid of notebook "tomes" on paper. Each cover is **generated from the notebook name** (seeded cuneiform-wedge pattern + name in the hand), so every notebook looks unique without you picking art. Actions: *New notebook*, *Open a PDF* (PDF pages as backgrounds), *Learn a PDF* (a **lesson notebook**: blank pages, the PDF as hidden context, a hidden teaching prompt plus an optional goal; Nisaba writes the first lesson unprompted, then teaches one idea at a time and checks with a question), long-press → rename / delete. Header: wordmark + settings glyph.
-3. **Notebook:** the page, edge to edge. A top bar of hand-drawn icons that auto-hides 3 s after writing, 5 s after the bar itself was used (never while its menu, the page grid or a picker is open); a tap within 0.5 s of it hiding does not bring it back (no flashing); while hidden, a small Nisaba star in the bottom-right corner brings it back: ‹ back · title (rename) · **page n/m ▾** (page grid, 36 per screen) · pen (tap again: 8 inks, Fine/Medium/Bold; a dot on the icon shows a non-black ink; remembered in Settings) | shapes (tap again: Auto, Line, Arrow, Box, Ellipse, Triangle; current ink and size; undo as usual) | eraser (hold for area eraser) · undo · redo · **eye** (Listening; closed eye = muted) · **quill** (Ask now, only when muted, enabled when there is unsent writing) · **⋯** (+ Page, Tidy this page, Overview/Home on an endless canvas, Lesson progress in a lesson notebook, Rename, Settings). Undo/redo: two-/three-finger tap. Neighbouring pages are kept loaded (instant turns, undo survives). *Tidy this page* writes a clean, structured copy of the user's notes on a new page after it. *Overview* shows the whole endless canvas shrunk to fit; a tap jumps there.
+2. **Library:** a grid of notebook "tomes" on paper. Each cover is **generated from the notebook name** (seeded cuneiform-wedge pattern + name in the hand), so every notebook looks unique without you picking art; under it, pages/kind and the voice. **New** walks three steps: *what kind* (Notebook · Blank canvas · PDF: its pages as backgrounds · Learn a PDF: a **lesson notebook**: blank pages, the PDF as hidden context, a hidden teaching prompt plus an optional goal; Nisaba writes the first lesson unprompted, then teaches one idea at a time and checks with a question) → *who answers* (the voice picker: one row per voice, no scrolling; the hand writes a sample line in the picked voice; it starts at the last voice picked) → a *name*, or the system PDF picker (then the goal, for a lesson). Long-press → rename / delete. Header: wordmark, Search, Settings, New.
+3. **Notebook:** the page, edge to edge. A top bar of hand-drawn icons that auto-hides 3 s after writing, 5 s after the bar itself was used (never while its menu, the page grid or a picker is open); a tap within 0.5 s of it hiding does not bring it back (no flashing); while hidden, a small Nisaba star in the bottom-right corner brings it back: ‹ back · title (rename) · **page n/m ▾** (page grid, 36 per screen) · pen (tap again: 8 inks, Fine/Medium/Bold; a dot on the icon shows a non-black ink; remembered in Settings) | shapes (tap again: Auto, Line, Arrow, Box, Ellipse, Triangle; current ink and size; undo as usual) | eraser (hold for area eraser) · undo · redo · **eye** (Listening; closed eye = muted) · **quill** (Ask now, only when muted, enabled when there is unsent writing) · **⋯** (+ Page, Tidy this page, Overview/Home on an endless canvas, Lesson progress in a lesson notebook, **Voice: <name>** (the same picker; the next reply uses the new voice), Rename, Settings). Undo/redo: two-/three-finger tap. Neighbouring pages are kept loaded (instant turns, undo survives). *Tidy this page* writes a clean, structured copy of the user's notes on a new page after it. *Overview* shows the whole endless canvas shrunk to fit; a tap jumps there.
 4. **Settings:** two panes, no scrolling: a list on the left (Key & model · Waiting · The hand · Ink & colours · Memory · Usage), one short screen on the right. API key (masked, "test key" button) · model · thinking on/off · pause length · hand speed · hand style (2 hands) · **Ink & colours** (answer ink lapis / black; code marked with coloured pens / bold & thin / plain; a preview written by the hand in exactly those inks, laid out as a real code block) · memory · **Usage** (answers and tokens this month / all time, cost estimated from list prices with the peak-hour double) · about / privacy.
 5. **Search** (library): every question and answer across notebooks, the 10 newest matches; a tap opens that page. Lesson notebooks record `<topic status="learned|shaky">` tags as progress (*Lesson progress* in ⋯); coming back after 4 h, the tutor recaps and re-checks a shaky topic below the last ink.
 
@@ -222,6 +223,8 @@ Test files mirror their subject: `ConversationRulesTest.kt`.
 │                      ConversationPorts.kt (Oracle, PageSnapshotter, ExchangeStore)
 │                      ConversationSession.kt (runs the state machine per open page)
 │                      RecordExchangeUseCase.kt
+├── persona/           PersonaModel.kt (Persona: voice paragraph, word budget, temperature, sample line)
+│                      PersonaRegistry.kt (the voices, in picker order; unknown id → the default)
 ├── memory/            MemoryModel.kt (Fact, FactCategory, MemoryOp, MemoryPlan)  MemoryParser.kt (reply tags → ops)
 │                      MemoryRules.kt (dedupe/plan, context format + budget, toolbar note)  MemoryPorts.kt (MemoryStore)
 │                      ApplyMemoryUseCase.kt  ObserveMemoryUseCase.kt  ForgetFactUseCase.kt
@@ -288,7 +291,7 @@ Test files mirror their subject: `ConversationRulesTest.kt`.
 // notebook
 data class Notebook(val id: NotebookId, val name: String, val createdAt: Instant,
                     val updatedAt: Instant, val documentId: DocumentId?, val pageIds: List<PageId>,
-                    val listening: Boolean)
+                    val listening: Boolean, val teachGoal: String?, val personaId: String /* D17 */)
 data class Page(val id: PageId, val notebookId: NotebookId, val size: PageSize,
                 val background: PageBackground)
 sealed interface PageBackground { data object Blank; data class DocumentPage(val documentId: DocumentId, val index: Int) }
@@ -309,7 +312,7 @@ enum class ExchangeStatus { Complete, Interrupted, Silent, Failed }
 
 ### 4.2 Storage
 
-- **Room** (`nisaba.db`): notebooks, pages, documents, exchanges, facts (v3), settings-free metadata. Real migrations from v1 on (Play Store).
+- **Room** (`nisaba.db`): notebooks, pages, documents, exchanges, facts (v3), lesson goal (v4), usage columns + lesson topics (v5), the voice of each notebook and of each exchange (v6, older notebooks get `book`). Real migrations from v1 on (Play Store).
 - **Ink files**: `files/ink/<pageId>.ink`, one per page. Versioned binary (`kotlinx.serialization` ProtoBuf over `InkFileDto`). Written atomically (temp + rename), debounced 500 ms after pen-up, flushed on `onPause`.
 - **Documents**: the imported PDF is copied to `files/docs/<documentId>.pdf`; extracted text is cached in `files/docs/<documentId>.txt`; page rasters are cached in `cache/raster/<documentId>/<index>.webp` (can be rebuilt).
 
@@ -420,6 +423,13 @@ When you answer:
 - If the writing is illegible, say so in one line and ask them to rewrite it.
 <markup spec from §5.2>
 ```
+
+### 5.3a Voices (D17)
+Since prompt v11 the system prompt is `systemPrompt(persona)` = the voice's own paragraph + the shared contract (everything else in §5.2–5.3, with the voice's word budget filled in). Rules that hold for every voice live in the contract: the answer is never replaced by the act, no cruelty about anything real, never repeat yourself, answer in their language whatever the voice. The prefix stays stable per notebook, so changing the voice costs one cache miss.
+- **Voice line:** the final instruction (never cached) ends with "Stay in your voice (name), in the language they wrote in, at most N words… Always end with `<heard>`": after a change of voice the history is full of the old one, and the end of the context is what the model follows. Without the `<heard>` clause the longer line made replies drop the tag (4/20 in the smoke test).
+- **Temperature** per voice (0.5–0.8); a Tidy copy always runs at 0.3. Lessons keep the voice; the teaching prompt sets the length.
+- **Exchanges** record the voice that answered (`personaId`).
+- **Gates:** `scripts/persona_gate.py [ids…] [--case N]` (5 handwritten-style questions per voice: contract, length, language); `scripts/prompt_gate.py --persona ID`. Both read the prompt from the Kotlin sources (`scripts/prompt_source.py`).
 
 ### 5.4 Math subset (`MathParser` → `MathNode`)
 `\frac \sqrt[n]{} ^ _ \sum \prod \int \lim \infty \pm \cdot \times \le \ge \ne \approx \to`, Greek letters, `\left( \right)`, `\begin{pmatrix}`, `\text{}`. Unsupported commands are written literally in the hand (a graceful fallback, never a crash).
