@@ -7,7 +7,8 @@ import com.nisaba.domain.shared.Outcome
 
 /**
  * Imports a document and opens a notebook on it: one notebook page per document page, or, with a [teachGoal], a
- * lesson notebook where Nisaba teaches the document on blank pages. Nisaba answers in the voice [personaId].
+ * lesson notebook where Nisaba teaches the document on blank pages, or ([book]) a walk through the book's concepts on
+ * blank pages. Nisaba answers in the voice [personaId].
  */
 class ImportDocumentUseCase(
     private val importer: DocumentImporter,
@@ -18,13 +19,17 @@ class ImportDocumentUseCase(
         teachGoal: String? = null,
         personaId: String = PersonaRegistry.DEFAULT_ID,
         style: com.nisaba.domain.notebook.AnswerStyle = com.nisaba.domain.notebook.AnswerStyle(),
+        book: Boolean = false,
         onProgress: (Float) -> Unit = {},
     ): Outcome<Notebook> =
         when (val imported = importer.import(source, onProgress)) {
             is Outcome.Err -> imported
             is Outcome.Ok -> {
                 val doc = imported.value
-                Outcome.Ok(createNotebook(doc.title, doc.id, doc.pageSizes, teachGoal = teachGoal, personaId = personaId, style = style))
+                val nb = createNotebook(
+                    doc.title, doc.id, doc.pageSizes, teachGoal = teachGoal, personaId = personaId, style = style, book = book,
+                )
+                Outcome.Ok(nb)
             }
         }
 }

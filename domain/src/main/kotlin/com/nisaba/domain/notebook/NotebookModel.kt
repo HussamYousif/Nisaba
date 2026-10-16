@@ -29,6 +29,8 @@ data class Notebook(
     val deletedAtMillis: Long? = null,
     /** What its blank pages look like. */
     val paper: Paper = Paper.Blank,
+    /** A book walk: Nisaba maps the attached book's core concepts, then walks through them a page at a time. */
+    val book: Boolean = false,
 ) {
     val style: AnswerStyle get() = AnswerStyle(
         when {
@@ -77,6 +79,8 @@ data class NotebookSummary(
     val isPrivate: Boolean = false,
     val pinned: Boolean = false,
     val deletedAtMillis: Long? = null,
+    /** A book walk (see [Notebook.book]). */
+    val book: Boolean = false,
 )
 
 data class NotebookWithPages(val notebook: Notebook, val pages: List<Page>)

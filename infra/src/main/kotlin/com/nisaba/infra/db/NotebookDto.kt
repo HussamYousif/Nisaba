@@ -27,6 +27,8 @@ data class NotebookDto(
     val pinned: Boolean = false,
     val deletedAt: Long? = null,
     val paper: String = "Blank",
+    /** v12: a book walk. */
+    val book: Boolean = false,
 )
 
 @Entity(
@@ -69,7 +71,15 @@ data class SummaryRowDto(
     val isPrivate: Boolean = false,
     val pinned: Boolean = false,
     val deletedAt: Long? = null,
+    val book: Boolean = false,
 )
+
+/** v12: a book notebook's map, as JSON (see [BookMapDto]). */
+@Entity(
+    tableName = "book_maps",
+    foreignKeys = [ForeignKey(NotebookDto::class, parentColumns = ["id"], childColumns = ["notebookId"], onDelete = ForeignKey.CASCADE)],
+)
+data class BookMapRowDto(@PrimaryKey val notebookId: String, val json: String)
 
 @Entity(
     tableName = "exchanges",

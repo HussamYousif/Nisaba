@@ -55,6 +55,9 @@ interface ConversationSurface {
     /** One line after a reply changed what Nisaba remembers ("Remembered: loved Dune"). */
     fun showMemoryNote(note: String) {}
 
+    /** In a book notebook they asked to move on (the reply was `<next/>`): the walk's next page. */
+    fun bookNext() {}
+
     /** The answer being written was cut short by the provider (too long, overloaded); what is written stays. */
     fun showCutShort() {}
 
@@ -75,6 +78,10 @@ interface ConversationContextPorts {
 
     /** A private notebook: no memory is read into its requests or learned from its replies. */
     val isPrivate: Boolean get() = false
+
+    /** Non-null in a book notebook once its map is made; [bookConcept] = the concept the open page belongs to. */
+    val book: com.nisaba.domain.book.BookMap? get() = null
+    val bookConcept: Int? get() = null
 
     /** Any voice by id, their own ones included (a second opinion); unknown → the default voice. */
     fun voice(id: String): com.nisaba.domain.persona.Persona = com.nisaba.domain.persona.PersonaRegistry.of(id)

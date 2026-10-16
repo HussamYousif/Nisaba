@@ -53,6 +53,8 @@ internal fun TopOfPage(state: NotebookUiState, vm: NotebookViewModel, onBack: ()
     Column(modifier) {
         if (state.toolbarVisible) NotebookToolbarComponent(state, vm, onBack)
         state.failure?.let { FailureChip(it, vm::retry) }
+        state.book?.reading?.let { MemoryChip(readingLine(it), {}, mark = "…") }
+        state.bookFailure?.let { FailureChip("Couldn't read the book: $it", vm::retryBook) }
         state.memoryNote?.let { MemoryChip(it, vm::dismissMemoryNote) }
         state.notice?.let { MemoryChip(it, vm::dismissNotice, mark = "!") }
         state.reminder?.let { ReminderChip(reminderLine(it), vm::addReminder, vm::dismissReminder) }

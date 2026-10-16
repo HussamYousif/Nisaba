@@ -91,6 +91,7 @@ class RecordingSurface : ConversationSurface {
     override fun showCutShort() { log += "cut" }
     val reminders = mutableListOf<Reminder>()
     override fun offerReminder(reminder: Reminder) { reminders += reminder }
+    override fun bookNext() { log += "next" }
 }
 
 class FakeContextPorts(

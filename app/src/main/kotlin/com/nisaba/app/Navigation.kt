@@ -137,7 +137,7 @@ private fun LibraryRoute(graph: AppGraph, nav: NavHostController) {
         graph.debug.debugImportPdf?.let { uri ->
             graph.debug.debugImportPdf = null
             val persona = graph.debug.debugPersona ?: com.nisaba.domain.persona.PersonaRegistry.DEFAULT_ID
-            vm.importPdf(uri, graph.debug.debugLearnGoal, persona, onCreated = open)
+            vm.importPdf(uri, graph.debug.debugLearnGoal, persona, book = graph.debug.debugBook, onCreated = open)
         }
     }
     val pickPdf = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> vm.onPdfPicked(uri?.toString(), open) }

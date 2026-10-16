@@ -39,7 +39,7 @@ fun NewNotebookComponent(dialog: LibraryDialog, actions: LibraryActions) {
         is LibraryDialog.ChooseVoice -> NisabaDialog("Who answers?", onDismiss) {
             PersonaPickerComponent(d.personaId, actions.onSelectVoice)
             AnswerStyleComponent(d.style, actions.onSelectStyle)
-            val pdf = d.kind == NotebookKind.Pdf || d.kind == NotebookKind.Lesson
+            val pdf = d.kind == NotebookKind.Pdf || d.kind == NotebookKind.Lesson || d.kind == NotebookKind.Book
             NisabaButtonRow {
                 NisabaButton("‹ Back", actions.onBack)
                 NisabaButton(if (pdf) "Choose the PDF" else "Next", actions.onConfirmVoice, filled = true)

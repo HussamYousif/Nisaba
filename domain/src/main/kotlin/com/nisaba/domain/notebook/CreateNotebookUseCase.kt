@@ -23,6 +23,7 @@ class CreateNotebookUseCase(private val store: NotebookStore, private val clock:
         teachGoal: String? = null,
         personaId: String = PersonaRegistry.DEFAULT_ID,
         style: AnswerStyle = AnswerStyle(),
+        book: Boolean = false,
     ): Notebook {
         val name = validateNotebookName(rawName, store.allNames())
         val now = clock.nowMillis()
@@ -30,9 +31,11 @@ class CreateNotebookUseCase(private val store: NotebookStore, private val clock:
         val goal = teachGoal?.trim()?.take(MAX_GOAL)
         val notebook = Notebook(
             id, name, now, now, documentId, listening && style.mode != AnswerMode.WhenAsked, coverSeed(name, id), goal,
-            PersonaRegistry.normalize(personaId), style.mode == AnswerMode.QuestionsOnly, style.length,
+            PersonaRegistry.normalize(personaId), style.mode == AnswerMode.QuestionsOnly, style.length, book = book,
         )
-        val pages = if (documentId != null && documentPages.isNotEmpty() && teachGoal == null) {
+        // a lesson or a book walk is written on blank pages, its document beside it; a PDF notebook is its pages
+        val onBlankPages = teachGoal != null || book
+        val pages = if (documentId != null && documentPages.isNotEmpty() && !onBlankPages) {
             documentPages.mapIndexed { i, size ->
                 Page(PageId(idGen.next()), id, (i + 1) * PAGE_POSITION_STEP, size, PageBackground.DocumentPage(documentId, i))
             }

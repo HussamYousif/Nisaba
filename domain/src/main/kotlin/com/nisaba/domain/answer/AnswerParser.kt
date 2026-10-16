@@ -58,8 +58,12 @@ class AnswerParser {
         val skipped = rest().length - r.length
         val silent = SILENT_RE.find(r)
         val answer = ANSWER_RE.find(r)
+        val next = com.nisaba.domain.book.nextTagAtStart(r) // "next" in a book walk: nothing to write, like <silent/>
         when {
             r.isEmpty() -> { phase = if (final) Phase.Done else phase; return false }
+            next != null && (final || r.length > next.value.length) -> {
+                pos += skipped + next.value.length; out += ParseEvent.Silent; phase = Phase.AfterAnswer
+            }
             // `<silent>` may still grow a `</silent>`: wait until something follows it
             silent != null && (final || silentIsWhole(silent, r)) -> {
                 pos += skipped + silent.value.length; out += ParseEvent.Silent; phase = Phase.AfterAnswer
@@ -133,7 +137,7 @@ class AnswerParser {
         val lines = chunk.split('\n')
         val complete = if (flushTail) lines else lines.dropLast(1)
         for ((i, raw) in complete.withIndex()) {
-            val l = com.nisaba.domain.conversation.stripTaskTags(stripTopicTags(stripMemoryTags(raw)))
+            val l = com.nisaba.domain.book.stripNextTags(com.nisaba.domain.conversation.stripTaskTags(stripTopicTags(stripMemoryTags(raw))))
             val trailingEmpty = flushTail && i == complete.lastIndex && raw.isEmpty()
             val tagOnly = l.isBlank() && raw.isNotBlank() // a memory tag on its own line: not ink, not a paragraph break
             if (!trailingEmpty && !tagOnly) out += blocks.line(l.trimEnd('\r'))

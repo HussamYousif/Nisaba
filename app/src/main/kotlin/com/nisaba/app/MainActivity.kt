@@ -34,6 +34,7 @@ class MainActivity : ComponentActivity() {
             graph.debug.debugOpenFirst = intent.getBooleanExtra("open_first", false)
             graph.debug.debugImportPdf = intent.getStringExtra("import_pdf")
             graph.debug.debugLearnGoal = intent.getStringExtra("learn_goal") // with import_pdf: a lesson notebook ("" = no goal)
+            graph.debug.debugBook = intent.getBooleanExtra("book", false) // with import_pdf: a book walk
             graph.debug.debugPersona = intent.getStringExtra("persona") // with import_pdf: its voice (a PersonaRegistry id)
             graph.debug.debugProxy = intent.getStringExtra("proxy") // "127.0.0.1:8899": scripts/dev_proxy.py over adb reverse
             graph.debug.debugNewNotebook = intent.getStringExtra("new_notebook") // a fresh test notebook, opened at once

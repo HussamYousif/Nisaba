@@ -74,6 +74,9 @@ class NotebookViewModel(
     internal var sessionGen = 0
     internal var turnsSinceFlash = 0
     internal var statusJob: Job? = null
+    internal var bookJob: Job? = null
+    /** The page of the book walk asked for and not yet written (one at a time, however often "next" comes). */
+    internal var requestedStep: com.nisaba.domain.book.BookStep? = null
 
     init {
         ownScope.launch { deps.settings.collect { s -> settings = s; onSettings(s) } }
@@ -95,6 +98,7 @@ class NotebookViewModel(
                     val target = startPage ?: deps.memory.lastPage(deps.notebookId) // search hit, else where it was left
                     openPage(nb.pages.indexOfFirst { it.id == target }.coerceAtLeast(0), full = false)
                     if (startPage == null) maybeDailyPage(nb) else mutableState.update { it.copy(highlight = startMark) }
+                    if (nb.notebook.book) followBook()
                 } else {
                     publish()
                 }

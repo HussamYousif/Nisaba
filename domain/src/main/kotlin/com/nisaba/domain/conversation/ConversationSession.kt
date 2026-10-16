@@ -43,6 +43,8 @@ class ConversationDeps(
     val memory: MemoryStore? = null,
     /** Lesson progress; used only in lesson notebooks. */
     val lessons: LessonStore? = null,
+    /** A book notebook's map, marked as the walk writes its pages; used only in book notebooks. */
+    val books: com.nisaba.domain.book.BookStore? = null,
 )
 
 /**
@@ -157,6 +159,7 @@ class ConversationSession(
         Purpose.Daily -> DAILY_HEARD
         Purpose.Recap -> RECAP_HEARD
         is Purpose.Review -> REVIEW_HEARD
+        is Purpose.Book -> com.nisaba.domain.book.bookHeard(deps.context.book, purpose.step)
         Purpose.Writing, is Purpose.Check, Purpose.Redraw, Purpose.About -> ""
     }
 
@@ -177,7 +180,7 @@ class ConversationSession(
         val other = ((purpose as? Purpose.Again)?.how as? AgainHow.OtherVoice)?.personaId
         val persona = other?.let(deps.context::voice) ?: deps.context.persona
         val record = PendingExchange(
-            reqId, ExchangeId(deps.idGen.next()), utt.pageId, deps.clock.nowMillis(), focus, answersWriting, persona.id,
+            reqId, ExchangeId(deps.idGen.next()), utt.pageId, deps.clock.nowMillis(), focus, answersWriting, persona.id, purpose,
         )
         record.heard = heardFor(purpose)
         lock.withLock { pending[reqId] = record }
@@ -190,7 +193,7 @@ class ConversationSession(
                 deps.exchanges.listByNotebook(deps.notebookId), snapshot, appSettings,
                 if (private) emptyList() else deps.memory?.all().orEmpty(), deps.context.teachGoal, purpose, lessonProgress(),
                 persona, deps.context.style, now = nowInWords(deps.clock.nowMillis(), java.time.ZoneId.systemDefault()),
-                isPrivate = private,
+                isPrivate = private, book = deps.context.book?.let { com.nisaba.domain.book.BookPlace(it, deps.context.bookConcept) },
             )
             // a whole PDF's text is windowed, estimated and trimmed here: never on the thread that draws the page
             val request = compute?.let { withContext(it) { buildRequest(input) } } ?: buildRequest(input)

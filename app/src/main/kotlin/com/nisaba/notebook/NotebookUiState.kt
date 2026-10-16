@@ -59,6 +59,10 @@ data class NotebookUiState(
     val lesson: Boolean = false,
     val lessonTopics: List<LessonTopic> = emptyList(),
     val progressOpen: Boolean = false,
+    /** A book walk's map as made and walked so far (null outside book notebooks); why its reading stopped; its dialog. */
+    val book: com.nisaba.domain.book.BookMap? = null,
+    val bookFailure: String? = null,
+    val bookOpen: Boolean = false,
     /** The toolbar's ⋯ menu is open (the bar stays up meanwhile). */
     val menuOpen: Boolean = false,
     /** The page grid is open, showing screenful [pageGridScreen]. */
@@ -97,7 +101,8 @@ data class NotebookUiState(
     val pickerOpen: Boolean get() = menuOpen || pageGridOpen || toolPanel != null
 
     /** Anything drawn over the page, where the pen must not ink. */
-    val overlayOpen: Boolean get() = pickerOpen || overview || answerMenu != null || progressOpen || renaming || voiceOpen || paperOpen
+    val overlayOpen: Boolean get() =
+        pickerOpen || overview || answerMenu != null || progressOpen || renaming || voiceOpen || paperOpen || bookOpen
 }
 
 enum class ToolPanel { Pen, Shapes }

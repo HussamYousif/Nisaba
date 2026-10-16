@@ -56,6 +56,15 @@ class NotebookDeps(
     val changes: NotebookChanges = NotebookChanges(),
 )
 
+/** A book walk's map as it is made and walked, and the reading that makes it (no-ops outside book notebooks and in tests). */
+class NotebookBooks(
+    val observe: (NotebookId) -> Flow<com.nisaba.domain.book.BookMap?> = { emptyFlow() },
+    /** Starts (or resumes) reading the book into its map; nothing while it already is. */
+    val read: (NotebookId) -> Unit = {},
+    /** Why the last reading stopped (null: it didn't). */
+    val failure: (NotebookId) -> Flow<String?> = { emptyFlow() },
+)
+
 /** Changes to the notebook itself made from inside it. */
 class NotebookChanges(
     /** The voice Nisaba answers in here (null: the voice can't be changed, e.g. in plain-ink tests). */
@@ -101,6 +110,8 @@ class NotebookSources(
     val thumbnail: suspend (Page, com.nisaba.domain.notebook.Paper?) -> android.graphics.Bitmap? = { _, _ -> null },
     /** Writes this notebook to a document the person picked: a PDF (true) or Markdown text. */
     val export: suspend (Boolean, String) -> Boolean = { _, _ -> false },
+    /** A book walk's map and its reading. */
+    val books: NotebookBooks = NotebookBooks(),
 )
 
 /** What the app remembers for the user between visits: the first-run hint, where each endless canvas was left, the pen. */

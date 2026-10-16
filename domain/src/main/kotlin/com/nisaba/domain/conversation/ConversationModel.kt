@@ -46,11 +46,14 @@ sealed interface Purpose {
     /** Spaced review in a lesson notebook: one question on each due [topics]. */
     data class Review(val topics: List<String>) : Purpose
 
+    /** A page of a book walk: the map of the book, one of its concepts, or the whole picture (on a fresh page). */
+    data class Book(val step: com.nisaba.domain.book.BookStep) : Purpose
+
     /** Asked for there and then (a menu, a lasso): goes even while Nisaba isn't listening. */
     val explicit: Boolean get() = this !is Writing && this !is Opening && this !is Resume
 
     /** Needs no picture of the page: it works from the notebook's history alone (cheaper, faster). */
-    val textOnly: Boolean get() = this is Quiz || this is Daily || this is Recap || this is Review
+    val textOnly: Boolean get() = this is Quiz || this is Daily || this is Recap || this is Review || this is Book
 
     /** Answers something on the page (the focus image shows it), rather than opening a lesson or copying notes. */
     val answersWriting: Boolean get() = this is Writing || this is Again || this is Check || this is Redraw || this is About

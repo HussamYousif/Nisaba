@@ -16,6 +16,8 @@ class DebugRegistry {
     /** Debug only: a document location to import as soon as the library opens. */
     var debugImportPdf: String? = null
     var debugLearnGoal: String? = null
+    /** With [debugImportPdf]: a book walk. */
+    var debugBook: Boolean = false
 
     /** Debug only: the voice of the debug-imported notebook (a PersonaRegistry id). */
     var debugPersona: String? = null

@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.Flow
 interface NotebookDao {
     @Query(
         "SELECT n.id, n.name, n.updatedAt, n.coverSeed, n.documentId IS NOT NULL AS hasDocument, n.teachGoal IS NOT NULL AS lesson, " +
-            "n.persona, n.isPrivate, n.pinned, n.deletedAt, " +
+            "n.persona, n.isPrivate, n.pinned, n.deletedAt, n.book, " +
             "(SELECT COUNT(*) FROM pages p WHERE p.notebookId = n.id) AS pageCount, " +
             "(SELECT COUNT(*) FROM pages p WHERE p.notebookId = n.id AND p.width >= 100000) > 0 AS endless FROM notebooks n",
     )
@@ -178,12 +178,24 @@ interface OwnVoiceDao {
     suspend fun delete(id: String)
 }
 
+@Dao
+interface BookMapDao {
+    @Query("SELECT * FROM book_maps WHERE notebookId = :notebookId")
+    suspend fun get(notebookId: String): BookMapRowDto?
+
+    @Query("SELECT * FROM book_maps WHERE notebookId = :notebookId")
+    fun observe(notebookId: String): Flow<BookMapRowDto?>
+
+    @Insert(onConflict = androidx.room.OnConflictStrategy.REPLACE)
+    suspend fun upsert(row: BookMapRowDto)
+}
+
 @Database(
     entities = [
         NotebookDto::class, PageDto::class, DocumentDto::class, ExchangeDto::class, FactDto::class, LessonTopicDto::class,
-        OwnVoiceDto::class,
+        OwnVoiceDto::class, BookMapRowDto::class,
     ],
-    version = 11,
+    version = 12,
     exportSchema = true,
 )
 abstract class NisabaDatabase : RoomDatabase() {
@@ -192,6 +204,7 @@ abstract class NisabaDatabase : RoomDatabase() {
     abstract fun facts(): FactDao
     abstract fun lessons(): LessonDao
     abstract fun ownVoices(): OwnVoiceDao
+    abstract fun books(): BookMapDao
 
     companion object {
         @Volatile private var shared: NisabaDatabase? = null

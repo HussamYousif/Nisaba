@@ -105,6 +105,39 @@ class NotebookViewModelTest {
         assertEquals(620f / fit.scale, p.ys.first(), 1f)
     }
 
+    @Test fun aBookNotebookReadsItsBookThenOffersTheWalk() = runTest {
+        val books = com.nisaba.domain.book.FakeBookStore()
+        val reads = mutableListOf<NotebookId>()
+        val create = CreateNotebookUseCase(store, clock, FakeIdGen("n"))
+        val nb = create("DDIA", com.nisaba.domain.shared.DocumentId("d"), listOf(com.nisaba.domain.shared.PageSize.PORTRAIT), book = true)
+        assertEquals(1, store.get(nb.id)!!.pages.size) // a walk is written on blank pages, the book beside them
+        val deps = NotebookDeps(
+            nb.id, ObserveNotebookUseCase(store), InsertPageUseCase(store, FakeIdGen("pg")), RenameNotebookUseCase(store, clock),
+            InkUseCases(
+                LoadPageInkUseCase(ink), CommitStrokeUseCase(ink), CommitStrokesUseCase(ink), EraseUseCase(ink, ids),
+                UndoUseCase(ink), RedoUseCase(ink), EraseAnswerUseCase(ink), ReplaceStrokesUseCase(ink), RemoveStrokesUseCase(ink),
+            ),
+            SetListeningUseCase(store), ids,
+            sources = NotebookSources(books = NotebookBooks(books::observe, { reads += it })),
+        )
+        val vm = NotebookViewModel(deps, backgroundScope, nowMillis = { testScheduler.currentTime })
+        runCurrent()
+        assertEquals(listOf(nb.id), reads) // no map yet: the reading starts
+        val map = com.nisaba.domain.book.BookMap(
+            "DDIA", "Trade-offs.",
+            listOf(com.nisaba.domain.book.Concept("Reliability", "", 1, 40), com.nisaba.domain.book.Concept("Replication", "", 41, 90),
+                com.nisaba.domain.book.Concept("Partitioning", "", 91, 140)),
+        )
+        books.save(nb.id, map); runCurrent()
+        assertEquals(map, vm.state.value.book)
+        val menu = notebookMenu(vm.state.value, "Gandalf", vm) {}.map { it.label }
+        assertEquals("Write the map of the book", menu[0])
+        assertEquals("The map of the book (0 of 3)", menu[1])
+        val walked = map.copy(overviewPageId = com.nisaba.domain.shared.PageId("p"))
+        books.save(nb.id, walked); runCurrent()
+        assertEquals("Next: 1. Reliability ›", notebookMenu(vm.state.value, "Gandalf", vm) {}.first().label)
+    }
+
     @Test fun aNoticeGoesByItself() = runTest {
         val (vm, _) = open(this)
         vm.togglePrivate(); runCurrent()

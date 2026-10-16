@@ -113,6 +113,7 @@ fun trimHistory(history: List<Turn>, budget: Int): List<Turn> {
 
 private const val TRIM_TO = 0.7
 
+@Suppress("LongParameterList") // a request's whole context: one field per thing it draws on
 class ContextInput(
     val documentPages: List<String>,
     val currentDocumentPage: Int?,
@@ -133,6 +134,8 @@ class ContextInput(
     val now: String = "",
     /** A private notebook (no memory is sent; no tags are asked for). */
     val isPrivate: Boolean = false,
+    /** In a book notebook: its walk's map, and the concept the open page belongs to. */
+    val book: com.nisaba.domain.book.BookPlace? = null,
 ) {
     val words: Int get() = (persona.words * style.length.factor).toInt()
 }
@@ -146,6 +149,7 @@ fun maxTokensFor(purpose: Purpose, thinking: Boolean): Int {
         is Purpose.Tidy -> 2400
         Purpose.Redraw -> 2000
         is Purpose.Check, Purpose.Recap -> 1600
+        is Purpose.Book -> 1800
         Purpose.Opening, Purpose.Resume, Purpose.Quiz, Purpose.Daily, is Purpose.Review -> 900
         Purpose.Writing, is Purpose.Again, Purpose.About -> 1200
     }
@@ -190,6 +194,7 @@ private fun purposeInstruction(input: ContextInput): String = when (val p = inpu
     Purpose.Daily -> INSTRUCTION_DAILY
     Purpose.Recap -> INSTRUCTION_RECAP
     is Purpose.Review -> reviewInstruction(p.topics)
+    is Purpose.Book -> input.book?.let { com.nisaba.domain.book.stepInstruction(it.map, p.step) } ?: INSTRUCTION_PAGE_ONLY
 }
 
 private fun instructionFor(input: ContextInput, trailingNotes: List<String>) = buildString {
@@ -201,6 +206,7 @@ private fun instructionFor(input: ContextInput, trailingNotes: List<String>) = b
     input.currentDocumentPage?.let { append(" They are on p. ${it + 1} of the document.") }
     if (trailingNotes.isNotEmpty()) append(" Notes they wrote earlier without asking: ${trailingNotes.joinToString("; ")}.")
     input.lessonProgress?.let { append(" ").append(it) }
+    input.book?.takeIf { p !is Purpose.Book }?.let { append(com.nisaba.domain.book.walkPlace(it.map, it.concept)) }
     val glosses = onDocument && (p == Purpose.Writing || p == Purpose.About)
     if (glosses) append(" ").append(INSTRUCTION_GLOSS)
     when {
@@ -208,18 +214,37 @@ private fun instructionFor(input: ContextInput, trailingNotes: List<String>) = b
         p is Purpose.Check -> append(" ").append(checkReminder(input.persona))
         else -> {
             val words = if (glosses) minOf(input.words, GLOSS_WORDS) else input.words
-            append(" ").append(voiceReminder(input.persona, input.teachGoal != null, words))
+            append(" ").append(voiceReminder(input.persona, input.teachGoal != null || input.book != null, words))
         }
     }
 }
 
+/** Where the document window centres: a walked concept's pages, the page they are on, or the page last cited. */
+private fun documentCentre(input: ContextInput): Int? {
+    val book = input.book?.map
+    val concept = (input.purpose as? Purpose.Book)?.step?.let { it as? com.nisaba.domain.book.BookStep.Concept }?.index
+        ?: input.book?.concept.takeIf { input.purpose !is Purpose.Book }
+    val walked = concept?.let { book?.concepts?.getOrNull(it) }
+    return walked?.let { com.nisaba.domain.book.centrePage(it) } ?: input.currentDocumentPage ?: lastCitedPage(input.exchanges)
+}
+
+/** The map of the book and the whole picture work from the map alone: no pages of text (a book is long). */
+private fun bookPageWithoutText(input: ContextInput): Boolean {
+    val step = (input.purpose as? Purpose.Book)?.step ?: return false
+    return step !is com.nisaba.domain.book.BookStep.Concept
+}
+
 fun buildRequest(input: ContextInput): OracleRequest {
-    val doc = formatDocumentContext(input.documentPages, input.currentDocumentPage ?: lastCitedPage(input.exchanges))
+    val doc = formatDocumentContext(input.documentPages, documentCentre(input)).takeUnless { bookPageWithoutText(input) }
     val memory = formatMemoryContext(input.facts, (TOKEN_BUDGET * MEMORY_SHARE).toInt())
     val (history, trailingNotes) = historyTurns(input.exchanges)
     val imageTokens = if (input.purpose.textOnly) 0 else IMAGE_TOKENS * (if (input.snapshot.focus != null) 2 else 1)
     val voiced = systemPrompt(input.persona, input.style.mode == com.nisaba.domain.notebook.AnswerMode.QuestionsOnly, input.words)
-    val system = input.teachGoal?.let { voiced + "\n\n" + teachingPrompt(it) } ?: voiced
+    val system = when {
+        input.book != null -> voiced + "\n\n" + com.nisaba.domain.book.bookPrompt(input.book.map)
+        input.teachGoal != null -> voiced + "\n\n" + teachingPrompt(input.teachGoal)
+        else -> voiced
+    }
     val room = TOKEN_BUDGET - estimateTokens(system) - (doc?.let(::estimateTokens) ?: 0) -
         (memory?.let(::estimateTokens) ?: 0) - imageTokens
     val kept = trimHistory(history, room.coerceAtLeast(0))

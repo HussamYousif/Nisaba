@@ -159,12 +159,26 @@ class MigrationTest {
         }
     }
 
+    @Test fun v11ToV12MakesNoNotebookABookWalkAndAddsMaps() {
+        helper.createDatabase("mig12", 11).apply {
+            execSQL(
+                "INSERT INTO notebooks (id,name,createdAt,updatedAt,documentId,listening,coverSeed,teachGoal,persona,questionsOnly," +
+                    "answerLength,isPrivate,pinned,deletedAt,paper) VALUES ('n1','Old',1,2,NULL,1,7,NULL,'book',0,'Normal',0,0,NULL,'Blank')",
+            )
+            close()
+        }
+        val db = helper.runMigrationsAndValidate("mig12", 12, true, MIGRATION_11_12)
+        db.query("SELECT book FROM notebooks").use { c -> c.moveToFirst(); assertEquals(0, c.getInt(0)) }
+        db.execSQL("INSERT INTO book_maps (notebookId, json) VALUES ('n1', '{}')")
+        db.query("SELECT COUNT(*) FROM book_maps").use { c -> c.moveToFirst(); assertEquals(1, c.getInt(0)) }
+    }
+
     @Test fun v1MigratesAllTheWayToTheCurrentSchema() {
         helper.createDatabase("migAll", 1).apply {
             execSQL("INSERT INTO notebooks (id,name,createdAt,updatedAt,documentId,listening,coverSeed) VALUES ('n1','Old',1,2,NULL,1,7)")
             close()
         }
-        helper.runMigrationsAndValidate("migAll", 11, true, *MIGRATIONS)
+        helper.runMigrationsAndValidate("migAll", 12, true, *MIGRATIONS)
             .query("SELECT COUNT(*) FROM notebooks").use { c -> c.moveToFirst(); assertEquals(1, c.getInt(0)) }
     }
 }

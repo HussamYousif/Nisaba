@@ -1,6 +1,7 @@
 package com.nisaba.domain.conversation
 
 
+import com.nisaba.domain.book.walkedOn
 import com.nisaba.domain.lesson.formatLessonProgress
 import com.nisaba.domain.lesson.parseTopics
 import com.nisaba.domain.memory.memoryNote
@@ -54,9 +55,10 @@ internal fun ConversationSession.maybeFinalize(p: PendingExchange) {
             return@launch
         }
         if (p.replyComplete && (status == ExchangeStatus.Complete || status == ExchangeStatus.Interrupted)) {
-            remember(exchange); recordTopics(exchange)
+            remember(exchange); recordTopics(exchange); recordBookStep(p)
             parseReminders(exchange.answerMarkup).forEach(deps.surface::offerReminder)
         }
+        if (asksNextPage(p, exchange)) deps.surface.bookNext()
     }
 }
 
@@ -78,6 +80,25 @@ internal suspend fun ConversationSession.recordTopics(exchange: Exchange) {
         throw e
     } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
         deps.logger?.e("Session", "lesson progress update failed", e)
+    }
+}
+
+/** "next" in a book notebook: the walk turns to its next page (the reply itself writes nothing). */
+private fun ConversationSession.asksNextPage(p: PendingExchange, exchange: Exchange): Boolean =
+    p.replyComplete && p.purpose !is Purpose.Book && deps.context.book != null &&
+        com.nisaba.domain.book.hasNextTag(exchange.answerMarkup)
+
+/** A page of a book walk was written: the map remembers where (the walk moves on from there). */
+internal suspend fun ConversationSession.recordBookStep(p: PendingExchange) {
+    val step = (p.purpose as? Purpose.Book)?.step ?: return
+    val store = deps.books ?: return
+    try {
+        val map = store.get(deps.notebookId) ?: return
+        store.save(deps.notebookId, map.walkedOn(step, p.pageId))
+    } catch (e: CancellationException) {
+        throw e
+    } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
+        deps.logger?.e("Session", "book walk update failed", e)
     }
 }
 
@@ -120,6 +141,7 @@ internal class PendingExchange(
     val focus: PageRect?,
     val transcribes: Boolean,
     val personaId: String,
+    val purpose: Purpose = Purpose.Writing,
 ) {
     val markup = StringBuilder()
     var heard = ""

@@ -80,7 +80,7 @@ class LibraryViewModel(
     }
 
     private fun com.nisaba.domain.notebook.NotebookSummary.toCover(edited: String) = CoverItem(
-        id, name, pageCount, coverSeed, hasDocument, endless, lesson, personaId, isPrivate, pinned, edited,
+        id, name, pageCount, coverSeed, hasDocument, endless, lesson, personaId, isPrivate, pinned, edited, book,
     )
 
     /** The next or previous screenful of covers. */
@@ -145,7 +145,7 @@ class LibraryViewModel(
         rememberVoice(d.personaId, d.style)
         val handed = incoming.also { incoming = null }
         when {
-            handed != null && d.kind == NotebookKind.Pdf -> importPdf(handed, null, d.personaId, d.style, onCreated)
+            handed != null && d.kind == NotebookKind.Pdf -> importPdf(handed, null, d.personaId, d.style, onCreated = onCreated)
             d.kind == NotebookKind.Pages || d.kind == NotebookKind.Canvas ->
                 _state.update { it.copy(dialog = LibraryDialog.NameIt(d.kind, d.personaId, d.style)) }
             else -> { picking = d; dismiss(); pickPdf() }
@@ -160,7 +160,7 @@ class LibraryViewModel(
         if (p.kind == NotebookKind.Lesson) {
             _state.update { it.copy(dialog = LibraryDialog.LearnGoal(uri, p.personaId, p.style)) }
         } else {
-            importPdf(uri, teachGoal = null, personaId = p.personaId, style = p.style, onCreated = onCreated)
+            importPdf(uri, null, p.personaId, p.style, book = p.kind == NotebookKind.Book, onCreated = onCreated)
         }
     }
 
@@ -199,19 +199,21 @@ class LibraryViewModel(
 
     /**
      * Imports the picked PDF (copy, measure, extract text) and hands its notebook to [onCreated]. With a [teachGoal]
-     * ("" = no particular goal) it becomes a lesson notebook. Nisaba answers in it in the voice [personaId].
+     * ("" = no particular goal) it becomes a lesson notebook; with [book], a walk through the book's concepts. Nisaba
+     * answers in it in the voice [personaId].
      */
     fun importPdf(
         uri: String,
         teachGoal: String? = null,
         personaId: String = lastPersona,
         style: AnswerStyle = lastStyle,
+        book: Boolean = false,
         onCreated: (NotebookId) -> Unit,
     ) {
         if (_state.value.importing != null) return
         _state.update { it.copy(importing = 0f, dialog = LibraryDialog.None) }
         scope.launch {
-            val result = importDocument(uri, teachGoal, personaId, style) { p -> _state.update { it.copy(importing = p) } }
+            val result = importDocument(uri, teachGoal, personaId, style, book) { p -> _state.update { it.copy(importing = p) } }
             _state.update { it.copy(importing = null) }
             when (result) {
                 is Outcome.Ok -> onCreated(result.value.id)

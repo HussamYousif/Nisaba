@@ -31,7 +31,7 @@ class FakeNotebookStore : NotebookStore {
             val n = it.notebook
             NotebookSummary(
                 n.id, n.name, n.updatedAtMillis, it.pages.size, n.coverSeed, n.documentId != null, it.pages.any { p -> p.size.isEndless },
-                n.teachGoal != null, n.personaId, n.isPrivate, n.pinned, n.deletedAtMillis,
+                n.teachGoal != null, n.personaId, n.isPrivate, n.pinned, n.deletedAtMillis, n.book,
             )
         }
     }

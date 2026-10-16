@@ -102,6 +102,15 @@ class AppGraph(private val app: Application) {
     private val facts by lazy { RoomFactStore.open(app) }
     private val lessons by lazy { RoomLessonStore.open(app) }
     private val ownVoices by lazy { com.nisaba.infra.db.RoomOwnVoiceStore.open(app) }
+    private val books by lazy { com.nisaba.infra.db.RoomBookStore.open(app) }
+
+    /** Reads book notebooks into their maps, in the app's scope (minutes for a long book; leaving it must not stop it). */
+    val bookReader by lazy {
+        BookReaderRegistry(
+            io, com.nisaba.domain.book.ReadBookUseCase(oracle, books), { notebooks.get(it)?.notebook?.name }, ::documentText,
+            { settings.observe().first().model }, { id, name -> RenameNotebookUseCase(notebooks, clock)(id, name) },
+        )
+    }
     private val inkStore by lazy { InkFileStore(File(app.filesDir, "ink"), io, logger) }
     private val docsDir = File(app.filesDir, "docs")
     private val rasterDir = File(app.cacheDir, "raster")
@@ -121,23 +130,16 @@ class AppGraph(private val app: Application) {
     val backgroundRenderer = BackgroundRenderer(rasters = rasters)
     val eink: EinkDevice by lazy { if (OnyxPenDevice.isAvailable()) OnyxEinkDevice() else NoopEinkDevice() }
 
-    private val hands = HashMap<HandStyle, GlyphSet>()
-
     /** Hand-written text for the wordmark, covers and hints. */
     val handText by lazy { com.nisaba.ui.brand.HandTextCache { hand(HandStyle.Casual) } }
 
     /** The wordmark is written out once per launch; afterwards it just sits there. */
     var wordmarkPlayed = false
 
-    /** The bundled stroke fonts (module resources of :scribe), parsed once per style. */
-    fun hand(style: HandStyle): GlyphSet = synchronized(hands) {
-        hands.getOrPut(style) {
-            val name = if (style == HandStyle.Formal) "formal" else "casual"
-            val t0 = android.os.SystemClock.uptimeMillis()
-            val text = GlyphSet::class.java.classLoader!!.getResourceAsStream("hands/$name.json")!!.bufferedReader().use { it.readText() }
-            GlyphSetParser.parse(text).also { logger.i("Hand", "$name parsed in ${android.os.SystemClock.uptimeMillis() - t0} ms") }
-        }
-    }
+    private val hands = HandRegistry(logger)
+
+    /** The bundled stroke fonts, parsed once per style. */
+    fun hand(style: HandStyle): GlyphSet = hands.hand(style)
 
     /** The standard pen when asked for (Settings → Pen) or off a Boox; else the Onyx pen, falling back if it can't start. */
     fun createPen(standard: Boolean = false): PenDevice = when {
@@ -189,17 +191,7 @@ class AppGraph(private val app: Application) {
     )
 
     /** Whether there is a network at all (a question that failed offline is asked again when it comes back). */
-    val online: kotlinx.coroutines.flow.StateFlow<Boolean> by lazy {
-        val flow = kotlinx.coroutines.flow.MutableStateFlow(false)
-        val cm = app.getSystemService(android.net.ConnectivityManager::class.java)
-        runCatching {
-            cm.registerDefaultNetworkCallback(object : android.net.ConnectivityManager.NetworkCallback() {
-                override fun onAvailable(network: android.net.Network) { flow.value = true }
-                override fun onLost(network: android.net.Network) { flow.value = false }
-            })
-        }
-        flow
-    }
+    val online: kotlinx.coroutines.flow.StateFlow<Boolean> by lazy { com.nisaba.device.ConnectivityDevice.online(app) }
     private val touchNotebook by lazy { com.nisaba.domain.notebook.TouchNotebookUseCase(notebooks, clock) }
 
     fun settingsFactory(): ViewModelProvider.Factory = viewModelFactory {
@@ -245,6 +237,7 @@ class AppGraph(private val app: Application) {
                         { documentText(id) }, ::printedOccupancy, exchanges::get, lessons.observe(id), online, voices = { voices.value },
                         lastExchangeMillis = { exchanges.listByNotebook(id).maxOfOrNull { it.createdAtMillis } },
                         thumbnail = thumbnails::of, export = { asPdf, uri -> files.export(id, asPdf, uri) },
+                        books = com.nisaba.notebook.NotebookBooks(books::observe, bookReader::read, bookReader::failure),
                     ),
                     changes = com.nisaba.notebook.NotebookChanges(
                         SetPersonaUseCase(notebooks), { touchNotebook(it) },
@@ -288,7 +281,7 @@ class AppGraph(private val app: Application) {
                 notebookId = id, oracle = oracle,
                 snapshotter = PageSnapshotRenderer(id, notebooks, inkStore, InkRenderer(), BackgroundRenderer(rasters = rasters), rasters),
                 exchanges = exchanges, surface = surface, context = context, clock = clock, idGen = idGen, logger = logger,
-                memory = facts, lessons = lessons,
+                memory = facts, lessons = lessons, books = books,
             ),
             scope, s, listening, compute = Dispatchers.Default,
         )

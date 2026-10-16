@@ -230,8 +230,9 @@ internal suspend fun NotebookViewModel.commitAnswer(pageId: PageId?, strokes: Li
     deps.changes.touch(deps.notebookId)
 }
 
-internal fun NotebookViewModel.failure(error: DomainError?) = mutableState.update {
-    it.copy(failure = error?.let { e -> failureMessage(e, voice().oops) }) // "Bah. The ink wouldn't flow…"
+internal fun NotebookViewModel.failure(error: DomainError?) {
+    if (error != null) requestedStep = null // a page of a book walk that failed may be asked for again
+    mutableState.update { it.copy(failure = error?.let { e -> failureMessage(e, voice().oops) }) } // "Bah. The ink wouldn't flow…"
 }
 
 /** The voice Nisaba answers in here (their own voices included). */
@@ -258,7 +259,7 @@ internal fun NotebookViewModel.startSession(page: Page) {
         { scribeSink.tryEmit(it) }, ::failure,
         ScribeNotices(
             ::memoryNote, onCutShort = { mutableState.update { it.copy(notice = CUT_SHORT_NOTICE) } },
-            onReminder = { r -> mutableState.update { it.copy(reminder = r) } },
+            onReminder = { r -> mutableState.update { it.copy(reminder = r) } }, onBookNext = { nextBookStep() },
         ),
         voices = { deps.sources.voices().of(it) }, paper = { notebook?.notebook?.paper ?: com.nisaba.domain.notebook.Paper.Blank },
     )
@@ -271,6 +272,8 @@ internal fun NotebookViewModel.startSession(page: Page) {
         override val isPrivate get() = notebook?.notebook?.isPrivate == true
         override fun voice(id: String) = deps.sources.voices().of(id)
         override val style get() = notebook?.notebook?.style ?: com.nisaba.domain.notebook.AnswerStyle()
+        override val book get() = mutableState.value.book?.takeIf { it.ready }
+        override val bookConcept get() = bookConcept()
     }
     val created = factory.create(scribe, ownScope, settings, notebook?.notebook?.listening ?: true, context)
     session = created
@@ -287,4 +290,5 @@ internal fun NotebookViewModel.startSession(page: Page) {
     deps.memory.loadPending(page.id)?.let { utt -> deps.memory.savePending(page.id, null); created.askPending(utt) }
     // a lesson notebook: Nisaba opens a fresh lesson, or recaps when they come back after a while (the session decides)
     if (notebook?.notebook?.teachGoal != null) created.beginLesson(page.id, edit?.ink?.strokes?.maxOfOrNull { it.bounds.bottom })
+    if (notebook?.notebook?.book == true) maybeOpenWalk() // a book whose map came while no page was open
 }

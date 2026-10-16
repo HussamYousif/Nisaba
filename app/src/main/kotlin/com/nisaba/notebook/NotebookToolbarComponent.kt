@@ -98,6 +98,7 @@ internal fun notebookMenu(
     vm: NotebookViewModel,
     onOpenSettings: () -> Unit,
 ): List<MenuItem> = buildList {
+    addAll(bookItems(state, vm)) // a book walk: the way on first
     if (!state.endless) add(MenuItem("+ Page after this one", vm::insertBlankPage))
     val ownInk = state.aiAvailable && state.strokes.any { it.origin is StrokeOrigin.User }
     if (ownInk) add(MenuItem("Check my work (✓ or ✗ beside each line)", vm::checkWork))
@@ -121,6 +122,15 @@ internal fun notebookMenu(
     add(MenuItem("Export as text…", { vm.export(asPdf = false) }))
     add(MenuItem("Rename", vm::beginRename))
     add(MenuItem("Settings", onOpenSettings))
+}
+
+/** In a book walk: the next page of the walk, and its map. */
+private fun bookItems(state: NotebookUiState, vm: NotebookViewModel): List<MenuItem> {
+    val book = state.book?.takeIf { it.ready } ?: return emptyList()
+    return listOfNotNull(
+        book.next?.let { MenuItem(nextLabel(book, it), vm::nextBookStep) },
+        MenuItem("The map of the book (${book.walked} of ${book.concepts.size})", vm::openBookMap),
+    )
 }
 
 /** The ⋯ menu, drawn over the page (it outlives the bar hiding). */

@@ -166,6 +166,7 @@ private fun NotebookOverlays(state: NotebookUiState, vm: NotebookViewModel) {
     if (state.overview) CanvasOverviewComponent(state, vm.visibleArea(), vm::jumpTo, vm::goHome, vm::closeOverview)
     state.answerMenu?.let { AnswerMenuComponent(it, vm) }
     if (state.progressOpen) LessonProgressDialog(state, vm::closeProgress)
+    if (state.bookOpen) state.book?.let { BookMapComponent(it, vm) }
     if (state.voiceOpen) VoiceDialogComponent(state.personaId, state.style, vm::setVoice, vm::closeVoice)
     if (state.renaming) {
         var name by remember { mutableStateOf(state.title) }

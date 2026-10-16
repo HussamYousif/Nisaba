@@ -17,6 +17,8 @@ data class CoverItem(
     val pinned: Boolean = false,
     /** "edited 2 h ago" (for the trash: "deleted 3 days ago"). */
     val edited: String = "",
+    /** A book walk. */
+    val book: Boolean = false,
 )
 
 /** What "New" makes: the first thing it asks. */
@@ -25,6 +27,7 @@ enum class NotebookKind(val label: String, val hint: String) {
     Canvas("Blank canvas", "One endless page that pans in every direction"),
     Pdf("PDF", "Write on the pages of a PDF"),
     Lesson("Learn a PDF", "Nisaba teaches you a PDF, one idea at a time"),
+    Book("Understand a book", "Nisaba maps a book's core ideas, then walks you through them, one per page"),
 }
 
 sealed interface LibraryDialog {
