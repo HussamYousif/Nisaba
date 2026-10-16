@@ -46,12 +46,19 @@ internal fun measure(word: String, set: GlyphSet, scale: Float): Pair<List<Place
     return out to x
 }
 
-/** Finds the next line box that is free of ink and inside the page, spilling to the next page when needed. */
+/**
+ * Finds the next line box that is free of ink and inside the page, spilling to the next page when needed. An endless
+ * canvas never spills (the column just goes on down); a page too short for even one line takes the line anyway.
+ */
 internal fun findLine(page: Int, top: Float, x0: Float, ctx: Ctx): Pair<Int, Float> {
     var p = page; var t = top
     val h = ctx.region.lineHeight
+    val endless = ctx.region.pageSize.isEndless
     while (true) {
-        if (t + h > ctx.region.bottom) { p++; t = ctx.region.pageTop; continue }
+        if (!endless && t + h > ctx.region.bottom) {
+            if (t <= ctx.region.pageTop) return p to t // a fresh page and still no room: spilling again would never end
+            p++; t = ctx.region.pageTop; continue
+        }
         val free = ctx.occ.on(p)?.isFree(PageRect(x0, t, ctx.region.right, t + h)) ?: true
         if (free) return p to t
         t += h / 2f

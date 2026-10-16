@@ -39,6 +39,7 @@ fun rebalancedPositions(ids: List<PageId>): List<Pair<PageId, Double>> =
  * elsewhere its place ("3 / 9").
  */
 fun pageLabel(pages: List<Page>, index: Int): String {
+    if (index !in pages.indices) return "${index + 1} / ${pages.size}" // a page that just went (the grid may still draw it)
     if (pages.none { it.background is PageBackground.DocumentPage }) return "${index + 1} / ${pages.size}"
     var added = 0
     for (i in index downTo 0) {

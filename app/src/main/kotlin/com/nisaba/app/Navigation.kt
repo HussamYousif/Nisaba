@@ -87,10 +87,10 @@ fun NisabaNavHost(graph: AppGraph) {
         composable(WELCOME) {
             val vm: SettingsViewModel = viewModel(factory = graph.settingsFactory())
             val state by vm.state.collectAsState()
-            val scope = androidx.compose.runtime.rememberCoroutineScope()
             WelcomeScreen(state, vm, onDone = {
                 vm.finishOnboarding()
-                scope.launch { graph.createStartHere() } // the library shows it as soon as it is there
+                // not the welcome screen's scope: leaving it right after would cut the notebook off half made
+                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch { graph.createStartHere() }
                 nav.navigate(LIBRARY) { popUpTo(WELCOME) { inclusive = true } }
             })
         }

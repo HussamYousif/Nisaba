@@ -229,7 +229,8 @@ class AppGraph(private val app: Application) {
                     rename = RenameNotebookUseCase(notebooks, clock),
                     ink = InkUseCases(
                         LoadPageInkUseCase(inkStore), CommitStrokeUseCase(inkStore), CommitStrokesUseCase(inkStore),
-                        EraseUseCase(inkStore, idGen), UndoUseCase(inkStore), RedoUseCase(inkStore), EraseAnswerUseCase(inkStore),
+                        EraseUseCase(inkStore, idGen, Dispatchers.Default), UndoUseCase(inkStore), RedoUseCase(inkStore),
+                        EraseAnswerUseCase(inkStore),
                         com.nisaba.domain.ink.ReplaceStrokesUseCase(inkStore), com.nisaba.domain.ink.RemoveStrokesUseCase(inkStore),
                     ),
                     setListening = SetListeningUseCase(notebooks), idGen = idGen,

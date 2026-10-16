@@ -36,4 +36,23 @@ class EndlessLayoutRulesTest {
         assertTrue(occ.isFree(PageRect(o, o, o + 800f, o + 800f)))
         assertTrue(occ.isFree(PageRect(o - 9000f, o, o - 8000f, o + 50f)))
     }
+
+    @Test fun aLongAnswerOnACanvasGrowsDownInsteadOfSpillingToAPage() {
+        val hand = com.nisaba.scribe.hand.HandFixtures.hand()
+        val region = LayoutRegion.below(PageSize.ENDLESS, o + 300f, o + 900f, 44f)
+        val words = "a long reply that goes on and on ".repeat(900)
+        val para = com.nisaba.domain.answer.Block.Paragraph(listOf(com.nisaba.domain.answer.Inline.Text(words)))
+        val (block, _) = layoutBlock(para, LayoutCursor(0, region.top), region, OccupancyLookup { null }, hand)
+        assertTrue(block.words.all { it.page == 0 }, "a canvas has no next page")
+        assertTrue(block.words.maxOf { it.baseline } > region.bottom, "the column went on past the usual height")
+    }
+
+    @Test fun aPageTooShortForOneLineStillEnds() {
+        val hand = com.nisaba.scribe.hand.HandFixtures.hand()
+        val strip = PageSize(4000f, 300f) // wider than 4:1: not even one line fits under the margins
+        val region = LayoutRegion.below(strip, 200f, 150f, 44f)
+        val para = com.nisaba.domain.answer.Block.Paragraph(listOf(com.nisaba.domain.answer.Inline.Text("still written")))
+        val (block, _) = layoutBlock(para, LayoutCursor(0, region.top), region, OccupancyLookup { null }, hand)
+        assertEquals(2, block.words.size) // and the layout came back
+    }
 }

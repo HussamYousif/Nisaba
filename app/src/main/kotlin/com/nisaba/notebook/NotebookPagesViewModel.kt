@@ -17,9 +17,9 @@ fun NotebookViewModel.selectGridPage(index: Int) =
     mutableState.update { it.copy(gridSelected = index.takeUnless { i -> i == it.gridSelected }) }
 
 fun NotebookViewModel.deleteGridPage() = onGridPage { nb, page, i ->
+    mutableState.update { it.copy(gridSelected = null) } // first: the grid must never ask for a page that just went
     if (deps.changes.pages.delete(nb.notebook.id, page.id) !is Outcome.Ok) return@onGridPage
     val after = awaitPages(nb.pages.size - 1) ?: return@onGridPage
-    mutableState.update { it.copy(gridSelected = null) }
     // the open page went: show its neighbour; another page went: the open one may have moved up
     val target = if (i == pageIndex) i.coerceAtMost(after.pages.lastIndex) else after.pages.indexOfFirst { it.id == currentPageId }
     openPage(target.coerceAtLeast(0), full = true)

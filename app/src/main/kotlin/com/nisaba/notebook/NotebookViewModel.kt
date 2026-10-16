@@ -184,7 +184,8 @@ class NotebookViewModel(
         deps.memory.saveLastPage(deps.notebookId, page.id)
         val start = PagePoint(PageSize.ENDLESS_ORIGIN, PageSize.ENDLESS_ORIGIN)
         viewOrigin = if (page.size.isEndless) deps.memory.loadView(page.id) ?: start else null
-        affine = viewOrigin?.let { Affine(1f, -it.x, -it.y) } ?: affine
+        // every page fits the view its own way (a PDF page, a blank one): the pen must map through this page's fit
+        affine = viewOrigin?.let { Affine(1f, -it.x, -it.y) } ?: if (viewW > 0f) fitTransform(page.size, viewW, viewH) else affine
         val setAside = edit?.ink?.setAside == true
         mutableState.update {
             it.copy(

@@ -96,9 +96,12 @@ class DocumentRasterCache(private val docsDir: File, private val rasterDir: File
         return sum / n < BLACK_MEAN
     }
 
+    /** Written aside, then renamed: a kill mid-write never leaves half a page to be shown later. */
     private fun save(bmp: Bitmap, f: File) {
         f.parentFile?.mkdirs()
-        f.outputStream().use { bmp.compress(Bitmap.CompressFormat.WEBP_LOSSY, WEBP_QUALITY, it) }
+        val tmp = File(f.parentFile, f.name + ".tmp")
+        tmp.outputStream().use { bmp.compress(Bitmap.CompressFormat.WEBP_LOSSY, WEBP_QUALITY, it) }
+        if (!tmp.renameTo(f)) tmp.delete()
     }
 
     companion object {

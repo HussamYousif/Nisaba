@@ -55,8 +55,12 @@ class NotebookViewModelTest {
     private val ids = FakeIdGen("s")
     private val clock = FakeClock()
 
-    private suspend fun open(scope: TestScope): Pair<NotebookViewModel, NotebookId> {
-        val nb = CreateNotebookUseCase(store, clock, FakeIdGen("n"))("Maths")
+    private suspend fun open(
+        scope: TestScope,
+        sizes: List<com.nisaba.domain.shared.PageSize> = emptyList(),
+    ): Pair<NotebookViewModel, NotebookId> {
+        val create = CreateNotebookUseCase(store, clock, FakeIdGen("n"))
+        val nb = if (sizes.isEmpty()) create("Maths") else create("Book", com.nisaba.domain.shared.DocumentId("d"), sizes)
         val deps = NotebookDeps(
             nb.id, ObserveNotebookUseCase(store), InsertPageUseCase(store, FakeIdGen("pg")), RenameNotebookUseCase(store, clock),
             InkUseCases(
@@ -88,6 +92,17 @@ class NotebookViewModelTest {
         advanceTimeBy(NotebookViewModel.NOTICE_MILLIS * 2); runCurrent()
         assertEquals(NotebookViewModel.SET_ASIDE_NOTICE, vm.state.value.notice) // a warning stays until tapped
         vm.dismissNotice(); assertEquals(null, vm.state.value.notice)
+    }
+
+    @Test fun thePenMapsThroughEachPagesOwnFit() = runTest {
+        val tall = com.nisaba.domain.shared.PageSize(1860f, 2632f) // an A4 PDF page; the first one is a plain portrait page
+        val (vm, _) = open(this, listOf(com.nisaba.domain.shared.PageSize.PORTRAIT, tall))
+        vm.turnPage(1); runCurrent()
+        vm.onPenEvent(PenEvent.StrokeDone(line(465f, 470f, 620f))); runCurrent()
+        val p = vm.state.value.strokes.single().points
+        val fit = com.nisaba.domain.shared.fitTransform(tall, 930f, 1240f)
+        assertEquals((465f - fit.dx) / fit.scale, p.xs.first(), 1f) // not the first page's ×2
+        assertEquals(620f / fit.scale, p.ys.first(), 1f)
     }
 
     @Test fun aNoticeGoesByItself() = runTest {

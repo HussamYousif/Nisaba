@@ -212,6 +212,7 @@ fun NotebookViewModel.onScribePageBreak(written: List<TimedStroke>, toPage: Int,
         val nb = notebook
         val from = nb?.pages?.indexOfFirst { it.id == pageId } ?: -1
         if (nb == null || from < 0 || from != pageIndex) return@launch // the user turned away; the hand was reset
+        if (nb.pages[from].size.isEndless) return@launch // a canvas has no next page: its column only grows
         if (!insertPageAfter(nb, pageId)) {
             session?.onPenDown() // could not add the page: end the answer here, as interrupted
             return@launch

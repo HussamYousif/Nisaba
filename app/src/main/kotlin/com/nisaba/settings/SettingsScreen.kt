@@ -254,7 +254,7 @@ private fun BackupPane(state: SettingsUiState, vm: SettingsViewModel) {
     val restore = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
     ) { vm.restoreFrom(it?.toString()) }
-    androidx.compose.runtime.LaunchedEffect(state.restartNow) { if (state.restartNow) restartApp(context) }
+    androidx.compose.runtime.LaunchedEffect(state.restartNow) { if (state.restartNow) com.nisaba.app.restartApp(context) }
     val s = state.settings
     val last = if (s.lastBackupMillis == 0L) "No backup yet." else {
         "Last backup: " + com.nisaba.library.ago(s.lastBackupMillis, System.currentTimeMillis())
@@ -285,9 +285,4 @@ private fun BackupPane(state: SettingsUiState, vm: SettingsViewModel) {
 }
 
 /** After a restore: start afresh (the open database and every cache belong to what was replaced). */
-private fun restartApp(context: android.content.Context) {
-    context.packageManager.getLaunchIntentForPackage(context.packageName)?.let {
-        context.startActivity(it.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK))
-    }
-    Runtime.getRuntime().exit(0)
-}
+

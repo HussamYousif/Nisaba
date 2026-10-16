@@ -48,5 +48,6 @@ class NotebookRulesTest {
         assertEquals(3, indexOfDocumentPage(pages, 2)); assertEquals(null, indexOfDocumentPage(pages, 9))
         val plain = listOf(page(0, PageBackground.Blank), page(1, PageBackground.Blank))
         assertEquals("2 / 2", pageLabel(plain, 1))
+        assertEquals("5 / 4", pageLabel(pages, 4)) // a page that just went: a label, never a crash mid-frame
     }
 }

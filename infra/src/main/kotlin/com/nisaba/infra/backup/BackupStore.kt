@@ -24,7 +24,6 @@ class BackupStore(private val context: Context) {
         // busy reader kept in the log still goes along in the -wal file
         NisabaDatabase.shared(context).openHelper.writableDatabase.query("PRAGMA wal_checkpoint(TRUNCATE)").use { it.moveToFirst() }
         ZipOutputStream(out.buffered()).use { zip ->
-            zip.putNextEntry(ZipEntry(MARKER)); zip.write("nisaba backup v1\n".toByteArray()); zip.closeEntry()
             for (root in ROOTS) {
                 val dir = File(data, root)
                 dir.walkTopDown().filter { it.isFile && keep(it) }.forEach { f ->
@@ -33,6 +32,8 @@ class BackupStore(private val context: Context) {
                     zip.closeEntry()
                 }
             }
+            // last: a backup cut short (a file gone mid-walk, a full disk) has no marker, and a restore refuses it
+            zip.putNextEntry(ZipEntry(MARKER)); zip.write("nisaba backup v1\n".toByteArray()); zip.closeEntry()
         }
     }
 
@@ -41,7 +42,8 @@ class BackupStore(private val context: Context) {
      * backup. The app must restart right after: the database it had open is gone.
      */
     suspend fun restore(input: InputStream): Boolean = withContext(Dispatchers.IO) {
-        val staging = File(context.cacheDir, "restore").apply { deleteRecursively(); mkdirs() }
+        // staged beside what it replaces (same disk, so each folder swaps by a rename; never in a cache the system clears)
+        val staging = File(data, "restore-staging").apply { deleteRecursively(); mkdirs() }
         var marked = false
         var hasDb = false
         ZipInputStream(input.buffered()).use { zip ->
@@ -57,24 +59,51 @@ class BackupStore(private val context: Context) {
         }
         if (!marked || !hasDb) { staging.deleteRecursively(); return@withContext false }
         NisabaDatabase.closeShared()
-        for (root in ROOTS) {
-            val from = File(staging, root)
-            if (!from.exists()) continue
-            File(data, root).listFiles()?.filter { keep(it) }?.forEach { it.deleteRecursively() }
-            from.copyRecursively(File(data, root), overwrite = true)
-        }
-        if (!File(staging, "$DB-wal").exists()) File(data, "$DB-wal").delete() // no log came along: none may linger
-        File(data, "$DB-shm").delete()
+        swapIn(staging)
         staging.deleteRecursively()
         true
     }
 
+    /**
+     * Each folder of [staging] replaces its live one by renames, the old kept aside until all are in; any failure puts
+     * every old folder back (and throws). The sealed key, which a backup never holds, moves across.
+     */
+    private fun swapIn(staging: File) {
+        val swapped = ArrayList<String>()
+        try {
+            for (root in ROOTS) {
+                val incoming = File(staging, root).apply { mkdirs() }
+                val live = File(data, root)
+                val old = File(data, "$root.old").apply { deleteRecursively() }
+                if (live.exists()) { carryKey(live, incoming); check(live.renameTo(old)) { "could not set $root aside" } }
+                swapped += root
+                check(incoming.renameTo(live)) { "could not put $root in place" }
+            }
+        } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
+            swapped.forEach(::putBack)
+            throw e
+        }
+        for (root in ROOTS) File(data, "$root.old").deleteRecursively()
+    }
+
+    /** The sealed key stays with the device: from the live folder into the one coming in. */
+    private fun carryKey(live: File, incoming: File) =
+        live.walkTopDown().filter { it.isFile && it.name == SECRETS }.forEach { f ->
+            f.copyTo(File(incoming, f.relativeTo(live).path), overwrite = true)
+        }
+
+    private fun putBack(root: String) {
+        val live = File(data, root); val old = File(data, "$root.old")
+        if (old.exists()) { live.deleteRecursively(); old.renameTo(live) }
+    }
+
     /** Not the sealed API key, not caches, not SQLite's shared-memory index (rebuilt on opening; the -wal is kept). */
-    private fun keep(f: File) = f.name != "secrets.xml" && !f.path.contains("/cache/") && !f.name.endsWith("-shm")
+    private fun keep(f: File) = f.name != SECRETS && !f.path.contains("/cache/") && !f.name.endsWith("-shm")
 
     private companion object {
         const val MARKER = "nisaba-backup.txt"
         const val DB = "databases/nisaba.db"
         val ROOTS = listOf("databases", "files", "shared_prefs")
+        const val SECRETS = "secrets.xml"
     }
 }
