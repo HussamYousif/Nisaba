@@ -34,6 +34,9 @@ import java.nio.file.StandardCopyOption
  * save or a load (a page stays pending until its write has landed).
  */
 @OptIn(ExperimentalSerializationApi::class)
+/** However steady the writing, a stroke is on disk this long after it was made, at most (DESIGN §2: ≤ 1 s). */
+private const val MAX_UNSAVED_MILLIS = 1_000L
+
 class InkFileStore(
     private val dir: File,
     private val scope: CoroutineScope,
@@ -43,6 +46,9 @@ class InkFileStore(
 ) : InkStore {
     private val pending = HashMap<PageId, List<Stroke>>()
     private val jobs = HashMap<PageId, Job>()
+
+    /** When each page's oldest unsaved change came in: steady writing must not put saving off for ever. */
+    private val dirtySince = HashMap<PageId, Long>()
     private val lock = Mutex()
     private val diskLock = Mutex()
     private val proto = ProtoBuf
@@ -78,8 +84,12 @@ class InkFileStore(
         lock.withLock {
             pending[pageId] = strokes
             jobs[pageId]?.cancel()
+            val now = System.currentTimeMillis()
+            val since = dirtySince.getOrPut(pageId) { now }
+            // a pause in the writing saves after debounceMillis; however steady it is, a stroke is on disk within ~1 s
+            val wait = debounceMillis.coerceAtMost((MAX_UNSAVED_MILLIS - (now - since)).coerceAtLeast(0))
             jobs[pageId] = scope.launch {
-                delay(debounceMillis)
+                delay(wait)
                 writePending(pageId)
             }
         }
@@ -114,7 +124,12 @@ class InkFileStore(
                 .onFailure { logger?.e("InkFileStore", "write failed for ${id.value}", it) } // kept pending; next save/flush retries
                 .isSuccess
         }
-        if (ok) lock.withLock { if (pending[id] === strokes) pending.remove(id) }
+        if (ok) {
+            lock.withLock {
+                if (pending[id] === strokes) { pending.remove(id); dirtySince.remove(id) }
+                else dirtySince[id] = System.currentTimeMillis() // newer ink came in meanwhile: its own second starts now
+            }
+        }
     }
 
     private fun writeAtomic(id: PageId, strokes: List<Stroke>) {

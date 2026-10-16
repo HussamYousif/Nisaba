@@ -121,8 +121,11 @@ class PageView(
             panX = origin?.x ?: PageSize.ENDLESS_ORIGIN
             panY = origin?.y ?: PageSize.ENDLESS_ORIGIN
         }
-        recomputeTransform(); rebuild(); invalidate()
+        recomputeTransform()
+        // another page: its ink comes in setStrokes right after, so the layer is built once, with it
+        if (samePage) { rebuild(); invalidate() } else rebuildPending = true
     }
+    private var rebuildPending = false // a page shown, its ink not given yet: setStrokes builds the layer
 
     /** Applies new ink: only the appended strokes are painted ([redrawOf]); anything else rebuilds the layer. */
     fun setStrokes(next: List<Stroke>) {
@@ -130,6 +133,7 @@ class PageView(
         strokes = next
         val canvas = layerCanvas
         if (canvas == null) { invalidate(); return }
+        if (rebuildPending) { rebuild(); invalidate(); return }
         val redraw = redrawOf(prev, next)
         if (redraw !is Redraw.Append) { drawnByHand.clear(); liveStrokesAwaitingCommit = 0; rebuild(); invalidate(); return }
         for (s in next.subList(redraw.from, next.size)) {
@@ -206,6 +210,7 @@ class PageView(
     }
 
     internal fun rebuild() {
+        rebuildPending = false
         val canvas = layerCanvas ?: return
         val t0 = SystemClock.uptimeMillis()
         canvas.drawColor(BackgroundRenderer.PAPER)

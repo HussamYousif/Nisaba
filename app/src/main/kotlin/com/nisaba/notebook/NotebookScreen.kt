@@ -64,7 +64,7 @@ fun NotebookScreen(
     eink: EinkDevice,
     ink: InkRenderer,
     background: BackgroundRenderer,
-    ensureRaster: suspend (PageBackground, Int) -> Unit,
+    ensureRaster: suspend (PageBackground, Int) -> Boolean,
     onBack: () -> Unit,
     onOpenSettings: () -> Unit = {},
 ) {
@@ -78,7 +78,8 @@ fun NotebookScreen(
     // a PDF page's picture is rendered in the background, then the page repaints itself
     LaunchedEffect(state.background, pageView) {
         val v = pageView ?: return@LaunchedEffect
-        if (state.background is PageBackground.DocumentPage) { ensureRaster(state.background, state.pageIndex); v.reloadBackground() }
+        // drawn without its picture (not yet rendered): drawn again once it is; already drawn with it: nothing to do
+        if (state.background is PageBackground.DocumentPage && ensureRaster(state.background, state.pageIndex)) v.reloadBackground()
     }
     LaunchedEffect(pen) { pen.events.collect { vm.onPenEvent(it) } }
     AppVisibility(vm)

@@ -21,26 +21,36 @@ class SmoothedStroke(val xs: FloatArray, val ys: FloatArray, val ps: FloatArray)
     val size: Int get() = xs.size
 }
 
-/** Centripetal-ish (uniform) Catmull-Rom resample at roughly [step] spacing; never allocates per point. */
+/**
+ * Centripetal-ish (uniform) Catmull-Rom resample at roughly [step] spacing, into arrays of the exact size (the
+ * subdivisions are counted first): nothing boxed, no growing lists. Every stroke on every redraw comes through here.
+ */
 fun smoothStroke(p: InkPoints, step: Float = RESAMPLE_STEP): SmoothedStroke {
     if (p.size < 3) return SmoothedStroke(p.xs.copyOf(), p.ys.copyOf(), p.ps.copyOf())
-    val ox = ArrayList<Float>(p.size * 2); val oy = ArrayList<Float>(p.size * 2); val op = ArrayList<Float>(p.size * 2)
-    fun cr(a: Float, b: Float, c: Float, d: Float, t: Float): Float {
-        val t2 = t * t; val t3 = t2 * t
-        return 0.5f * ((2 * b) + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t2 + (-a + 3 * b - 3 * c + d) * t3)
+    val counts = IntArray(p.size - 1) { i ->
+        ceil(hypot(p.xs[i + 1] - p.xs[i], p.ys[i + 1] - p.ys[i]) / step).toInt().coerceIn(1, MAX_SUBDIVISIONS)
     }
+    val total = counts.sum() + 1
+    val ox = FloatArray(total); val oy = FloatArray(total); val op = FloatArray(total)
+    var o = 0
     for (i in 0 until p.size - 1) {
         val i0 = maxOf(i - 1, 0); val i3 = minOf(i + 2, p.size - 1)
-        val n = ceil(hypot(p.xs[i + 1] - p.xs[i], p.ys[i + 1] - p.ys[i]) / step).toInt().coerceIn(1, MAX_SUBDIVISIONS)
+        val n = counts[i]
         for (k in 0 until n) {
             val t = k / n.toFloat()
-            ox += cr(p.xs[i0], p.xs[i], p.xs[i + 1], p.xs[i3], t)
-            oy += cr(p.ys[i0], p.ys[i], p.ys[i + 1], p.ys[i3], t)
-            op += p.ps[i] + (p.ps[i + 1] - p.ps[i]) * t
+            ox[o] = catmullRom(p.xs[i0], p.xs[i], p.xs[i + 1], p.xs[i3], t)
+            oy[o] = catmullRom(p.ys[i0], p.ys[i], p.ys[i + 1], p.ys[i3], t)
+            op[o] = p.ps[i] + (p.ps[i + 1] - p.ps[i]) * t
+            o++
         }
     }
-    ox += p.xs.last(); oy += p.ys.last(); op += p.ps.last()
-    return SmoothedStroke(ox.toFloatArray(), oy.toFloatArray(), op.toFloatArray())
+    ox[o] = p.xs.last(); oy[o] = p.ys.last(); op[o] = p.ps.last()
+    return SmoothedStroke(ox, oy, op)
+}
+
+private fun catmullRom(a: Float, b: Float, c: Float, d: Float, t: Float): Float {
+    val t2 = t * t; val t3 = t2 * t
+    return 0.5f * ((2 * b) + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t2 + (-a + 3 * b - 3 * c + d) * t3)
 }
 
 /**
@@ -62,24 +72,32 @@ fun strokeOutline(points: InkPoints, profile: PenProfile = PenProfile.DEFAULT, w
         if (len < 1e-4f) { dx = 1f; dy = 0f } else { dx /= len; dy /= len }
         nx[i] = -dy; ny[i] = dx
     }
-    val out = ArrayList<Float>((n * 2 + CAP_STEPS * 2) * 2)
-    fun add(x: Float, y: Float) { out += x; out += y }
-    for (i in 0 until n) add(s.xs[i] + nx[i] * half[i], s.ys[i] + ny[i] * half[i])
-    cap(out, s.xs[n - 1], s.ys[n - 1], nx[n - 1], ny[n - 1], half[n - 1])
-    for (i in n - 1 downTo 0) add(s.xs[i] - nx[i] * half[i], s.ys[i] - ny[i] * half[i])
-    cap(out, s.xs[0], s.ys[0], -nx[0], -ny[0], half[0])
-    return out.toFloatArray()
+    val out = FloatArray((n * 2 + (CAP_STEPS - 1) * 2) * 2)
+    var o = 0
+    for (i in 0 until n) { out[o++] = s.xs[i] + nx[i] * half[i]; out[o++] = s.ys[i] + ny[i] * half[i] }
+    o = cap(out, o, s.xs[n - 1], s.ys[n - 1], nx[n - 1], ny[n - 1], half[n - 1])
+    for (i in n - 1 downTo 0) { out[o++] = s.xs[i] - nx[i] * half[i]; out[o++] = s.ys[i] - ny[i] * half[i] }
+    cap(out, o, s.xs[0], s.ys[0], -nx[0], -ny[0], half[0])
+    return out
 }
 
-/** Half-circle from the +normal side to the -normal side around the tip, bulging along the stroke direction. */
-private fun cap(out: MutableList<Float>, cx: Float, cy: Float, nx: Float, ny: Float, r: Float) {
-    for (k in 1 until CAP_STEPS) {
-        val a = PI.toFloat() * k / CAP_STEPS
+/** cos and sin of a cap's inner angles, once (the same arithmetic as computing them per cap). */
+private val CAP_COS = FloatArray(CAP_STEPS - 1) { cos(PI.toFloat() * (it + 1) / CAP_STEPS) }
+private val CAP_SIN = FloatArray(CAP_STEPS - 1) { sin(PI.toFloat() * (it + 1) / CAP_STEPS) }
+
+/**
+ * Half-circle from the +normal side to the -normal side around the tip, bulging along the stroke direction, written
+ * into [out] from [at]; returns where it stopped.
+ */
+private fun cap(out: FloatArray, at: Int, cx: Float, cy: Float, nx: Float, ny: Float, r: Float): Int {
+    var o = at
+    for (k in CAP_COS.indices) {
         // rotate the normal from +n to -n through the forward direction (tangent = (ny, -nx))
-        val c = cos(a); val sn = sin(a)
-        out += cx + (nx * c + ny * sn) * r
-        out += cy + (ny * c - nx * sn) * r
+        val c = CAP_COS[k]; val sn = CAP_SIN[k]
+        out[o++] = cx + (nx * c + ny * sn) * r
+        out[o++] = cy + (ny * c - nx * sn) * r
     }
+    return o
 }
 
 private fun circle(cx: Float, cy: Float, r: Float): FloatArray {

@@ -1,6 +1,8 @@
 package com.nisaba.app
 
 import android.os.Bundle
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import androidx.activity.ComponentActivity
 import com.nisaba.BuildConfig
 import androidx.activity.compose.setContent
@@ -81,7 +83,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        com.nisaba.device.ReminderDevice.catchUp(this) // a reminder whose alarm the device refused is posted now
+        // a reminder whose alarm the device refused is posted now (its list is on disk: not on the thread that draws)
+        val app = applicationContext
+        lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) { com.nisaba.device.ReminderDevice.catchUp(app) }
     }
 
     override fun onPause() {

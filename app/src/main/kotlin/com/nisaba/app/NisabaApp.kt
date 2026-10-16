@@ -10,6 +10,8 @@ import kotlinx.coroutines.withContext
 import org.lsposed.hiddenapibypass.HiddenApiBypass
 import java.io.File
 
+private const val BACKUP_DELAY_MILLIS = 60_000L
+
 /** Where the last crash is kept (`files/crash/last.txt`). */
 fun crashLog(app: Application) = com.nisaba.infra.log.CrashLogStore(File(app.filesDir, "crash"))
 
@@ -32,7 +34,12 @@ class NisabaApp : Application() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) runCatching { HiddenApiBypass.addHiddenApiExemptions("") }
         PdfBoxClient.init(this)
         graph = AppGraph(this)
-        // a weekly backup, if a folder was chosen and the last one is a week old (quietly; never in the way)
-        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch { runCatching { graph.files.backupToFolderIfDue() } }
+        // the hand's letters are parsed now, not when the library first draws its title and covers
+        kotlinx.coroutines.CoroutineScope(Dispatchers.Default).launch { graph.hand(com.nisaba.domain.settings.HandStyle.Casual) }
+        // a weekly backup, if a folder was chosen and the last one is a week old (quietly; never in the way: not at start)
+        kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+            kotlinx.coroutines.delay(BACKUP_DELAY_MILLIS)
+            runCatching { graph.files.backupToFolderIfDue() }
+        }
     }
 }

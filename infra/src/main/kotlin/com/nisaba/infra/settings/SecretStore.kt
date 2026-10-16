@@ -20,12 +20,16 @@ import javax.crypto.spec.GCMParameterSpec
 class KeystoreSecretStore(context: Context, private val devFallback: String = "") : SecretStore {
     private val prefs = context.applicationContext.getSharedPreferences("secrets", Context.MODE_PRIVATE)
 
-    override suspend fun apiKey(): String? = withContext(Dispatchers.IO) { // Keystore and prefs touch disk
+    /** Decrypted once, then kept in memory: every question asks for it, and the Keystore takes its time. */
+    @Volatile private var known: String? = null
+
+    override suspend fun apiKey(): String? = known ?: withContext(Dispatchers.IO) { // Keystore and prefs touch disk
         val stored = prefs.getString(PREF_KEY, null)?.let { runCatching { decrypt(it) }.getOrNull() }
-        stored ?: devFallback.ifBlank { null }
+        stored.also { known = it } ?: devFallback.ifBlank { null }
     }
 
     override suspend fun setApiKey(key: String?) = withContext(Dispatchers.IO) {
+        known = null
         prefs.edit().apply { if (key.isNullOrBlank()) remove(PREF_KEY) else putString(PREF_KEY, encrypt(key.trim())) }.apply()
     }
 

@@ -46,7 +46,7 @@ private const val PAGE_ASPECT = 0.75f
 fun PageGridComponent(state: NotebookUiState, vm: NotebookViewModel) {
     val screen = state.pageGridScreen
     val first = screen * PAGES_PER_SCREEN
-    NisabaDialog("Pages", vm::closePageGrid) {
+    NisabaDialog("Pages", vm::closePageGrid, maxWidth = GRID_WIDTH_DP.dp) { // wide: thumbnails you can read
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             for (start in first until minOf(first + PAGES_PER_SCREEN, state.pages.size) step COLUMNS) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -114,3 +114,5 @@ private const val MAX_DIGITS = 5
 
 /** A page of this notebook as a small picture (null while it renders, or where there is none). */
 internal suspend fun NotebookViewModel.thumbnail(page: Page) = deps.sources.thumbnail(page, notebook?.notebook?.paper)
+
+private const val GRID_WIDTH_DP = 880

@@ -25,11 +25,23 @@ class DocumentRasterCache(private val docsDir: File, private val rasterDir: File
     private val memory = LruCache<String, Bitmap>(MEMORY_PAGES)
     private val lock = Mutex()
 
+    /** The open page's picture, outside the LRU: the page grid or an export must not push it out from under the page. */
+    @Volatile private var pinned: Pair<String, Bitmap>? = null
+
     private fun key(id: DocumentId, index: Int) = "${id.value}/$index"
     private fun file(id: DocumentId, index: Int) = File(File(rasterDir, id.value), "$index.webp")
 
     /** Memory only, so it is safe on the UI thread; [ensure] brings a page in from disk or renders it. */
-    override fun cached(documentId: DocumentId, pageIndex: Int): Bitmap? = memory[key(documentId, pageIndex)]
+    override fun cached(documentId: DocumentId, pageIndex: Int): Bitmap? {
+        val k = key(documentId, pageIndex)
+        return pinned?.takeIf { it.first == k }?.second ?: memory[k]
+    }
+
+    /** Keeps page [pageIndex]'s picture (if it is in) for as long as it is the open page. */
+    fun pin(documentId: DocumentId, pageIndex: Int) {
+        val k = key(documentId, pageIndex)
+        memory[k]?.let { pinned = k to it }
+    }
 
     private fun fromDisk(documentId: DocumentId, pageIndex: Int): Bitmap? {
         val f = file(documentId, pageIndex)
@@ -39,35 +51,73 @@ class DocumentRasterCache(private val docsDir: File, private val rasterDir: File
 
     /** Renders (if needed) and returns the picture of a page; null if the file cannot be rendered at all. */
     suspend fun ensure(documentId: DocumentId, pageIndex: Int): Bitmap? = withContext(Dispatchers.IO) {
-        cached(documentId, pageIndex) ?: lock.withLock {
-            cached(documentId, pageIndex) ?: fromDisk(documentId, pageIndex) ?: render(documentId, pageIndex)?.also { bmp ->
-                memory.put(key(documentId, pageIndex), bmp)
-                runCatching { save(bmp, file(documentId, pageIndex)) }
-            }
+        cached(documentId, pageIndex)?.let { return@withContext it }
+        var fresh = false
+        val bmp = lock.withLock {
+            cached(documentId, pageIndex) ?: fromDisk(documentId, pageIndex)
+                ?: render(documentId, pageIndex)?.also { memory.put(key(documentId, pageIndex), it); fresh = true }
+        }
+        // kept on disk outside the lock: the next page's render need not wait for this one's encoding
+        if (bmp != null && fresh) runCatching { save(bmp, file(documentId, pageIndex)) }
+        bmp
+    }
+
+    /**
+     * A small picture of a page (the page grid): the full one if it is in memory, else decoded small from disk, else
+     * rendered small (never stored); a page the system renders black goes the full way, PdfBox and all.
+     */
+    suspend fun small(documentId: DocumentId, pageIndex: Int, widthPx: Int): Bitmap? = withContext(Dispatchers.IO) {
+        cached(documentId, pageIndex)?.let { return@withContext it }
+        val f = file(documentId, pageIndex)
+        if (f.exists()) return@withContext BitmapFactory.decodeFile(f.path, BitmapFactory.Options().apply { inSampleSize = SMALL_SAMPLE })
+        val small = lock.withLock {
+            val pdf = File(docsDir, "${documentId.value}.pdf")
+            val r = if (pdf.exists()) runCatching { systemRenderer(documentId, pdf) }.getOrNull() else null
+            if (r == null || pageIndex !in 0 until r.pageCount) null else runCatching { renderSmall(r, pageIndex, widthPx) }.getOrNull()
+        }
+        if (small != null && !looksBlack(small)) small else ensure(documentId, pageIndex)
+    }
+
+    private fun renderSmall(renderer: PdfRenderer, index: Int, widthPx: Int): Bitmap = renderer.openPage(index).use { page ->
+        val h = (page.height * widthPx / page.width.toFloat()).toInt().coerceAtLeast(1)
+        Bitmap.createBitmap(widthPx, h, Bitmap.Config.ARGB_8888).also {
+            Canvas(it).drawColor(Color.WHITE)
+            page.render(it, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
         }
     }
 
     private fun render(id: DocumentId, index: Int): Bitmap? {
         val pdf = File(docsDir, "${id.value}.pdf")
         if (!pdf.exists()) return null
-        val system = runCatching { renderWithSystem(pdf, index) }.getOrNull()
+        val renderer = runCatching { systemRenderer(id, pdf) }.getOrNull()
+        if (renderer != null && index !in 0 until renderer.pageCount) return null // past the end: nothing to render, nothing to retry
+        val system = renderer?.let { r -> runCatching { renderWithSystem(r, index) }.getOrNull() }
         return if (system != null && !looksBlack(system)) system else runCatching { renderWithPdfBox(id, pdf, index) }.getOrNull() ?: system
+    }
+
+    /** The system renderer of the document being read, kept open (only ever touched under [lock]): opening one per page was slow. */
+    private var openSystem: Triple<DocumentId, ParcelFileDescriptor, PdfRenderer>? = null
+
+    private fun systemRenderer(id: DocumentId, pdf: File): PdfRenderer {
+        openSystem?.takeIf { it.first == id }?.let { return it.third }
+        openSystem?.let { (_, fd, r) -> runCatching { r.close() }; runCatching { fd.close() } }
+        openSystem = null
+        val fd = ParcelFileDescriptor.open(pdf, ParcelFileDescriptor.MODE_READ_ONLY)
+        val renderer = runCatching { PdfRenderer(fd) }.getOrElse { fd.close(); throw it }
+        openSystem = Triple(id, fd, renderer)
+        return renderer
     }
 
     /** The PdfBox fallback's open document (only ever touched under [lock]): parsing a PDF per page was the slow part. */
     private var openDoc: Pair<DocumentId, PDDocument>? = null
 
-    private fun renderWithSystem(pdf: File, index: Int): Bitmap =
-        ParcelFileDescriptor.open(pdf, ParcelFileDescriptor.MODE_READ_ONLY).use { fd ->
-            PdfRenderer(fd).use { renderer ->
-                renderer.openPage(index).use { page ->
-                    val (w, h) = rasterSize(page.width.toFloat(), page.height.toFloat())
-                    val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-                    Canvas(bmp).drawColor(Color.WHITE)
-                    page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                    bmp
-                }
-            }
+    private fun renderWithSystem(renderer: PdfRenderer, index: Int): Bitmap =
+        renderer.openPage(index).use { page ->
+            val (w, h) = rasterSize(page.width.toFloat(), page.height.toFloat())
+            val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            Canvas(bmp).drawColor(Color.WHITE)
+            page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+            bmp
         }
 
     private fun renderWithPdfBox(id: DocumentId, pdf: File, index: Int): Bitmap {
@@ -107,6 +157,7 @@ class DocumentRasterCache(private val docsDir: File, private val rasterDir: File
     companion object {
         const val PAGE_WIDTH = 1860
         private const val MEMORY_PAGES = 3
+        private const val SMALL_SAMPLE = 4
         private const val PROBE = 8
         private const val BLACK_MEAN = 40
         private const val WEBP_QUALITY = 90

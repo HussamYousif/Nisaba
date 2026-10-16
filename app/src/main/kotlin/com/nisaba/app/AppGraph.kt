@@ -260,10 +260,16 @@ class AppGraph(private val app: Application) {
     }
 
     /** Renders a document page's picture if needed (no-op for blank pages). */
-    suspend fun ensureRaster(background: PageBackground, @Suppress("UNUSED_PARAMETER") pageIndex: Int) {
-        if (background !is PageBackground.DocumentPage) return
-        rasters.ensure(background.documentId, background.index)
-        rasters.ensure(background.documentId, background.index + 1) // the next page is usually wanted soon
+    /**
+     * The open document page's picture, kept while it is open; its neighbours are fetched meanwhile, not waited for.
+     * True when the page had to be drawn without it (it must be drawn again now).
+     */
+    suspend fun ensureRaster(background: PageBackground, @Suppress("UNUSED_PARAMETER") pageIndex: Int): Boolean {
+        val bg = background as? PageBackground.DocumentPage ?: return false
+        val had = rasters.cached(bg.documentId, bg.index) != null
+        rasters.ensure(bg.documentId, bg.index)?.let { rasters.pin(bg.documentId, bg.index) }
+        io.launch { rasters.ensure(bg.documentId, bg.index + 1); if (bg.index > 0) rasters.ensure(bg.documentId, bg.index - 1) }
+        return !had
     }
 
     private suspend fun documentText(id: NotebookId): List<String> =

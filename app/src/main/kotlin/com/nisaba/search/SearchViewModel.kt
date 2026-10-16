@@ -15,7 +15,7 @@ import kotlinx.coroutines.launch
 /** Searches as you type, once typing pauses (e-ink: one repaint per search, not per key). */
 class SearchViewModel(
     private val search: suspend (String, Int) -> List<SearchHit>,
-    scopeOverride: CoroutineScope? = null,
+    private val scopeOverride: CoroutineScope? = null,
     private val debounceMillis: Long = DEBOUNCE_MILLIS,
 ) : ViewModel() {
     private val scope = scopeOverride ?: viewModelScope
@@ -45,7 +45,9 @@ class SearchViewModel(
     }
 
     private suspend fun fetch(text: String, limit: Int) {
-        val hits = search(text, limit)
+        // a PDF's text is scanned page by page: off the thread that draws (the scope's dispatcher in tests)
+        val hits = if (scopeOverride == null) kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { search(text, limit) }
+        else search(text, limit)
         _state.update { if (it.query == text) it.copy(hits = hits, searched = true, more = hits.size >= limit) else it }
     }
 
