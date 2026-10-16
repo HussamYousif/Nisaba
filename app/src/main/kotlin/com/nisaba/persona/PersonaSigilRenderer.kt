@@ -1,6 +1,7 @@
 package com.nisaba.persona
 
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -21,12 +22,12 @@ fun DrawScope.drawSigil(voice: Persona, color: Color, c: Offset, r: Float) {
     val pen = Stroke(width = r * LINE, cap = StrokeCap.Round, join = StrokeJoin.Round)
     when (voice.id) {
         "book" -> openBook(color, c, r, pen)
-        "teacher" -> cap(color, c, r, pen)
+        "teacher" -> wizardHat(color, c, r, pen)
         "writer" -> nib(color, c, r, pen)
         "explorer" -> compass(color, c, r)
-        "flirt" -> heart(color, c, r)
         "yukino" -> snowflake(color, c, r, pen)
         "zagreus" -> flame(color, c, r, pen)
+        "jensen" -> shades(color, c, r, pen)
         "plain" -> { drawCircle(color, r * 0.75f, c, style = pen); drawCircle(color, r * 0.18f, c) }
         else -> star(color, c, r, pen, OWN_MIN_RAYS + (voice.id.hashCode() and Int.MAX_VALUE) % OWN_RAY_KINDS)
     }
@@ -48,20 +49,18 @@ private fun DrawScope.openBook(color: Color, c: Offset, r: Float, pen: Stroke) {
     }
 }
 
-private fun DrawScope.cap(color: Color, c: Offset, r: Float, pen: Stroke) {
-    val board = listOf(
-        Offset(c.x, c.y - r * 0.7f), Offset(c.x + r, c.y - r * 0.25f), Offset(c.x, c.y + r * 0.2f), Offset(c.x - r, c.y - r * 0.25f),
-    )
-    drawPath(path(board), color)
-    val band = path(
-        listOf(
-            Offset(c.x - r * 0.55f, c.y), Offset(c.x - r * 0.55f, c.y + r * 0.55f),
-            Offset(c.x + r * 0.55f, c.y + r * 0.55f), Offset(c.x + r * 0.55f, c.y),
-        ),
-        close = false,
-    )
-    drawPath(band, color, style = pen)
-    drawLine(color, Offset(c.x + r * 0.85f, c.y - r * 0.2f), Offset(c.x + r * 0.85f, c.y + r * 0.6f), r * LINE, StrokeCap.Round)
+/** Gandalf: a pointed hat, its tip bent over, on a wide brim. */
+private fun DrawScope.wizardHat(color: Color, c: Offset, r: Float, pen: Stroke) {
+    val cone = Path().apply {
+        moveTo(c.x - r * 0.5f, c.y + r * 0.45f)
+        quadraticTo(c.x - r * 0.2f, c.y - r * 0.2f, c.x + r * 0.05f, c.y - r * 0.6f)
+        quadraticTo(c.x + r * 0.3f, c.y - r * 0.95f, c.x + r * 0.7f, c.y - r * 0.8f) // the tip, bent over
+        quadraticTo(c.x + r * 0.3f, c.y - r * 0.6f, c.x + r * 0.22f, c.y - r * 0.3f)
+        lineTo(c.x + r * 0.5f, c.y + r * 0.45f)
+        close()
+    }
+    drawPath(cone, color)
+    drawOval(color, Offset(c.x - r, c.y + r * 0.3f), Size(r * 2f, r * 0.42f), style = pen)
 }
 
 private fun DrawScope.nib(color: Color, c: Offset, r: Float, pen: Stroke) {
@@ -86,16 +85,6 @@ private fun DrawScope.compass(color: Color, c: Offset, r: Float) {
         Offset(c.x + cos(a) * len, c.y + sin(a) * len)
     }
     drawPath(path(pts), color)
-}
-
-private fun DrawScope.heart(color: Color, c: Offset, r: Float) {
-    val p = Path().apply {
-        moveTo(c.x, c.y + r * 0.85f)
-        cubicTo(c.x - r * 1.3f, c.y - r * 0.05f, c.x - r * 0.6f, c.y - r * 1.05f, c.x, c.y - r * 0.4f)
-        cubicTo(c.x + r * 0.6f, c.y - r * 1.05f, c.x + r * 1.3f, c.y - r * 0.05f, c.x, c.y + r * 0.85f)
-        close()
-    }
-    drawPath(p, color)
 }
 
 private fun DrawScope.snowflake(color: Color, c: Offset, r: Float, pen: Stroke) {
@@ -124,6 +113,18 @@ private fun DrawScope.flame(color: Color, c: Offset, r: Float, pen: Stroke) {
     }
     drawPath(tongue(1f), color, style = pen)
     drawPath(Path().apply { addPath(tongue(0.45f), Offset(0f, r * 0.35f)) }, color)
+}
+
+/** Adam Jensen: his angular shades. */
+private fun DrawScope.shades(color: Color, c: Offset, r: Float, pen: Stroke) {
+    for (side in listOf(-1f, 1f)) {
+        val lens = listOf(
+            Offset(c.x + side * r * 0.12f, c.y - r * 0.28f), Offset(c.x + side * r, c.y - r * 0.36f),
+            Offset(c.x + side * r * 0.86f, c.y + r * 0.1f), Offset(c.x + side * r * 0.32f, c.y + r * 0.32f),
+        )
+        drawPath(path(lens), color)
+    }
+    drawLine(color, Offset(c.x - r * 0.2f, c.y - r * 0.22f), Offset(c.x + r * 0.2f, c.y - r * 0.22f), pen.width, StrokeCap.Round)
 }
 
 private fun DrawScope.star(color: Color, c: Offset, r: Float, pen: Stroke, rays: Int) {

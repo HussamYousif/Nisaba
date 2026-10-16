@@ -82,12 +82,12 @@ class LibraryViewModelTest {
     @Test fun aPdfGoesThroughThePickerInTheVoicePicked() = runTest {
         val vm = vm()
         var picker = 0
-        vm.onNew(); vm.chooseKind(NotebookKind.Pdf); vm.selectVoice("flirt")
+        vm.onNew(); vm.chooseKind(NotebookKind.Pdf); vm.selectVoice("yukino")
         vm.confirmVoice { picker++ }
         assertEquals(1, picker); assertEquals(LibraryDialog.None, vm.state.value.dialog)
         vm.onPdfPicked("x.pdf", opened::add); runCurrent()
         val nb = store.get(opened.single())!!.notebook
-        assertEquals("flirt", nb.personaId); assertEquals(null, nb.teachGoal); assertEquals(DocumentId("d-x.pdf"), nb.documentId)
+        assertEquals("yukino", nb.personaId); assertEquals(null, nb.teachGoal); assertEquals(DocumentId("d-x.pdf"), nb.documentId)
     }
 
     @Test fun aPdfToLearnAsksForTheGoalAfterThePicker() = runTest {

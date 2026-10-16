@@ -74,7 +74,9 @@ class LibraryViewModel(
             }
         }
         changes.emptyTrash?.let { empty -> scope.launch { empty() } } // what has been there 30 days goes for good
-        settings?.let { s -> scope.launch { s.observe().collect { lastPersona = it.lastPersona; lastStyle = it.lastStyle } } }
+        settings?.let { s ->
+            scope.launch { s.observe().collect { lastPersona = PersonaRegistry.normalize(it.lastPersona); lastStyle = it.lastStyle } }
+        }
     }
 
     private fun com.nisaba.domain.notebook.NotebookSummary.toCover(edited: String) = CoverItem(

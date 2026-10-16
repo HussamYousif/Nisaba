@@ -147,9 +147,7 @@ class AppGraph(private val app: Application) {
 
     /** Every voice, their own included, kept current for lookups anywhere (pickers, covers, the hand, the session). */
     val voices: kotlinx.coroutines.flow.StateFlow<Voices> by lazy {
-        val builtIn = com.nisaba.domain.persona.PersonaRegistry.offered(BuildConfig.CHARACTER_VOICES)
-        val start = Voices(builtIn = builtIn)
-        ownVoices.observe().map { Voices(it, builtIn) }.stateIn(io, kotlinx.coroutines.flow.SharingStarted.Eagerly, start)
+        ownVoices.observe().map { Voices(it) }.stateIn(io, kotlinx.coroutines.flow.SharingStarted.Eagerly, Voices())
     }
 
     fun ownVoiceFactory(): ViewModelProvider.Factory = viewModelFactory {

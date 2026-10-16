@@ -15,11 +15,6 @@ fun devKey(): String {
     return (fromFile ?: System.getenv("DEEPSEEK_API_KEY") ?: "").trim().removeSurrounding("\"")
 }
 
-/** Release signing, from `keystore.properties` at the root (never committed): storeFile, storePassword, keyAlias, keyPassword. */
-fun releaseKeys(): Properties? = rootProject.file("keystore.properties").takeIf { it.exists() }?.let { f ->
-    Properties().apply { f.reader().use(::load) }
-}
-
 android {
     namespace = "com.nisaba"
     compileSdk = 36
@@ -35,30 +30,15 @@ android {
         compose = true
         buildConfig = true
     }
-    signingConfigs {
-        releaseKeys()?.let { k ->
-            create("release") {
-                storeFile = rootProject.file(k.getProperty("storeFile"))
-                storePassword = k.getProperty("storePassword")
-                keyAlias = k.getProperty("keyAlias")
-                keyPassword = k.getProperty("keyPassword")
-            }
-        }
-    }
     buildTypes {
-        debug {
-            buildConfigField("String", "DEV_DEEPSEEK_API_KEY", "\"${devKey()}\"")
-            buildConfigField("Boolean", "CHARACTER_VOICES", "true")
-        }
+        debug { buildConfigField("String", "DEV_DEEPSEEK_API_KEY", "\"${devKey()}\"") }
         release {
             buildConfigField("String", "DEV_DEEPSEEK_API_KEY", "\"\"")
-            // Yukino and Zagreus are fan homages: fine on your own device, not in a store build (IP)
-            buildConfigField("Boolean", "CHARACTER_VOICES", "false")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // no keystore yet: debug-signed, so the minified build can still be tried on the device (Play refuses it)
-            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
+            // personal use (DESIGN D18): the debug key, so it installs over the debug build and keeps the notebooks
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
     compileOptions {

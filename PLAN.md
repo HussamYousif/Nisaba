@@ -644,6 +644,8 @@ Goal: answers are *written*: humanized single-line glyphs drawn along the pen pa
 
 ## M7 — Play Store readiness
 
+> **Dropped 2026-10-16:** Nisaba is for personal use only (DESIGN D18). Kept from it: SDK 36 and an R8 release build (M18).
+
 ### M7.1 Release build · M
 - A release keystore (created by you, stored outside the repo), `keystore.properties` (gitignored), `signingConfigs.release`; the release build fails if it's missing (never falls back to the debug key).
 - R8: `isMinifyEnabled = true`, `isShrinkResources = true`; keep rules for kotlinx.serialization, Room, PdfBox, and **Onyx SDK reflection** (`-keep class com.onyx.** { *; }` and `-keep class android.onyx.** { *; }` for the OEC reflection).

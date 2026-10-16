@@ -29,16 +29,17 @@ class PersonaRegistryTest {
         }
     }
 
-    @Test fun releaseBuildsOfferNoCharactersButOldNotebooksKeepTheirs() {
-        val offered = PersonaRegistry.offered(characters = false).map { it.id }
-        assertTrue("yukino" !in offered && "zagreus" !in offered)
-        assertTrue(PersonaRegistry.default.id in offered)
-        assertEquals(PersonaRegistry.all, PersonaRegistry.offered(characters = true))
-        assertEquals("zagreus", PersonaRegistry.of("zagreus").id) // a notebook made in a debug build still answers in it
+    @Test fun theCharactersAreThemselves() {
+        assertTrue(systemPrompt(PersonaRegistry.of("yukino")).startsWith("You are Yukino from"))
+        assertTrue(systemPrompt(PersonaRegistry.of("zagreus")).startsWith("You are Zagreus"))
+        assertTrue(systemPrompt(PersonaRegistry.of("teacher")).startsWith("You are Gandalf"))
+        assertTrue(PersonaRegistry.all.none { "Yukinoshita" in it.name + it.voice }) // just Yukino
     }
 
-    @Test fun theCharactersAreThemselves() {
-        assertTrue(systemPrompt(PersonaRegistry.of("yukino")).startsWith("You are Yukinoshita Yukino"))
-        assertTrue(systemPrompt(PersonaRegistry.of("zagreus")).startsWith("You are Zagreus"))
+    @Test fun theFlirtIsNowYukino() {
+        assertTrue(PersonaRegistry.all.none { it.id == "flirt" })
+        assertEquals("yukino", PersonaRegistry.of("flirt").id) // notebooks made with the flirt keep talking
+        assertEquals("yukino", PersonaRegistry.normalize("flirt"))
+        assertEquals("Gandalf", PersonaRegistry.of("teacher").name) // same id: the wise teacher's notebooks are his
     }
 }

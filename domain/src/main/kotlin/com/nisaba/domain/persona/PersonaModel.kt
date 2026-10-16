@@ -19,8 +19,6 @@ data class Persona(
     val hint: String = "Write, then pause.",
     /** Said before a failure line ("Bah." + "the ink wouldn't flow"); empty = nothing. */
     val oops: String = "",
-    /** A fan homage to a character someone else owns: offered only where that is fine (not in store builds). */
-    val character: Boolean = false,
 )
 
 /**
