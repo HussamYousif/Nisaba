@@ -1,6 +1,5 @@
 package com.nisaba.notebook
 
-import android.graphics.Rect
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -27,6 +26,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
@@ -41,7 +41,6 @@ import com.nisaba.canvas.answerPen
 import com.nisaba.device.EinkDevice
 import com.nisaba.device.PenDevice
 import com.nisaba.device.PenEvent
-import com.nisaba.device.PenTool
 import com.nisaba.domain.ink.StrokeOrigin
 import com.nisaba.domain.lesson.TopicStatus
 import com.nisaba.domain.notebook.PageBackground
@@ -84,7 +83,8 @@ fun NotebookScreen(
     LaunchedEffect(pen) { pen.events.collect { vm.onPenEvent(it) } }
     AppVisibility(vm)
     PenWiring(state, pageView, pen)
-    PenExclusions(state.toolbarVisible, pageView, toolbarPx, state.selection != null)
+    var topPx by remember { androidx.compose.runtime.mutableIntStateOf(0) } // the bar and the chips under it
+    PenExclusions(state.toolbarVisible, pageView, maxOf(toolbarPx, topPx), state.selection != null, chipsPx = topPx)
     DisposableEffect(Unit) { eink.fast(); onDispose { eink.normal() } }
 
     ScribeWiring(vm, state, pageView, animator, pen, eink)
@@ -113,11 +113,14 @@ fun NotebookScreen(
             val hint = LocalVoices.current.of(state.personaId).hint // in the notebook's voice
             HandTextComponent(hint, Nisaba.colors.faint, Modifier.align(Alignment.Center).fillMaxWidth(HINT_WIDTH))
         }
-        TopOfPage(state, vm, onBack, Modifier.align(Alignment.TopStart))
+        TopOfPage(state, vm, onBack, Modifier.align(Alignment.TopStart).onSizeChanged { topPx = it.height })
         state.selection?.let { SelectionBarComponent(it, state.aiAvailable, vm, Modifier.align(Alignment.BottomStart)) }
+        androidx.activity.compose.BackHandler(enabled = state.selection != null) { vm.doneWithSelection() }
         val handle = !state.toolbarVisible && state.selection == null
         if (handle) ToolbarHandle(Modifier.align(Alignment.BottomEnd), starBadge(state), vm::showToolbar, vm::openMiniBar)
         if (handle && state.miniBar) MiniBarComponent(state, vm, Modifier.align(Alignment.BottomEnd))
+        androidx.activity.compose.BackHandler(enabled = handle && state.miniBar) { vm.closeMiniBar() }
+        androidx.activity.compose.BackHandler(enabled = state.overview) { vm.closeOverview() }
         val voice = LocalVoices.current.of(state.personaId)
         if (state.menuOpen) NotebookMenuComponent(state.title, notebookMenu(state, voice.name, vm, onOpenSettings), vm::closeMenu)
         NotebookOverlays(state, vm)
@@ -166,7 +169,7 @@ private fun NotebookOverlays(state: NotebookUiState, vm: NotebookViewModel) {
     if (state.voiceOpen) VoiceDialogComponent(state.personaId, state.style, vm::setVoice, vm::closeVoice)
     if (state.renaming) {
         var name by remember { mutableStateOf(state.title) }
-        NisabaDialog("Rename notebook", vm::cancelRename) {
+        NisabaDialog("Rename notebook", vm::cancelRename, keepOnOutsideTap = true) {
             NisabaTextField(name, { name = it }, onDone = { vm.confirmRename(name) })
             NisabaButtonRow {
                 NisabaButton("Cancel", vm::cancelRename)
@@ -224,20 +227,6 @@ private fun ScribeWiring(
 }
 
 
-/** The pen must not write under the bar, nor under the star handle that replaces it, nor under the lasso's bar. */
-@Composable
-private fun PenExclusions(toolbarVisible: Boolean, pageView: PageView?, toolbarPx: Int, selecting: Boolean) {
-    val density = LocalDensity.current
-    val handlePx = with(density) { (HANDLE_SIZE + 2 * HANDLE_MARGIN).dp.roundToPx() }
-    val barPx = with(density) { SELECTION_BAR_HEIGHT.dp.roundToPx() }
-    LaunchedEffect(toolbarVisible, pageView, selecting) {
-        val v = pageView ?: return@LaunchedEffect
-        val handle = Rect(v.width - handlePx, v.height - handlePx, v.width, v.height)
-        val top = if (toolbarVisible) listOf(Rect(0, 0, 10_000, toolbarPx)) else listOf(handle)
-        v.setExclusions(top + if (selecting) listOf(Rect(0, v.height - barPx, v.width, v.height)) else emptyList())
-    }
-}
-
 /** What the ViewModel asks of the screen: refreshes, jumps, the clipboard, the share sheet, repaints. */
 @Composable
 private fun NotebookEffects(vm: NotebookViewModel, pageView: PageView?, pen: PenDevice, eink: EinkDevice) {
@@ -266,23 +255,3 @@ private fun shareIntent(subject: String, text: String) = android.content.Intent.
         .putExtra(android.content.Intent.EXTRA_SUBJECT, subject).putExtra(android.content.Intent.EXTRA_TEXT, text),
     subject,
 )
-
-/** The corner star's badge: a failure first, then work in progress, then muted. */
-private fun starBadge(state: NotebookUiState): StarBadge? = when {
-    state.failure != null -> StarBadge.Failed
-    state.working -> StarBadge.Working
-    !state.listening -> StarBadge.Muted
-    else -> null
-}
-
-/** The bar (when shown) and the one-line chips under it: a failure, a memory note, a notice, a reminder. */
-@Composable
-private fun TopOfPage(state: NotebookUiState, vm: NotebookViewModel, onBack: () -> Unit, modifier: Modifier) {
-    Column(modifier) {
-        if (state.toolbarVisible) NotebookToolbarComponent(state, vm, onBack)
-        state.failure?.let { FailureChip(it, vm::retry) }
-        state.memoryNote?.let { MemoryChip(it, vm::dismissMemoryNote) }
-        state.notice?.let { MemoryChip(it, vm::dismissNotice, mark = "!") }
-        state.reminder?.let { ReminderChip(reminderLine(it), vm::addReminder, vm::dismissReminder) }
-    }
-}

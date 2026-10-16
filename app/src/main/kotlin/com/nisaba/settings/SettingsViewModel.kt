@@ -25,6 +25,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+/** Settings → About: this build in words ("0.1.0 debug · prompt v16") and the last crash kept on the device. */
+class SettingsAbout(val build: String, val lastCrash: suspend () -> String?, val clearCrash: suspend () -> Unit)
+
 /** Backups: now to a picked file, a restore from one, a folder for weekly ones (null in tests). */
 class SettingsBackups(
     val backupTo: suspend (String) -> Boolean,
@@ -40,6 +43,7 @@ class SettingsViewModel(
     usage: (suspend () -> UsageSummary)? = null,
     scopeOverride: CoroutineScope? = null,
     private val backups: SettingsBackups? = null,
+    private val about: SettingsAbout? = null,
 ) : ViewModel() {
     private val scope = scopeOverride ?: viewModelScope
     private val _state = MutableStateFlow(SettingsUiState())
@@ -50,6 +54,12 @@ class SettingsViewModel(
         scope.launch { _state.update { it.copy(hasKey = !secrets.apiKey().isNullOrBlank()) } }
         memory?.let { m -> scope.launch { m().collect { facts -> _state.update { it.copy(factCount = facts.size) } } } }
         usage?.let { u -> scope.launch { val summary = u(); _state.update { it.copy(usage = summary) } } }
+        about?.let { a -> scope.launch { val crash = a.lastCrash(); _state.update { it.copy(build = a.build, lastCrash = crash) } } }
+    }
+
+    fun clearCrash() {
+        val a = about ?: return
+        scope.launch { a.clearCrash(); _state.update { it.copy(lastCrash = null) } }
     }
 
     fun onKeyInput(text: String) = _state.update { it.copy(keyInput = text, keyCheck = KeyCheck.Idle) }

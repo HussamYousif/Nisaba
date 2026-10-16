@@ -32,7 +32,7 @@ fun SearchScreen(state: SearchUiState, vm: SearchViewModel, onBack: () -> Unit, 
             Text("Search", style = MaterialTheme.typography.headlineLarge, modifier = Modifier.weight(1f))
             NisabaButton("Done", onBack, filled = true)
         }
-        NisabaTextField(state.query, vm::onQuery)
+        NisabaTextField(state.query, vm::onQuery, autoFocus = state.query.isEmpty()) // back from a hit: no keyboard
         Text(
             when {
                 state.query.isBlank() -> "Words from your questions, Nisaba's answers, notebook names or your PDFs."

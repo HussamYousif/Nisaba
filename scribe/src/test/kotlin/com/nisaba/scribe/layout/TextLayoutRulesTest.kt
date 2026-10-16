@@ -120,4 +120,15 @@ class TextLayoutRulesTest {
         assertTrue(inl.any { it is Inline.Math }) // not "$x=3$" written out
         assertEquals(listOf(Inline.Text("✓", bold = true)), markInlines(Block.Mark(1, true, "")))
     }
+
+    @Test fun punctuationRightAfterInlineMathStaysWithIt() {
+        val parts = listOf(
+            Inline.Text("Count them: "), Inline.Math("W"), Inline.Text(". Then ("), Inline.Math("x"), Inline.Text(") again."),
+        )
+        val w = lay(Block.Paragraph(parts)).first.words // Count · them: · W · . · Then · ( · x · ) · again.
+        fun gap(a: Int) = w[a + 1].x - (w[a].x + w[a].width)
+        assertEquals(9, w.size)
+        for (glued in listOf(2, 5, 6)) assertEquals(0f, gap(glued), 0.5f, "word ${glued + 1} should touch the one before")
+        for (spaced in listOf(1, 3)) assertTrue(gap(spaced) > 2f, "word ${spaced + 1} keeps its space")
+    }
 }

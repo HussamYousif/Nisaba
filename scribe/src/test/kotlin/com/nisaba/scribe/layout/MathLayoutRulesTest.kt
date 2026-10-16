@@ -82,4 +82,9 @@ class MathLayoutRulesTest {
     @Test fun layoutIsDeterministic() {
         assertEquals(xs(box("\\frac{-b\\pm\\sqrt{b^2-4ac}}{2a}")), xs(box("\\frac{-b\\pm\\sqrt{b^2-4ac}}{2a}")))
     }
+
+    @Test fun aFunctionNameIsFollowedByAThinSpaceButNotBeforeAParenthesis() {
+        assertTrue(box("\\ln W").width > box("\\text{ln}W").width + 0.1f) // "ln W", not "lnW"
+        assertEquals(box("\\text{sin}(x)").width, box("\\sin(x)").width, 0.001f) // "sin(x)"
+    }
 }

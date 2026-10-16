@@ -52,7 +52,7 @@ fun SelectionBarComponent(sel: InkSelection, ai: Boolean, vm: NotebookViewModel,
             if (ai && ink) { NisabaButton("Check it", vm::checkSelection); NisabaButton("Redraw cleanly", vm::redrawSelection) }
             if (ink) { NisabaButton("Colour", vm::toggleSelectionColours); NisabaButton("Delete", vm::deleteSelection) }
             Spacer(Modifier.weight(1f))
-            NisabaButton("Done", vm::clearSelection, filled = true)
+            NisabaButton("Done", vm::doneWithSelection, filled = true)
         }
         Text(
             if (ink) "Drag inside the box with the pen to move it." else "A loop around printed text: ask about it.",

@@ -85,7 +85,17 @@ class NotebookViewModelTest {
         ink.setAside = true
         val (vm, _) = open(this)
         assertEquals(NotebookViewModel.SET_ASIDE_NOTICE, vm.state.value.notice)
+        advanceTimeBy(NotebookViewModel.NOTICE_MILLIS * 2); runCurrent()
+        assertEquals(NotebookViewModel.SET_ASIDE_NOTICE, vm.state.value.notice) // a warning stays until tapped
         vm.dismissNotice(); assertEquals(null, vm.state.value.notice)
+    }
+
+    @Test fun aNoticeGoesByItself() = runTest {
+        val (vm, _) = open(this)
+        vm.togglePrivate(); runCurrent()
+        assertEquals(PRIVATE_ON, vm.state.value.notice)
+        advanceTimeBy(NotebookViewModel.NOTICE_MILLIS + 1); runCurrent()
+        assertEquals(null, vm.state.value.notice)
     }
 
     @Test fun theVoiceCanBeChangedFromTheMenu() = runTest {
@@ -372,6 +382,7 @@ class NotebookViewModelTest {
         assertEquals(0xFFC0281C.toInt(), vm.state.value.strokes.first { it.id in sel.ids }.color.argb)
         vm.deleteSelection(); runCurrent()
         assertEquals(1, vm.state.value.strokes.size); assertNull(vm.state.value.selection)
+        assertEquals(PenTool.Pen, vm.state.value.tool) // done with the lasso: the next writing inks again
         vm.undo(); runCurrent(); vm.undo(); runCurrent(); vm.undo(); runCurrent() // delete, recolour, move
         assertEquals(200f, vm.state.value.strokes.first { it.id in sel.ids }.points.xs.first(), 0.01f)
         vm.setTool(PenTool.Pen); assertNull(vm.state.value.selection)

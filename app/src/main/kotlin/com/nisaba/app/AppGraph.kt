@@ -208,6 +208,7 @@ class AppGraph(private val app: Application) {
                 settings, secrets, oracle, ObserveMemoryUseCase(facts),
                 usage = { summarizeUsage(exchanges.usage(), clock.nowMillis(), java.time.ZoneId.systemDefault()) },
                 backups = com.nisaba.settings.SettingsBackups(files::backupTo, files::restoreFrom, files::setBackupFolder),
+                about = settingsAbout(app),
             )
         }
     }

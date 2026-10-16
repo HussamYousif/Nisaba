@@ -16,6 +16,11 @@ private val ALIASES = mapOf(
 )
 
 private val BIG_OPS = mapOf("sum" to "sum", "prod" to "prod", "int" to "int", "oint" to "int", "lim" to "lim")
+/** \sin x, \ln W: names written as words (never with their backslash). */
+private val FUNCTIONS = setOf(
+    "sin", "cos", "tan", "cot", "sec", "csc", "arcsin", "arccos", "arctan", "sinh", "cosh", "tanh", "coth",
+    "log", "ln", "lg", "exp", "det", "dim", "ker", "deg", "arg", "gcd", "max", "min", "sup", "inf", "Pr",
+)
 private val SPACING = setOf(",", ";", ":", "!", " ", "quad", "qquad")
 private val LITERAL_ESCAPES = setOf('%', '$', '&', '#', '_', '{', '}')
 private val MATRIX_ENVS = mapOf("pmatrix" to ("(" to ")"), "bmatrix" to ("[" to "]"), "matrix" to ("" to ""), "vmatrix" to ("|" to "|"))
@@ -126,6 +131,7 @@ class MathParser(private val src: String) {
 
     private fun symbolCommand(cmd: String): MathNode? = when {
         cmd in BIG_OPS -> MathNode.BigOp(BIG_OPS.getValue(cmd), null, null)
+        cmd in FUNCTIONS -> MathNode.Text(cmd, function = true)
         cmd in GREEK -> MathNode.Sym(cmd)
         cmd in ALIASES -> MathNode.Sym(ALIASES.getValue(cmd))
         cmd in SPACING -> null

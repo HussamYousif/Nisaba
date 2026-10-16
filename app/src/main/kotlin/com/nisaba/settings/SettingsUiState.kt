@@ -22,4 +22,7 @@ data class SettingsUiState(
     /** One line about the last backup or restore; [restartNow] = a restore went in and the app must start again. */
     val backupNote: String? = null,
     val restartNow: Boolean = false,
+    /** About: this build in words, and the last crash kept on the device (null = none). */
+    val build: String = "",
+    val lastCrash: String? = null,
 )

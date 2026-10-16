@@ -44,7 +44,7 @@ private const val PAUSE_STEP = 500
 
 private enum class Pane(val title: String) {
     Key("Key & model"), Waiting("Waiting"), Hand("The hand"), Ink("Ink & colours"), Pen("Your pen"), Memory("Memory"), Backup("Backup"),
-    Usage("Usage"),
+    Usage("Usage"), About("About"),
 }
 
 /** Settings as short panes (no scrolling on e-ink): the list on the left, one pane on the right. */
@@ -75,6 +75,7 @@ fun SettingsScreen(state: SettingsUiState, vm: SettingsViewModel, onBack: () -> 
                     Pane.Memory -> MemoryPane(state.factCount, onOpenMemory)
                     Pane.Backup -> BackupPane(state, vm)
                     Pane.Usage -> state.usage?.let { UsagePane(it) }
+                    Pane.About -> AboutPane(state, vm)
                 }
             }
         }

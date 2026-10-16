@@ -44,6 +44,12 @@ internal fun NotebookViewModel.onLasso(points: InkPoints) {
 
 fun NotebookViewModel.clearSelection() = mutableState.update { it.copy(selection = null) }
 
+/** The lasso's work is done (Done, or an action on the picked ink): back to the pen, so the next writing inks. */
+fun NotebookViewModel.doneWithSelection() {
+    clearSelection()
+    if (mutableState.value.tool == com.nisaba.device.PenTool.Lasso) setTool(com.nisaba.device.PenTool.Pen)
+}
+
 fun NotebookViewModel.toggleSelectionColours() =
     mutableState.update { s -> s.copy(selection = s.selection?.let { it.copy(colours = !it.colours) }) }
 
@@ -84,7 +90,7 @@ fun NotebookViewModel.deleteSelection() {
     val gone = selected().ifEmpty { return }
     ownScope.launch {
         if (!editOpenPage(page) { deps.ink.remove(it, gone) }) return@launch
-        clearSelection()
+        doneWithSelection()
         effectSink.emit(NotebookEffect.Refresh(full = false))
         val left = edit?.ink?.strokes.orEmpty()
         gone.mapNotNull { (it.origin as? StrokeOrigin.Oracle)?.exchangeId }.distinct()
@@ -98,14 +104,14 @@ fun NotebookViewModel.askAboutSelection() {
     val sel = mutableState.value.selection ?: return
     val page = currentPage()?.id ?: return
     session?.askAbout(page, sel.ids, sel.bounds)
-    clearSelection()
+    doneWithSelection()
 }
 
 /** A ✓ or ✗ beside each line of the picked working. */
 fun NotebookViewModel.checkSelection() {
     val page = currentPage()?.id ?: return
     if (session?.check(page, selected()) != true) mutableState.update { it.copy(notice = NOTHING_TO_CHECK) }
-    clearSelection()
+    doneWithSelection()
 }
 
 /** The picked sketch, redrawn cleanly below it. */
@@ -113,7 +119,7 @@ fun NotebookViewModel.redrawSelection() {
     val page = currentPage()?.id ?: return
     val sketch = selected().filter { it.origin is StrokeOrigin.User }.ifEmpty { return }
     session?.redraw(page, sketch)
-    clearSelection()
+    doneWithSelection()
 }
 
 /** ⋯ → Check my work: every line of their handwriting on this page. */

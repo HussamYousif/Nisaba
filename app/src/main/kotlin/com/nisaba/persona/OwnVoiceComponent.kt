@@ -35,7 +35,7 @@ fun OwnVoiceHost(vm: OwnVoiceViewModel) {
     if (!s.open) return
     val c = Nisaba.colors
     Box(Modifier.fillMaxSize().background(c.paper)) // a clean page: the picker underneath would show through
-    NisabaDialog("A voice of your own", vm::close) {
+    NisabaDialog("A voice of your own", vm::close, keepOnOutsideTap = true) {
         val d = s.draft
         if (d == null) {
             Text(

@@ -84,4 +84,13 @@ class MathParserTest {
         parseMath("{".repeat(5000) + "x" + "}".repeat(5000))
         parseMath("\\frac{".repeat(2000) + "x" + "}{1}".repeat(2000))
     }
+
+    @Test fun functionNamesAreWordsNotCommands() {
+        val entropy = parseMath("S = k_B \\ln W") as MathNode.Row
+        assertTrue(MathNode.Text("ln", function = true) in entropy.items, entropy.toString())
+        assertTrue(entropy.items.none { it is MathNode.Text && it.s.startsWith("\\") }) // never "\\ln" on the page
+        val sinSquared = (parseMath("\\sin^2 x") as MathNode.Row).items.first()
+        assertEquals(MathNode.Sup(MathNode.Text("sin", function = true), MathNode.Sym("2")), sinSquared)
+        assertEquals(MathNode.Text("\\foo"), parseMath("\\foo")) // an unknown command is still written as it came
+    }
 }

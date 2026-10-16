@@ -53,17 +53,20 @@ fun NisabaTextField(
     modifier: Modifier = Modifier,
     onDone: () -> Unit = {},
     autoFocus: Boolean = true,
+    keyboardType: androidx.compose.ui.text.input.KeyboardType = androidx.compose.ui.text.input.KeyboardType.Text,
 ) {
     val c = Nisaba.colors
     val focus = remember { FocusRequester() }
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     androidx.compose.runtime.LaunchedEffect(Unit) { if (autoFocus) focus.requestFocus() }
     Column(modifier) {
         BasicTextField(
             value = value, onValueChange = onValueChange, singleLine = true,
             textStyle = TextStyle(color = c.ink, fontSize = 20.sp),
             cursorBrush = SolidColor(c.ink),
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { onDone() }),
+            keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { onDone(); keyboard?.hide(); focusManager.clearFocus() }), // Done puts it away
             modifier = Modifier.fillMaxWidth().focusRequester(focus).padding(vertical = 8.dp),
         )
         Box(Modifier.fillMaxWidth().height(1.5.dp).background(c.ink))
@@ -72,17 +75,25 @@ fun NisabaTextField(
 
 /**
  * Modal card drawn in-place (no window, no animation). No veil over the page: on e-ink a veil repaints the whole screen,
- * so only the card is drawn; a tap outside it still dismisses.
+ * so only the card is drawn; a tap outside it, or Back, dismisses it. A dialog being typed in ([keepOnOutsideTap]) ignores
+ * taps outside it, so a stray tap loses no words. [maxWidth]: wider for grids.
  */
 @Composable
-fun NisabaDialog(title: String, onDismiss: () -> Unit, content: @Composable () -> Unit) {
+fun NisabaDialog(
+    title: String,
+    onDismiss: () -> Unit,
+    keepOnOutsideTap: Boolean = false,
+    maxWidth: androidx.compose.ui.unit.Dp = 520.dp,
+    content: @Composable () -> Unit,
+) {
     val c = Nisaba.colors
+    androidx.activity.compose.BackHandler(onBack = onDismiss) // Back closes the dialog, not the screen under it
     Box(
-        Modifier.fillMaxSize().clickable(onClick = onDismiss),
+        Modifier.fillMaxSize().clickable { if (!keepOnOutsideTap) onDismiss() }, // still modal: nothing under it takes the tap
         contentAlignment = Alignment.Center,
     ) {
         Column(
-            Modifier.widthIn(max = 520.dp).fillMaxWidth().padding(24.dp).background(c.paper).border(BorderStroke(2.dp, c.ink))
+            Modifier.widthIn(max = maxWidth).fillMaxWidth().padding(24.dp).background(c.paper).border(BorderStroke(2.dp, c.ink))
                 .clickable(enabled = false) {}.padding(28.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {

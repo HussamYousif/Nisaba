@@ -107,7 +107,14 @@ internal fun LessonProgressDialog(state: NotebookUiState, onClose: () -> Unit) {
 }
 
 /** What the star in the corner says while the bar is hidden: nothing, writing an answer, it failed, or muted. */
-internal enum class StarBadge { Working, Failed, Muted }
+internal sealed interface StarBadge {
+    data object Working : StarBadge
+    data object Failed : StarBadge
+    data object Muted : StarBadge
+
+    /** A tool other than the pen is on (its icon): writing that leaves no ink is then no mystery. */
+    data class Tool(val icon: com.nisaba.ui.theme.NisabaIcon) : StarBadge
+}
 
 /** The small Nisaba star in the corner while the bar is hidden: tap it to bring the bar back, hold it for a few tools. */
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
@@ -123,6 +130,7 @@ internal fun ToolbarHandle(modifier: Modifier, badge: StarBadge?, onTap: () -> U
             StarBadge.Working -> Text("…", corner, style = MaterialTheme.typography.labelLarge, color = c.lapis)
             StarBadge.Failed -> Text("?", corner, style = MaterialTheme.typography.labelLarge, color = c.ink)
             StarBadge.Muted -> com.nisaba.ui.theme.NisabaIconGlyph(com.nisaba.ui.theme.NisabaIcon.Muted, c.ink, corner)
+            is StarBadge.Tool -> com.nisaba.ui.theme.NisabaIconGlyph(badge.icon, c.ink, corner)
             null -> Unit
         }
     }

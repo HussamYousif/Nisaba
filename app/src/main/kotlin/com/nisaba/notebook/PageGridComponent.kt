@@ -102,7 +102,10 @@ private fun GoToPrintedPage(vm: NotebookViewModel) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("Go to p.", style = MaterialTheme.typography.labelLarge)
         val digits = { v: String -> n = v.filter(Char::isDigit).take(MAX_DIGITS) }
-        NisabaTextField(n, digits, Modifier.width(120.dp), onDone = { vm.goToPrintedPage(n) }, autoFocus = false)
+        NisabaTextField(
+            n, digits, Modifier.width(120.dp), onDone = { vm.goToPrintedPage(n) }, autoFocus = false,
+            keyboardType = androidx.compose.ui.text.input.KeyboardType.Number,
+        )
         NisabaButton("Go", { vm.goToPrintedPage(n) }, enabled = n.isNotEmpty())
     }
 }

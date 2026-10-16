@@ -47,7 +47,7 @@ fun NewNotebookComponent(dialog: LibraryDialog, actions: LibraryActions) {
         }
         is LibraryDialog.NameIt -> {
             var name by remember { mutableStateOf("") }
-            NisabaDialog(if (d.kind == NotebookKind.Canvas) "New blank canvas" else "New notebook", onDismiss) {
+            NisabaDialog(if (d.kind == NotebookKind.Canvas) "New blank canvas" else "New notebook", onDismiss, keepOnOutsideTap = true) {
                 NisabaTextField(name, { name = it }, onDone = { actions.onCreate(name) })
                 VoiceLine(d.personaId)
                 NisabaButtonRow {
@@ -58,7 +58,7 @@ fun NewNotebookComponent(dialog: LibraryDialog, actions: LibraryActions) {
         }
         is LibraryDialog.LearnGoal -> {
             var goal by remember { mutableStateOf("") }
-            NisabaDialog("What would you like to learn?", onDismiss) {
+            NisabaDialog("What would you like to learn?", onDismiss, keepOnOutsideTap = true) {
                 Text(
                     "Optional, e.g. \"the exam on chapter 3\". Leave it empty to learn all of it.",
                     style = MaterialTheme.typography.bodyLarge,

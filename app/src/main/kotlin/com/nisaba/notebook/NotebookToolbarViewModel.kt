@@ -91,7 +91,7 @@ fun NotebookViewModel.setShape(kind: ShapeKind) { mutableState.update { it.copy(
 /** A tap brings the bar back, unless it only just hid (a tap racing the hide would make it flash). */
 fun NotebookViewModel.showToolbar() {
     if (!mutableState.value.toolbarVisible && nowMillis() - hiddenAt < RESHOW_GUARD_MILLIS) return
-    mutableState.update { it.copy(toolbarVisible = true) }
+    mutableState.update { it.copy(toolbarVisible = true, miniBar = false) } // the whole bar replaces the held star's few tools
     hideToolbarLater(toolbarUseMillis)
 }
 

@@ -186,7 +186,7 @@ private fun LibraryDialogs(dialog: LibraryDialog, trash: List<CoverItem>, action
         LibraryDialog.Trash -> TrashDialog(trash, actions)
         is LibraryDialog.Rename -> {
             var name by remember { mutableStateOf(d.name) }
-            NisabaDialog("Rename", onDismiss) {
+            NisabaDialog("Rename notebook", onDismiss, keepOnOutsideTap = true) {
                 NisabaTextField(name, { name = it }, onDone = { actions.onRename(d.id, name) })
                 NisabaButtonRow { NisabaButton("Cancel", onDismiss); NisabaButton("Save", { actions.onRename(d.id, name) }, filled = true) }
             }

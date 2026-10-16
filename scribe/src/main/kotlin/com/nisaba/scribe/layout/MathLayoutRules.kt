@@ -36,6 +36,7 @@ class MathBox(val width: Float, val ascent: Float, val descent: Float, val strok
 private const val AXIS = 0.5f              // the height of a fraction bar / minus sign above the baseline
 private const val OP_SPACE = 0.22f
 private const val LETTER_GAP = 0.02f
+private const val FUNCTION_SPACE = 0.16f
 private const val SCRIPT_GAP = 0.05f
 private const val FALLBACK_ADV = 0.7f
 private const val FENCE_PAD = 0.14f
@@ -88,6 +89,17 @@ private fun literal(text: String, set: GlyphSet, style: MathStyle): MathBox {
 
 private fun binary(name: String) = name in BINARY_OPERATORS
 
+/** \sin, \ln…, also with a script (\sin^2). */
+private fun isFunction(node: MathNode): Boolean = when (node) {
+    is MathNode.Text -> node.function
+    is MathNode.Sup -> isFunction(node.base)
+    is MathNode.Sub -> isFunction(node.base)
+    is MathNode.SubSup -> isFunction(node.base)
+    else -> false
+}
+
+private fun opens(node: MathNode) = node is MathNode.Fenced || (node is MathNode.Sym && (node.name == "(" || node.name == "["))
+
 fun layoutMath(node: MathNode, set: GlyphSet, style: MathStyle): MathBox = when (node) {
     is MathNode.Sym -> symbolBox(node.name, set, style)
     is MathNode.Text -> literal(node.s, set, style)
@@ -109,7 +121,13 @@ private fun row(items: List<MathNode>, set: GlyphSet, style: MathStyle): MathBox
     for ((i, item) in items.withIndex()) {
         val isBinary = item is MathNode.Sym && binary(item.name) && i > 0 && style != MathStyle.Script
         val piece = layoutMath(item, set, style)
-        val gap = if (box.width == 0f) 0f else if (isBinary) OP_SPACE * style.scale else LETTER_GAP
+        val afterFunction = i > 0 && isFunction(items[i - 1]) && !opens(item)
+        val gap = when {
+            box.width == 0f -> 0f
+            isBinary -> OP_SPACE * style.scale
+            afterFunction -> FUNCTION_SPACE * style.scale // "ln W", as in print; but "sin(x)"
+            else -> LETTER_GAP
+        }
         box = box.beside(piece, gap)
         if (isBinary && i < items.lastIndex) box = MathBox(box.width + OP_SPACE * style.scale, box.ascent, box.descent, box.strokes)
     }

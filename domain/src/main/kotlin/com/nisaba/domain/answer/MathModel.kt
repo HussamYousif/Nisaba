@@ -14,7 +14,8 @@ sealed interface MathNode {
     data class BigOp(val op: String, val lower: MathNode?, val upper: MathNode?) : MathNode
     data class Fenced(val left: String, val body: MathNode, val right: String) : MathNode
     data class Matrix(val rows: List<List<MathNode>>, val open: String, val close: String) : MathNode
-    data class Text(val s: String) : MathNode
+    /** Words in a formula; [function] = a name like sin or ln, written upright with a thin space after it. */
+    data class Text(val s: String, val function: Boolean = false) : MathNode
 
     companion object {
         val EMPTY: MathNode = Row(emptyList())

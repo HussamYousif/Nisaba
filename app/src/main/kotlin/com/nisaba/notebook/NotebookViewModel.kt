@@ -27,7 +27,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -76,6 +79,13 @@ class NotebookViewModel(
         ownScope.launch { deps.settings.collect { s -> settings = s; onSettings(s) } }
         ownScope.launch { deps.sources.lessonTopics.collect { t -> mutableState.update { it.copy(lessonTopics = t) } } }
         ownScope.launch { deps.sources.online.collect { up -> if (up) session?.retryIfOffline() } }
+        ownScope.launch { // a notice goes by itself after a while; the warning about unreadable ink stays until tapped
+            mutableState.map { it.notice }.distinctUntilChanged().collectLatest { n ->
+                if (n == null || n == SET_ASIDE_NOTICE) return@collectLatest
+                kotlinx.coroutines.delay(NOTICE_MILLIS)
+                mutableState.update { s -> if (s.notice == n) s.copy(notice = null) else s }
+            }
+        }
         ownScope.launch {
             deps.observe(deps.notebookId).collect { nb ->
                 notebook = nb
@@ -240,6 +250,7 @@ class NotebookViewModel(
         internal const val NANOS_PER_MILLI = 1_000_000L
         internal const val PAGE_WAIT_MILLIS = 3000L
         internal const val MEMORY_NOTE_MILLIS = 6000L
+        internal const val NOTICE_MILLIS = 8000L
         const val CUT_SHORT_NOTICE = "The answer was cut short. Ask for the rest, or hold a finger on it: Ask again."
         const val SET_ASIDE_NOTICE = "Some ink on this page couldn't be read. Its file is kept aside, untouched."
         internal const val SPILL_SETTLE_MILLIS = 250L

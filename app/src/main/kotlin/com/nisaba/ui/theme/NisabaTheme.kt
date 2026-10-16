@@ -29,8 +29,11 @@ fun NisabaTheme(content: @Composable () -> Unit) {
         background = c.paper, onBackground = c.ink, surface = c.paper, onSurface = c.ink,
         outline = c.ink, outlineVariant = c.faint,
     )
-    CompositionLocalProvider(LocalNisabaColors provides c, LocalIndication provides NoIndication) {
-        MaterialTheme(colorScheme = scheme, typography = NisabaTypography, content = content)
+    CompositionLocalProvider(LocalNisabaColors provides c) {
+        MaterialTheme(colorScheme = scheme, typography = NisabaTypography) {
+            // inside: MaterialTheme provides its own ripple, which would win
+            CompositionLocalProvider(LocalIndication provides NoIndication, content = content)
+        }
     }
 }
 

@@ -58,11 +58,28 @@ internal fun findLine(page: Int, top: Float, x0: Float, ctx: Ctx): Pair<Int, Flo
     }
 }
 
-internal class WordSpec(val text: String, val bold: Boolean, val math: MathNode? = null)
+/** [glued]: written right after the word before, no space between ("$x$." or "($x$)": the source has none). */
+internal class WordSpec(val text: String, val bold: Boolean, val math: MathNode? = null, val glued: Boolean = false)
 
-internal fun runsToWords(runs: List<TextRun>): List<WordSpec> = runs.flatMap { r ->
-    if (r.math != null) listOf(WordSpec(r.text, r.bold, r.math))
-    else normalizeTypography(r.text).split(' ', '\n', '\t').filter { it.isNotEmpty() }.map { WordSpec(it, r.bold) }
+internal fun runsToWords(runs: List<TextRun>): List<WordSpec> {
+    val out = ArrayList<WordSpec>()
+    var tight = false // the run before ended without a space
+    for (r in runs) {
+        if (r.math != null) {
+            out += WordSpec(r.text, r.bold, r.math, glued = tight && out.isNotEmpty())
+            tight = true
+            continue
+        }
+        val text = normalizeTypography(r.text)
+        val words = text.split(' ', '\n', '\t').filter { it.isNotEmpty() }
+        val startsTight = text.firstOrNull()?.isWhitespace() == false
+        words.forEachIndexed { i, w -> out += WordSpec(w, r.bold, glued = i == 0 && startsTight && tight && out.isNotEmpty()) }
+        tight = when {
+            words.isEmpty() -> tight && text.isEmpty()
+            else -> !text.last().isWhitespace()
+        }
+    }
+    return out
 }
 
 /** Words that could not be squeezed onto a line even at [MIN_SQUEEZE] are broken into line-sized pieces. */
@@ -75,7 +92,7 @@ internal fun breakOverlong(words: List<WordSpec>, set: GlyphSet, xh: Float, maxW
         while (start < text.length) {
             var end = start + 1
             while (end < text.length && measure(text.substring(start, end + 1), set, xh).second <= maxWidth) end++
-            pieces += WordSpec(text.substring(start, end), bold)
+            pieces += WordSpec(text.substring(start, end), bold, glued = start == 0 && w.glued)
             start = end
         }
         pieces
@@ -101,6 +118,7 @@ private fun flow(runs: List<TextRun>, style: Style, start: LayoutCursor, ctx: Ct
     for (spec in breakOverlong(runsToWords(runs), ctx.set, xh, ctx.region.width - style.restX)) {
         val (text, bold) = spec.text to spec.bold
         var (chars, w) = if (spec.math != null) inlineMath(spec.math, ctx.set, xh) else measure(text, ctx.set, xh)
+        if (spec.glued && x > lineStartX) x -= space // no space between them
         val avail = ctx.region.right - x
         if (x > lineStartX && w > avail) newLine()
         var scale = xh
