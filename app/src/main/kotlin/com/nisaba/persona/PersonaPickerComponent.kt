@@ -19,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -69,9 +70,10 @@ fun PersonaPickerComponent(selected: String, onSelect: (String) -> Unit, modifie
         val picked = voices.of(selected)
         VoiceSampleComponent(picked.sample, inkOf(picked, c.lapis))
         if (own != null && PersonaRegistry.isOwn(selected) && voices.own.any { it.id == selected }) {
-            Text(
-                "Forget this voice", style = MaterialTheme.typography.labelSmall, color = c.faint,
-                modifier = Modifier.clickable { own.forget(selected); onSelect(PersonaRegistry.DEFAULT_ID) }.padding(vertical = 4.dp),
+            // its notebooks go back to The sassy book: a second tap, so a stray one never does it
+            com.nisaba.ui.theme.NisabaConfirmButton(
+                "Forget this voice", "Forget it? Its notebooks get The sassy book",
+                { own.forget(selected); onSelect(PersonaRegistry.DEFAULT_ID) },
             )
         }
     }
@@ -101,8 +103,14 @@ private fun VoiceCell(p: Persona, on: Boolean, modifier: Modifier, onClick: () -
         val sign = if (on) c.paper else inkOf(p, c.lapis)
         Canvas(Modifier.size(SIGIL.dp)) { drawSigil(p, sign, center, size.minDimension / 2f) }
         Column {
-            Text(p.name, style = MaterialTheme.typography.titleMedium, color = if (on) c.paper else c.ink, maxLines = 1)
-            Text(p.tagline, style = MaterialTheme.typography.labelSmall, color = if (on) c.paper else c.faint, maxLines = 2)
+            Text(
+                p.name, style = MaterialTheme.typography.titleMedium, color = if (on) c.paper else c.ink, maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+            Text(
+                p.tagline, style = MaterialTheme.typography.labelSmall, color = if (on) c.paper else c.faint, maxLines = 2,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
         }
     }
 }
@@ -136,13 +144,15 @@ private val MODES = listOf(
     AnswerMode.Everything to "Everything", AnswerMode.QuestionsOnly to "Questions only", AnswerMode.WhenAsked to "When I ask",
 )
 private const val STYLE_LABEL = 64
+private const val CHOICE_MIN_DP = 44
 
 @Composable
 private fun SmallChoice(text: String, on: Boolean, onClick: () -> Unit) {
     val c = Nisaba.colors
     Box(
         Modifier.then(if (on) Modifier.background(c.ink) else Modifier).border(BorderStroke(1.dp, c.ink)).clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .heightIn(min = CHOICE_MIN_DP.dp).padding(horizontal = 12.dp, vertical = 6.dp), // a finger's width, not a word's
+        contentAlignment = Alignment.Center,
     ) { Text(text, style = MaterialTheme.typography.labelLarge, color = if (on) c.paper else c.ink) }
 }
 

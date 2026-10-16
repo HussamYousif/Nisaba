@@ -107,6 +107,7 @@ fun NotebookViewModel.export(asPdf: Boolean) {
 
 fun NotebookViewModel.exportTo(asPdf: Boolean, uri: String?) {
     if (uri == null) return
+    mutableState.update { it.copy(notice = "Exporting…") } // a long PDF takes a while: the page says it's on it
     ownScope.launch {
         val ok = deps.sources.export(asPdf, uri)
         mutableState.update { it.copy(notice = if (ok) "Exported." else "Couldn't export the notebook.") }

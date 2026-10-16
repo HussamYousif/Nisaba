@@ -36,6 +36,8 @@ data class NotebookUiState(
     val renaming: Boolean = false,
     /** One line in the notebook's voice when the last request failed (tap to retry). */
     val failure: String? = null,
+    /** Tapping the failure asks again (false: it opens Settings, e.g. no key). */
+    val failureRetries: Boolean = true,
     /** "Remembered: …" for a few seconds after a reply taught Nisaba something. */
     val memoryNote: String? = null,
     /** Something about this page worth one line until tapped away (e.g. ink that couldn't be read was kept aside). */

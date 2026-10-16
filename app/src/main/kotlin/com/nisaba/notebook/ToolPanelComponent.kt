@@ -51,7 +51,7 @@ fun PenPanelComponent(state: NotebookUiState, vm: NotebookViewModel) {
                             frame.padding(if (picked) 8.dp else 6.dp).background(Color(ink.argb))
                                 .clickable { vm.setPenInk(ink.argb) }.semantics { contentDescription = name },
                         )
-                        Text(name, style = MaterialTheme.typography.labelMedium)
+                        Text(name, style = MaterialTheme.typography.labelLarge)
                     }
                 }
             }
@@ -93,7 +93,7 @@ fun ShapePanelComponent(state: NotebookUiState, vm: NotebookViewModel) {
             for ((kind, icon, label) in SHAPES) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     NisabaIconButton(icon, label, { vm.setShape(kind) }, selected = kind == state.shape)
-                    Text(label, style = MaterialTheme.typography.labelMedium)
+                    Text(label, style = MaterialTheme.typography.labelLarge)
                 }
             }
         }

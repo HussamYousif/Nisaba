@@ -87,6 +87,7 @@ fun NotebookScreen(
     var topPx by remember { androidx.compose.runtime.mutableIntStateOf(0) } // the bar and the chips under it
     PenExclusions(state.toolbarVisible, pageView, maxOf(toolbarPx, topPx), state.selection != null, chipsPx = topPx)
     DisposableEffect(Unit) { eink.fast(); onDispose { eink.normal() } }
+    CleanAfterOverlays(state.overlayOpen, pageView, eink)
 
     ScribeWiring(vm, state, pageView, animator, pen, eink)
 
@@ -114,7 +115,7 @@ fun NotebookScreen(
             val hint = LocalVoices.current.of(state.personaId).hint // in the notebook's voice
             HandTextComponent(hint, Nisaba.colors.faint, Modifier.align(Alignment.Center).fillMaxWidth(HINT_WIDTH))
         }
-        TopOfPage(state, vm, onBack, Modifier.align(Alignment.TopStart).onSizeChanged { topPx = it.height })
+        TopOfPage(state, vm, onBack, Modifier.align(Alignment.TopStart).onSizeChanged { topPx = it.height }, onOpenSettings)
         state.selection?.let { SelectionBarComponent(it, state.aiAvailable, vm, Modifier.align(Alignment.BottomStart)) }
         androidx.activity.compose.BackHandler(enabled = state.selection != null) { vm.doneWithSelection() }
         val handle = !state.toolbarVisible && state.selection == null
@@ -125,6 +126,17 @@ fun NotebookScreen(
         val voice = LocalVoices.current.of(state.personaId)
         if (state.menuOpen) NotebookMenuComponent(state.title, notebookMenu(state, voice.name, vm, onOpenSettings), vm::closeMenu)
         NotebookOverlays(state, vm)
+    }
+}
+
+/** A dialog drew in the fast waveform over the page: one clean pass once it closes, so no ghost of it stays. */
+@Composable
+private fun CleanAfterOverlays(open: Boolean, pageView: PageView?, eink: EinkDevice) {
+    var hadOverlay by remember { mutableStateOf(false) }
+    LaunchedEffect(open, pageView) {
+        val v = pageView ?: return@LaunchedEffect
+        if (hadOverlay && !open) eink.cleanPass(v, null)
+        hadOverlay = open
     }
 }
 

@@ -46,6 +46,19 @@ fun NisabaButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifie
     ) { Text(text, color = fg, style = androidx.compose.material3.MaterialTheme.typography.labelLarge) }
 }
 
+/**
+ * A button for what can't be undone: the first tap turns it into [confirm] (filled) for a few seconds; only a second
+ * tap does it. No dialog: one repaint on e-ink, and a stray tap does nothing.
+ */
+@Composable
+fun NisabaConfirmButton(text: String, confirm: String, onConfirmed: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
+    var armed by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(armed) { if (armed) { kotlinx.coroutines.delay(CONFIRM_MILLIS); armed = false } }
+    NisabaButton(if (armed) confirm else text, { if (armed) { armed = false; onConfirmed() } else armed = true }, modifier, armed, enabled)
+}
+
+private const val CONFIRM_MILLIS = 4_000L
+
 @Composable
 fun NisabaTextField(
     value: String,

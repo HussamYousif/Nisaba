@@ -150,9 +150,9 @@ private fun CoverComponent(item: CoverItem, actions: LibraryActions, modifier: M
                 drawCover(item.seed, c.ink, c.lapis)
                 drawSigil(voice, inkOf(voice, c.lapis), Offset(size.width * SIGIL_X, size.width * SIGIL_Y), size.width * SIGIL_R)
             }
-            HandTextComponent(
-                item.name, c.ink,
-                Modifier.align(Alignment.BottomCenter).padding(bottom = 22.dp).fillMaxWidth(coverNameWidth(item.name)),
+            HandTextComponent( // a long name (a PDF's file name) is cut, not written in lines that climb into the art
+                coverName(item.name), c.ink,
+                Modifier.align(Alignment.BottomCenter).padding(bottom = 22.dp).fillMaxWidth(coverNameWidth(coverName(item.name))),
             )
         }
         Spacer(Modifier.height(10.dp))
@@ -216,12 +216,14 @@ private fun TrashDialog(trash: List<CoverItem>, actions: LibraryActions) {
                     Text(item.edited, style = MaterialTheme.typography.labelSmall, color = Nisaba.colors.faint)
                 }
                 NisabaButton("Restore", { actions.onRestore(item.id) })
-                NisabaButton("Delete", { actions.onDeleteForever(item.id) })
+                com.nisaba.ui.theme.NisabaConfirmButton("Delete", "For good?", { actions.onDeleteForever(item.id) })
             }
         }
         Text("Kept 30 days, then deleted for good.", style = MaterialTheme.typography.labelSmall, color = Nisaba.colors.faint)
         NisabaButtonRow {
-            NisabaButton("Empty the trash", actions.onEmptyTrash, enabled = trash.isNotEmpty())
+            com.nisaba.ui.theme.NisabaConfirmButton(
+                "Empty the trash", "Delete all for good?", actions.onEmptyTrash, enabled = trash.isNotEmpty(),
+            )
             NisabaButton("Close", actions.onDismiss, filled = true)
         }
     }
@@ -233,3 +235,12 @@ private const val TRASH_ROWS = 8
 private const val SIGIL_X = 0.88f
 private const val SIGIL_Y = 0.12f
 private const val SIGIL_R = 0.065f // clear of the rosette's longest wedge
+
+/** What the hand writes on a cover: the name, cut at a word near [COVER_NAME_CHARS] (about two lines) with "…". */
+internal fun coverName(name: String): String {
+    if (name.length <= COVER_NAME_CHARS) return name
+    val cut = name.take(COVER_NAME_CHARS).let { head -> head.substringBeforeLast(' ').takeIf { it.length >= COVER_NAME_CHARS / 2 } ?: head }
+    return cut.trimEnd(' ', ',', '-', '—', ':') + "…"
+}
+
+private const val COVER_NAME_CHARS = 30

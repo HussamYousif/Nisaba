@@ -25,7 +25,7 @@ import com.nisaba.ui.theme.NisabaButton
 
 /** How tall the bar is at most (inks shown), so the pen keeps clear of it. */
 const val SELECTION_BAR_HEIGHT = 150
-private const val SWATCH = 36
+private const val SWATCH = 44
 
 /**
  * What can be done with the lassoed ink: a row of plain buttons along the bottom, out of the pen's way. A loop

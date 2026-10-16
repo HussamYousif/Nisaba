@@ -8,7 +8,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -48,13 +50,13 @@ fun NotebookToolbarComponent(state: NotebookUiState, vm: NotebookViewModel, onBa
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         NisabaIconButton(NisabaIcon.Back, "Back", onBack)
-        Text(
-            state.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f).padding(horizontal = 8.dp).clickable { vm.beginRename() },
-        )
+        Box( // the whole height of the bar renames, not just the line of text
+            Modifier.weight(1f).fillMaxHeight().clickable { vm.beginRename() }.padding(horizontal = 8.dp),
+            contentAlignment = Alignment.CenterStart,
+        ) { Text(state.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis) }
         if (!state.endless) {
             val pageChip = Modifier.border(BorderStroke(1.dp, c.faint)).clickable { vm.openPageGrid() }
-            Box(pageChip.padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Box(pageChip.heightIn(min = 48.dp).padding(horizontal = 12.dp, vertical = 10.dp), contentAlignment = Alignment.Center) {
                 Text("${state.pageLabel} ▾", style = MaterialTheme.typography.labelLarge)
             }
             Spacer(Modifier.width(10.dp))

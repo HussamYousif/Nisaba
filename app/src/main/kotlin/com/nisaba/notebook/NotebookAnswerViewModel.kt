@@ -108,9 +108,9 @@ fun NotebookViewModel.reportAnswer(ex: ExchangeId) {
     dismissAnswerMenu()
     ownScope.launch {
         val saved = deps.sources.exchange(ex) ?: return@launch
-        val who = "${saved.personaId ?: "book"}, prompt v${saved.promptVersion}"
-        val text = "Question: ${saved.heard}\nAnswer ($who): ${plainText(saved.answerMarkup)}"
-        effectSink.emit(NotebookEffect.Share("Nisaba answer report", text))
+        val voice = deps.sources.voices().of(saved.personaId).name
+        val text = "Question: ${saved.heard}\nAnswer ($voice, prompt v${saved.promptVersion}): ${plainText(saved.answerMarkup)}"
+        effectSink.emit(NotebookEffect.Share("Nisaba: an answer by $voice", text))
     }
 }
 
@@ -232,7 +232,12 @@ internal suspend fun NotebookViewModel.commitAnswer(pageId: PageId?, strokes: Li
 
 internal fun NotebookViewModel.failure(error: DomainError?) {
     if (error != null) requestedStep = null // a page of a book walk that failed may be asked for again
-    mutableState.update { it.copy(failure = error?.let { e -> failureMessage(e, voice().oops) }) } // "Bah. The ink wouldn't flow…"
+    mutableState.update {
+        it.copy(
+            failure = error?.let { e -> failureMessage(e, voice().oops) }, // "Bah. The ink wouldn't flow…"
+            failureRetries = error?.let { e -> com.nisaba.domain.conversation.retryHelps(e) } ?: true,
+        )
+    }
 }
 
 /** The voice Nisaba answers in here (their own voices included). */

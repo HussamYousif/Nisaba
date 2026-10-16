@@ -81,10 +81,11 @@ fun NotebookViewModel.dismissReminder() = mutableState.update { it.copy(reminder
 /** Nisaba will post the reminder itself at its time. */
 fun NotebookViewModel.reminderSet(r: Reminder) = mutableState.update { it.copy(notice = "I'll remind you: " + reminderLine(r)) }
 
-/** No app took the reminder: its words go on the clipboard and the page says so. */
+/** No app took the reminder: its words go on the clipboard and the page says why. */
 fun NotebookViewModel.reminderNotAdded(r: Reminder) {
     effectSink.tryEmit(NotebookEffect.Copy(reminderLine(r)))
-    mutableState.update { it.copy(notice = NO_CALENDAR) }
+    val passed = runCatching { java.time.LocalDateTime.parse(r.at) < java.time.LocalDateTime.now() }.getOrDefault(false)
+    mutableState.update { it.copy(notice = if (passed) PASSED else NO_CALENDAR) }
 }
 
 /** "call Ola · Thu 16 Oct, 09:00" for the chip. */
@@ -94,6 +95,7 @@ fun reminderLine(r: Reminder): String {
 }
 
 private const val MAX_REVIEW = 5
+internal const val PASSED = "That time has already passed, so no reminder was set: its words are on the clipboard."
 internal const val NO_CALENDAR = "Couldn't set the reminder (no calendar, notifications off): its words are on the clipboard."
 internal const val PRIVATE_ON = "Private: nothing here is remembered, recalled or found by search."
 internal const val PRIVATE_OFF = "No longer private: Nisaba remembers and recalls here again."

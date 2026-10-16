@@ -89,7 +89,7 @@ private fun PageCell(state: NotebookUiState, i: Int, vm: NotebookViewModel, modi
 private fun PageActions(state: NotebookUiState, i: Int, vm: NotebookViewModel) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(pageLabel(state.pages, i).substringBefore(" /") + ":", style = MaterialTheme.typography.labelLarge)
-        NisabaButton("Delete", vm::deleteGridPage, enabled = state.pages.size > 1)
+        com.nisaba.ui.theme.NisabaConfirmButton("Delete", "Delete for good?", vm::deleteGridPage, enabled = state.pages.size > 1)
         NisabaButton("‹ Move", { vm.moveGridPage(-1) }, enabled = i > 0)
         NisabaButton("Move ›", { vm.moveGridPage(1) }, enabled = i < state.pages.size - 1)
         NisabaButton("Duplicate", vm::duplicateGridPage)

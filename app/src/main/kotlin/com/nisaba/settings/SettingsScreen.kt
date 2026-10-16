@@ -37,7 +37,6 @@ import com.nisaba.domain.settings.Settings
 import com.nisaba.domain.usage.UsageTotals
 import com.nisaba.ui.theme.Nisaba
 import com.nisaba.ui.theme.NisabaButton
-import com.nisaba.ui.theme.NisabaDialog
 import com.nisaba.ui.theme.NisabaTextField
 
 private const val PAUSE_STEP = 500
@@ -51,7 +50,7 @@ private enum class Pane(val title: String) {
 @Composable
 fun SettingsScreen(state: SettingsUiState, vm: SettingsViewModel, onBack: () -> Unit, onOpenMemory: () -> Unit = {}) {
     val c = Nisaba.colors
-    var pane by remember { mutableStateOf(Pane.Key) }
+    var pane by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(Pane.Key) } // back from Memory: still there
     Column(Modifier.fillMaxSize().background(c.paper).padding(32.dp), verticalArrangement = Arrangement.spacedBy(28.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("Settings", style = MaterialTheme.typography.headlineLarge, modifier = Modifier.weight(1f))
@@ -112,7 +111,8 @@ private fun KeyPane(state: SettingsUiState, vm: SettingsViewModel) {
 private fun WaitingPane(s: Settings, vm: SettingsViewModel) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         NisabaButton("−", { vm.setPause(s.pauseMillis - PAUSE_STEP) }, enabled = s.pauseMillis > Settings.MIN_PAUSE)
-        Text("%.1f seconds of quiet before it answers".format(s.pauseMillis / 1000f), style = MaterialTheme.typography.bodyLarge)
+        val pause = "%.1f".format(java.util.Locale.ROOT, s.pauseMillis / 1000f)
+        Text("$pause seconds of quiet before it answers", style = MaterialTheme.typography.bodyLarge)
         NisabaButton("+", { vm.setPause(s.pauseMillis + PAUSE_STEP) }, enabled = s.pauseMillis < Settings.MAX_PAUSE)
     }
     Text("Mornings", style = MaterialTheme.typography.labelLarge)
@@ -154,6 +154,12 @@ private fun InkPane(s: Settings, vm: SettingsViewModel) {
     val c = Nisaba.colors
     Text("Answer ink", style = MaterialTheme.typography.labelLarge)
     Choice(listOf(AnswerInk.Lapis to "Lapis blue", AnswerInk.Black to "Black"), s.answerInk, vm::setInk)
+    if (s.voiceHands) {
+        Text(
+            "Each voice writes in its own ink (The hand → Voices): this is the ink of The sassy book and Plain.",
+            style = MaterialTheme.typography.labelLarge, color = c.faint,
+        )
+    }
     Text("Code", style = MaterialTheme.typography.labelLarge)
     Choice(
         listOf(CodeHighlight.Colour to "Coloured pens", CodeHighlight.Weight to "Bold & thin", CodeHighlight.Off to "Plain"),
@@ -195,7 +201,7 @@ private fun UsagePane(u: com.nisaba.domain.usage.UsageSummary) {
     Text("All time: ${describe(u.allTime)}", style = MaterialTheme.typography.bodyLarge)
     val body = MaterialTheme.typography.bodyLarge
     u.firstInkMedianMillis?.let {
-        Text("First ink about %.1f s after the pause (typical of the last answers)".format(it / MS), style = body)
+        Text("First ink about %.1f s after the pause (typical of the last answers)".format(java.util.Locale.ROOT, it / MS), style = body)
     }
     u.silentShare?.let { Text("${(it * PERCENT).toInt()}% of this month's pauses needed no answer", style = body) }
     Text(
@@ -207,14 +213,14 @@ private fun UsagePane(u: com.nisaba.domain.usage.UsageSummary) {
 /** "12 answers · 45.2k tokens in (30.1k cached) · 2.3k out · ≈ $0.01" */
 private fun describe(t: UsageTotals): String {
     if (t.answers == 0) return "nothing yet"
-    val cost = t.costUsd?.let { " · ≈ $" + if (it < 0.01) "%.4f".format(it) else "%.2f".format(it) }.orEmpty()
+    val cost = t.costUsd?.let { " · ≈ $" + (if (it < 0.01) "%.4f" else "%.2f").format(java.util.Locale.ROOT, it) }.orEmpty()
     val answers = if (t.answers == 1) "1 answer" else "${t.answers} answers"
     return "$answers · ${tokens(t.inputTokens)} tokens in (${tokens(t.cachedTokens)} cached) · ${tokens(t.outputTokens)} out$cost"
 }
 
 private fun tokens(n: Long): String = when {
-    n >= 1_000_000 -> "%.1fM".format(n / 1_000_000.0)
-    n >= 1_000 -> "%.1fk".format(n / 1_000.0)
+    n >= 1_000_000 -> "%.1fM".format(java.util.Locale.ROOT, n / 1_000_000.0)
+    n >= 1_000 -> "%.1fk".format(java.util.Locale.ROOT, n / 1_000.0)
     else -> n.toString()
 }
 
@@ -255,6 +261,18 @@ private fun BackupPane(state: SettingsUiState, vm: SettingsViewModel) {
         androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
     ) { vm.restoreFrom(it?.toString()) }
     androidx.compose.runtime.LaunchedEffect(state.restartNow) { if (state.restartNow) com.nisaba.app.restartApp(context) }
+    if (confirm) { // in the pane itself, in place of its buttons: one decision, nothing else to tap
+        Text(
+            "Restore from a backup? Every notebook on this device is replaced by the backup's. Nisaba starts again afterwards.",
+            style = MaterialTheme.typography.bodyLarge,
+        )
+        com.nisaba.ui.theme.NisabaButtonRow {
+            NisabaButton("Cancel", { confirm = false })
+            val pick = { confirm = false; restore.launch(arrayOf("application/zip", "application/octet-stream")) }
+            NisabaButton("Choose the backup", pick, filled = true)
+        }
+        return
+    }
     val s = state.settings
     val last = if (s.lastBackupMillis == 0L) "No backup yet." else {
         "Last backup: " + com.nisaba.library.ago(s.lastBackupMillis, System.currentTimeMillis())
@@ -269,19 +287,6 @@ private fun BackupPane(state: SettingsUiState, vm: SettingsViewModel) {
         "Your DeepSeek key stays out of backups: add it again after restoring on a new device.",
         style = MaterialTheme.typography.labelSmall, color = c.faint,
     )
-    if (confirm) {
-        NisabaDialog("Restore from a backup?", { confirm = false }) {
-            Text(
-                "Every notebook on this device is replaced by the backup's. Nisaba starts again afterwards.",
-                style = MaterialTheme.typography.bodyLarge,
-            )
-            com.nisaba.ui.theme.NisabaButtonRow {
-                NisabaButton("Cancel", { confirm = false })
-                val pick = { confirm = false; restore.launch(arrayOf("application/zip", "application/octet-stream")) }
-                NisabaButton("Choose the backup", pick, filled = true)
-            }
-        }
-    }
 }
 
 /** After a restore: start afresh (the open database and every cache belong to what was replaced). */

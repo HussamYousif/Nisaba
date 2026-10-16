@@ -92,7 +92,12 @@ class SettingsViewModel(
                         onSuccess = { ok -> if (ok) KeyCheck.Ok else KeyCheck.Failed("No answer") },
                         onFailure = { e ->
                             if (e is CancellationException) throw e
-                            KeyCheck.Failed((e as? OracleException)?.let { ex -> failureMessage(ex.error) } ?: "Something went wrong")
+                            val error = (e as? OracleException)?.error
+                            // here, "add one in Settings" would point at the very screen they are on
+                            KeyCheck.Failed(
+                                if (error == com.nisaba.domain.shared.DomainError.Auth) "DeepSeek refused this key"
+                                else error?.let(::failureMessage) ?: "Something went wrong",
+                            )
                         },
                     ),
                 )

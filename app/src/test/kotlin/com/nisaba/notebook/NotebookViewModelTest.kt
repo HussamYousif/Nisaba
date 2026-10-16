@@ -71,6 +71,7 @@ class NotebookViewModelTest {
             changes = NotebookChanges(
                 SetPersonaUseCase(store), setStyle = com.nisaba.domain.notebook.SetAnswerStyleUseCase(store)::invoke,
                 setPrivate = com.nisaba.domain.notebook.SetPrivateUseCase(store)::invoke,
+                pages = PageChanges(delete = com.nisaba.domain.notebook.DeletePageUseCase(store, ink)::invoke),
             ),
         )
         val vm = NotebookViewModel(
@@ -136,6 +137,18 @@ class NotebookViewModelTest {
         val walked = map.copy(overviewPageId = com.nisaba.domain.shared.PageId("p"))
         books.save(nb.id, walked); runCurrent()
         assertEquals("Next: 1. Reliability ›", notebookMenu(vm.state.value, "Gandalf", vm) {}.first().label)
+    }
+
+    @Test fun aPageASwipeAddedGoesAgainIfLeftBlank() = runTest {
+        val (vm, id) = open(this)
+        vm.turnPage(1); runCurrent()
+        assertEquals(2, store.get(id)!!.pages.size) // past the end: a fresh page
+        vm.turnPage(-1); runCurrent()
+        assertEquals(1, store.get(id)!!.pages.size) // nothing written on it: gone again
+        vm.turnPage(1); runCurrent()
+        vm.onPenEvent(PenEvent.StrokeDone(line(100f, 200f, 300f))); runCurrent()
+        vm.turnPage(-1); runCurrent()
+        assertEquals(2, store.get(id)!!.pages.size) // written on: kept
     }
 
     @Test fun aNoticeGoesByItself() = runTest {

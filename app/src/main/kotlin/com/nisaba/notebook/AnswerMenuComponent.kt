@@ -46,7 +46,7 @@ fun AnswerMenuComponent(m: AnswerMenu, vm: NotebookViewModel) {
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             NisabaButton("Copy the words", { vm.copyAnswer(m.exchangeId) }, Modifier.weight(1f))
-            NisabaButton("Report", { vm.reportAnswer(m.exchangeId) }, Modifier.weight(1f))
+            NisabaButton("Share…", { vm.reportAnswer(m.exchangeId) }, Modifier.weight(1f))
         }
         NisabaButton("Cancel", vm::dismissAnswerMenu, Modifier.fillMaxWidth())
     }

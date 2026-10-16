@@ -49,10 +49,16 @@ internal fun starBadge(state: NotebookUiState): StarBadge? = when {
 
 /** The bar (when shown) and the one-line chips under it: a failure, a memory note, a notice, a reminder. */
 @Composable
-internal fun TopOfPage(state: NotebookUiState, vm: NotebookViewModel, onBack: () -> Unit, modifier: Modifier) {
+internal fun TopOfPage(
+    state: NotebookUiState,
+    vm: NotebookViewModel,
+    onBack: () -> Unit,
+    modifier: Modifier,
+    onOpenSettings: () -> Unit = {},
+) {
     Column(modifier) {
         if (state.toolbarVisible) NotebookToolbarComponent(state, vm, onBack)
-        state.failure?.let { FailureChip(it, vm::retry) }
+        state.failure?.let { FailureChip(it, if (state.failureRetries) vm::retry else onOpenSettings, state.failureRetries) }
         state.book?.reading?.let { MemoryChip(readingLine(it), {}, mark = "…") }
         state.bookFailure?.let { FailureChip("Couldn't read the book: $it", vm::retryBook) }
         state.memoryNote?.let { MemoryChip(it, vm::dismissMemoryNote) }

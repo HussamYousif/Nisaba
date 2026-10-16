@@ -64,7 +64,7 @@ class FileDocumentStore(
             Outcome.Ok(info)
         } catch (@Suppress("SwallowedException") e: InvalidPasswordException) { // reported to the user as a plain message
             cleanup(id)
-            Outcome.Err(DomainError.Invalid("password-protected PDFs aren't supported yet"))
+            Outcome.Err(DomainError.Invalid("Password-protected PDFs aren't supported yet."))
         } catch (e: IOException) {
             cleanup(id)
             Outcome.Err(DomainError.Storage(e.message ?: "could not read the PDF"))

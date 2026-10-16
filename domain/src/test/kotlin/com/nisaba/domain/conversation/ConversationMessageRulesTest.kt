@@ -13,7 +13,7 @@ class ConversationMessageRulesTest {
             DomainError.Invalid("empty answer"), *NetworkKind.entries.map { DomainError.Network(it) }.toTypedArray(),
         )
         for (e in all) failureMessage(e).let { assertTrue(it.isNotBlank() && it.length < 60, "$e -> $it") }
-        assertEquals("The key was rejected: check Settings", failureMessage(DomainError.Auth))
+        assertEquals("No working DeepSeek key: add one in Settings", failureMessage(DomainError.Auth))
         assertEquals("Nothing came back", failureMessage(DomainError.Invalid("empty answer")))
     }
 }

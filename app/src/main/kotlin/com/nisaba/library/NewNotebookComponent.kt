@@ -42,7 +42,7 @@ fun NewNotebookComponent(dialog: LibraryDialog, actions: LibraryActions) {
             val pdf = d.kind == NotebookKind.Pdf || d.kind == NotebookKind.Lesson || d.kind == NotebookKind.Book
             NisabaButtonRow {
                 NisabaButton("‹ Back", actions.onBack)
-                NisabaButton(if (pdf) "Choose the PDF" else "Next", actions.onConfirmVoice, filled = true)
+                NisabaButton(if (d.handed) "Import" else if (pdf) "Choose the PDF" else "Next", actions.onConfirmVoice, filled = true)
             }
         }
         is LibraryDialog.NameIt -> {

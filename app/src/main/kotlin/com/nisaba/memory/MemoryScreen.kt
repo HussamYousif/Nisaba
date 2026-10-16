@@ -48,7 +48,8 @@ fun MemoryScreen(state: MemoryUiState, vm: MemoryViewModel, onBack: () -> Unit) 
                     state.loading -> ""
                     state.total == 0 -> "Nothing yet. Tell it about yourself in any notebook: what you are working on, " +
                         "books and films you love. It remembers across all notebooks."
-                    else -> "${state.total} things, learned from what you wrote. Every notebook sees them; " +
+                    else -> (if (state.total == 1) "1 thing" else "${state.total} things") +
+                        ", learned from what you wrote. Every notebook sees them; " +
                         "they leave this device only with your questions."
                 },
                 style = MaterialTheme.typography.bodyLarge, color = c.faint,
@@ -70,9 +71,9 @@ fun MemoryScreen(state: MemoryUiState, vm: MemoryViewModel, onBack: () -> Unit) 
                     Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
                 ) {
-                    NisabaButton("‹ Previous", vm::previous, enabled = state.page > 0)
+                    NisabaButton("‹ Earlier", vm::previous, enabled = state.page > 0)
                     Text("${state.page + 1} of ${state.pageCount}", style = MaterialTheme.typography.bodyLarge)
-                    NisabaButton("Next ›", vm::next, enabled = state.page < state.pageCount - 1)
+                    NisabaButton("Later ›", vm::next, enabled = state.page < state.pageCount - 1)
                 }
             }
         }

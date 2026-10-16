@@ -149,10 +149,18 @@ class NotebookViewModel(
             val nb = notebook ?: return@launch
             val target = pageIndex + delta
             if (target < 0) return@launch
-            if (target >= nb.pages.size && !insertPageAfter(nb, nb.pages.lastOrNull()?.id)) return@launch
+            val leaving = currentPage()?.id
+            val adding = target >= nb.pages.size
+            if (adding && !insertPageAfter(nb, nb.pages.lastOrNull()?.id)) return@launch
             openPage(target, full = true)
+            if (adding) { swipedOn = currentPage()?.id; return@launch }
+            // the page a swipe past the end added, left without a mark: it goes again (no blank pages pile up at the end)
+            if (leaving != null && leaving == swipedOn) { swipedOn = null; dropEmptyPages(listOf(leaving)) }
         }
     }
+
+    /** The page the last swipe past the end added (null once left or written on). */
+    internal var swipedOn: PageId? = null
 
     /** Inserts a blank page after [after] and waits until the notebook shows it. */
     internal suspend fun insertPageAfter(nb: NotebookWithPages, after: PageId?): Boolean {

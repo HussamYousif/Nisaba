@@ -105,7 +105,10 @@ class LibraryViewModel(
             _state.update { it.copy(dialog = LibraryDialog.ConfirmDelete(id, name)) }
         }
     }
-    fun dismiss() = _state.update { it.copy(dialog = LibraryDialog.None) }
+    fun dismiss() {
+        if (_state.value.dialog is LibraryDialog.ChooseVoice) incoming = null // a PDF handed over and then turned down
+        _state.update { it.copy(dialog = LibraryDialog.None) }
+    }
 
     // ---- "New": what kind → who answers → a name (or a PDF) ------------------------------------------------------
 
@@ -133,7 +136,7 @@ class LibraryViewModel(
 
     fun offerIncomingPdf(uri: String) {
         incoming = uri
-        _state.update { it.copy(dialog = LibraryDialog.ChooseVoice(NotebookKind.Pdf, lastPersona, lastStyle)) }
+        _state.update { it.copy(dialog = LibraryDialog.ChooseVoice(NotebookKind.Pdf, lastPersona, lastStyle, handed = true)) }
     }
 
     /**

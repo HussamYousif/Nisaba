@@ -37,7 +37,13 @@ sealed interface LibraryDialog {
     data object ChooseKind : LibraryDialog
 
     /** "New", step 2: who answers in it ([personaId] = the voice picked so far). */
-    data class ChooseVoice(val kind: NotebookKind, val personaId: String, val style: AnswerStyle = AnswerStyle()) : LibraryDialog
+    /** [handed]: another app handed a PDF over ("Open with Nisaba"): no picker, it is imported straight away. */
+    data class ChooseVoice(
+        val kind: NotebookKind,
+        val personaId: String,
+        val style: AnswerStyle = AnswerStyle(),
+        val handed: Boolean = false,
+    ) : LibraryDialog
 
     /** "New", step 3 for a notebook or a canvas: its name. (A PDF goes to the system picker instead.) */
     data class NameIt(val kind: NotebookKind, val personaId: String, val style: AnswerStyle = AnswerStyle()) : LibraryDialog

@@ -30,14 +30,14 @@ import com.nisaba.ui.theme.NisabaDialog
 // Small things drawn over the page: the failure and note chips, the star handle, the lesson progress card.
 
 @Composable
-internal fun FailureChip(text: String, onRetry: () -> Unit) {
+internal fun FailureChip(text: String, onRetry: () -> Unit, retries: Boolean = true) {
     val c = Nisaba.colors
     Row(
         Modifier.padding(12.dp).background(c.paper).border(BorderStroke(2.dp, c.lapis)).clickable(onClick = onRetry).padding(16.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text("?", style = MaterialTheme.typography.titleLarge, color = c.lapis)
-        Text("$text · tap to retry", style = MaterialTheme.typography.bodyLarge)
+        Text(if (retries) "$text · tap to retry" else "$text · tap", style = MaterialTheme.typography.bodyLarge)
     }
 }
 
@@ -138,7 +138,7 @@ internal fun ToolbarHandle(modifier: Modifier, badge: StarBadge?, onTap: () -> U
 
 private const val BADGE = 18
 
-const val HANDLE_SIZE = 44
+const val HANDLE_SIZE = 48
 const val HANDLE_MARGIN = 16
 
 /** The paper of this notebook's blank pages: blank, lined, grid or dots (answers keep to the lines on lined paper). */
