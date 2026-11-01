@@ -49,7 +49,7 @@ class EvalRunUseCase(
     private fun oldVoiceExchanges(voice: String): List<Exchange> {
         val line = when (voice) {
             "zagreus" -> "Blood and darkness, an easy one! %s. Sorry, Father, but it's true."
-            else -> "Hmph. %s, naturally, as I, the great Nisaba, expected. Bah, ask me something harder."
+            else -> "So. %s, as the Sealed Verses foretold. Even Weiss knew that much. Ask me something harder."
         }
         return (1..HISTORY).map { i ->
             Exchange(

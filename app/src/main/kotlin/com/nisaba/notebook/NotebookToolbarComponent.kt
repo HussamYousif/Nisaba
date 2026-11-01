@@ -60,6 +60,9 @@ fun NotebookToolbarComponent(state: NotebookUiState, vm: NotebookViewModel, onBa
                 Text("${state.pageLabel} ▾", style = MaterialTheme.typography.labelLarge)
             }
             Spacer(Modifier.width(10.dp))
+        } else {
+            ZoomChips(state.zoom, vm)
+            Spacer(Modifier.width(10.dp))
         }
         val erasing = state.tool.erases
         NisabaIconButton(
@@ -83,13 +86,31 @@ fun NotebookToolbarComponent(state: NotebookUiState, vm: NotebookViewModel, onBa
             Spacer(Modifier.width(10.dp))
             NisabaIconButton(
                 if (state.listening) NisabaIcon.Listening else NisabaIcon.Muted,
-                if (state.listening) "Listening (tap to mute)" else "Muted (tap to listen)",
-                vm::toggleListening, selected = state.listening,
+                (if (state.listening) "Listening (tap to mute" else "Muted (tap to listen") + ", hold for how it answers)",
+                vm::toggleListening, selected = state.listening, onLongClick = vm::openHabits,
             )
             if (!state.listening) NisabaIconButton(NisabaIcon.AskNow, "Ask now", vm::askNow, enabled = state.askable)
         }
         Spacer(Modifier.width(10.dp))
         NisabaIconButton(NisabaIcon.More, "More", vm::openMenu)
+    }
+}
+
+/** On an endless canvas: − · the zoom (tap for 100 %) · +. Two fingers pinch the same steps. */
+@Composable
+private fun ZoomChips(zoom: Float, vm: NotebookViewModel) {
+    val c = Nisaba.colors
+    val chip = Modifier.border(BorderStroke(1.dp, c.faint)).heightIn(min = 48.dp)
+    Row(horizontalArrangement = Arrangement.spacedBy(0.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(chip.clickable { vm.zoom(-1) }.padding(horizontal = 14.dp, vertical = 10.dp), contentAlignment = Alignment.Center) {
+            Text("−", style = MaterialTheme.typography.labelLarge)
+        }
+        Box(chip.clickable { vm.zoom(0) }.padding(horizontal = 12.dp, vertical = 10.dp), contentAlignment = Alignment.Center) {
+            Text(com.nisaba.canvas.zoomLabel(zoom), style = MaterialTheme.typography.labelLarge)
+        }
+        Box(chip.clickable { vm.zoom(+1) }.padding(horizontal = 14.dp, vertical = 10.dp), contentAlignment = Alignment.Center) {
+            Text("+", style = MaterialTheme.typography.labelLarge)
+        }
     }
 }
 
@@ -105,10 +126,14 @@ internal fun notebookMenu(
     val ownInk = state.aiAvailable && state.strokes.any { it.origin is StrokeOrigin.User }
     if (ownInk) add(MenuItem("Check my work (✓ or ✗ beside each line)", vm::checkWork))
     if (!state.endless && ownInk) add(MenuItem("Tidy this page (a clean copy on a new page)", vm::tidyPage))
-    if (state.endless) { add(MenuItem("Overview", vm::showOverview)); add(MenuItem("Home", vm::goHome)) }
+    if (state.endless) {
+        add(MenuItem("Overview", vm::showOverview))
+        add(MenuItem("See everything (zoom out to fit)", vm::seeEverything))
+        add(MenuItem("Home", vm::goHome))
+    }
     if (state.lesson) add(MenuItem("Lesson progress", vm::showProgress))
     val due = state.dueReviews()
-    if (state.lesson && due > 0) add(MenuItem("Review what's due ($due)", vm::reviewDue))
+    if ((state.lesson || state.book != null) && due > 0) add(MenuItem("Review what's due ($due)", vm::reviewDue))
     if (state.aiAvailable && !state.endless) {
         add(MenuItem("Quiz me on this notebook", vm::quizMe))
         add(MenuItem("Today's page", vm::todaysPage))
@@ -117,14 +142,17 @@ internal fun notebookMenu(
     add(MenuItem(if (state.isPrivate) "Private: on (tap to turn off)" else "Make private (nothing remembered)", vm::togglePrivate))
     if (state.aiAvailable) add(MenuItem("Voice: $voice", vm::openVoice))
     if (!state.endless) add(MenuItem("Paper: ${state.paper.name.lowercase()}…", vm::openPaper))
-    if (state.aiAvailable && state.hasDocument) {
-        add(MenuItem(if (state.lesson) "Stop tutoring" else "Tutor me on this PDF", vm::toggleTutor))
-    }
+    tutorItem(state, vm)?.let(::add)
     add(MenuItem("Export as PDF…", { vm.export(asPdf = true) }))
     add(MenuItem("Export as text…", { vm.export(asPdf = false) }))
     add(MenuItem("Rename", vm::beginRename))
     add(MenuItem("Settings", onOpenSettings))
 }
+
+/** A PDF notebook can become a lesson and back; a book walk already teaches its book. */
+private fun tutorItem(state: NotebookUiState, vm: NotebookViewModel): MenuItem? =
+    if (!state.aiAvailable || !state.hasDocument || state.book != null) null
+    else MenuItem(if (state.lesson) "Stop tutoring" else "Tutor me on this PDF", vm::toggleTutor)
 
 /** In a book walk: the next page of the walk, and its map. */
 private fun bookItems(state: NotebookUiState, vm: NotebookViewModel): List<MenuItem> {

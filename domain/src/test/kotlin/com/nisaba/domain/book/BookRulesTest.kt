@@ -24,6 +24,46 @@ class BookRulesTest {
         assertTrue(long.zipWithNext().all { (a, b) -> a.last + 1 == b.first }, "no page lost or read twice")
     }
 
+    private val ddia = BookMap(
+        "Designing Data-Intensive Applications", "Trade-offs everywhere.",
+        listOf(
+            Concept("Leaders and followers", "", 151, 160, part = "Replication"),
+            Concept("Replication lag", "", 161, 170, part = "Replication"),
+            Concept("Partitioning by key", "", 199, 210, part = "Sharding"),
+        ),
+    )
+
+    @Test fun aLongBookGetsAMapAboutOneConceptPerFifteenPagesOfText() {
+        assertEquals(5..12, conceptRange(List(80) { "x".repeat(3_800) }))   // The Prince: the few that carry it
+        assertEquals(20..40, conceptRange(List(600) { "x".repeat(2_600) })) // DDIA: at most 40
+        assertEquals(10..20, conceptRange(List(300) { "x".repeat(2_500) }))
+        assertEquals(5..12, conceptRange(List(300) { "x".repeat(200) }))    // 300 slides are no long book
+        val long = mapInstructionWhole("DDIA", 600, 20..40)
+        assertTrue("Between 20 and 40 concepts" in long && "<part>" in long, long)
+        val short = mapInstructionWhole("The Prince", 80, 5..12)
+        assertTrue("Between 5 and 12 concepts" in short && "<part>" !in short, short)
+        val fromIdeas = mapInstructionFromIdeas(
+            "DDIA", 600,
+            listOf(BookIdea("5. Replication", "", 151, 151, chapter = true), BookIdea("Leaders", "one writer", 151, 156)), 20..40,
+        )
+        assertTrue("p.151 Chapter: 5. Replication\np.151–156 Leaders: one writer" in fromIdeas, fromIdeas)
+        assertTrue("<chapter pages=" in readInstruction("DDIA", 0..24))
+    }
+
+    @Test fun aGroupedMapTeachesByPartAndJudgesTheirAnswers() {
+        val p = bookPrompt(ddia)
+        assertTrue("Part: Replication\n1. Leaders and followers (pp. 151–160)\n2. Replication lag" in p, p)
+        assertTrue("Part: Sharding\n3. Partitioning by key" in p, p)
+        assertTrue("<topic status=\"shaky\">Name</topic>" in p && "naming the concept exactly as the map does" in p, p)
+        assertTrue("one line per part" in stepInstruction(ddia, BookStep.Overview))
+        assertTrue("one line per part" !in stepInstruction(map, BookStep.Overview)) // a short map: a numbered list
+        val first = stepInstruction(ddia, BookStep.Concept(0))
+        assertTrue("It opens the part \"Replication\"" in first && "checks they understood it" in first, first)
+        assertTrue("opens the part" !in stepInstruction(ddia, BookStep.Concept(1)))
+        assertTrue("It opens the part \"Sharding\"" in stepInstruction(ddia, BookStep.Concept(2)))
+        assertEquals(150..159, conceptSpan(ddia.concepts[0]))
+    }
+
     @Test fun theWalkGoesMapThenEachConceptThenTheWholePicture() {
         var m = map
         assertEquals(BookStep.Overview, m.next)

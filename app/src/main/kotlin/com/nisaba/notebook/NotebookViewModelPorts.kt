@@ -112,13 +112,17 @@ class NotebookSources(
     val export: suspend (Boolean, String) -> Boolean = { _, _ -> false },
     /** A book walk's map and its reading. */
     val books: NotebookBooks = NotebookBooks(),
+    /** The strokes a lasso goes around (the app runs it off the main thread: a dense page is millions of tests). */
+    val pickInLoop: suspend (List<com.nisaba.domain.ink.Stroke>, List<PagePoint>) -> List<com.nisaba.domain.ink.Stroke> =
+        { strokes, loop -> com.nisaba.domain.ink.strokesInLoop(strokes, loop) },
 )
 
 /** What the app remembers for the user between visits: the first-run hint, where each endless canvas was left, the pen. */
 class NotebookMemory(
     val markHintSeen: suspend () -> Unit = {},
     val loadView: (PageId) -> PagePoint? = { null },
-    val saveView: (PageId, PagePoint) -> Unit = { _, _ -> },
+    val loadZoom: (PageId) -> Float = { 1f },
+    val saveView: (PageId, PagePoint, Float) -> Unit = { _, _, _ -> },
     val savePen: suspend (ink: Int, size: PenSize) -> Unit = { _, _ -> },
     /** The page a notebook was left on, to open it there next time. */
     val lastPage: (NotebookId) -> PageId? = { null },

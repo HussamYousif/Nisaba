@@ -244,6 +244,21 @@ class ConversationSessionTest {
         assertTrue(oracle.requests.last().instruction.contains("Lesson progress so far (learned: Fjords)"))
     }
 
+    @Test fun aBookWalkJudgesAnswersAndRecordsTheConceptsToo() = runTest {
+        val map = com.nisaba.domain.book.BookMap(
+            "DDIA", concepts = listOf("Replication", "Sharding", "Transactions").mapIndexed { i, t ->
+                com.nisaba.domain.book.Concept(t, "", i * 10 + 1, i * 10 + 10)
+            },
+        )
+        oracle.chunks = listOf("<answer>\nRight.\n</answer><topic status=\"shaky\">Replication</topic><heard>async</heard>")
+        val rig = rig(context = FakeContextPorts(listOf("Leaders and followers…"), book = map))
+        rig.write("a"); wait(3600); rig.handDone(); runCurrent()
+        assertEquals(listOf("Replication"), lessons.rows.value.map { it.topic })
+        rig.write("b"); wait(3600)
+        assertTrue(oracle.requests.last().instruction.contains("(shaky: Replication)"))
+        assertTrue(oracle.requests.last().system.contains("<topic status=\"learned\">Name</topic>"))
+    }
+
     @Test fun anOrdinaryNotebookKeepsNoLessonProgress() = runTest {
         oracle.chunks = listOf("<answer>\nHi.\n</answer><topic status=\"learned\">X</topic>")
         val rig = rig()

@@ -193,7 +193,7 @@ private fun listItem(b: Block.ListItem, cursor: LayoutCursor, ctx: Ctx, xh: Floa
     val base = b.depth * xh * INDENT_UNITS
     val marker = if (b.ordered) b.marker else "-"
     val style = Style(1f, false, base, base + xh * HANG_UNITS)
-    return flow(listOf(TextRun(marker, false)) + b.inlines.runs(), style, cursor, ctx)
+    return flow(listOf(TextRun("$marker ", false)) + b.inlines.runs(), style, cursor, ctx) // the space: "1. Why", never "1.Why"
 }
 
 private fun rule(cursor: LayoutCursor, ctx: Ctx): Pair<LaidBlock, LayoutCursor> {

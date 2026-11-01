@@ -57,6 +57,19 @@ class DeepSeekClient(
 ) : Oracle {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true; explicitNulls = false }
     private val sse = SseParser()
+    @Volatile private var warmedAt = Long.MIN_VALUE / 2
+
+    /** A cheap HEAD to the server, at most once a minute: its TLS connection stays in the shared pool for the request. */
+    override fun warmUp() {
+        val now = System.nanoTime() / NANOS_PER_MILLI
+        if (now - warmedAt < WARM_EVERY_MILLIS) return
+        warmedAt = now
+        val call = http.newBuilder().followRedirects(false).build().newCall(Request.Builder().url(baseUrl).head().build())
+        call.enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) = Unit
+            override fun onResponse(call: Call, response: Response) = response.close()
+        })
+    }
 
     override fun ask(request: OracleRequest): Flow<OracleEvent> = flow {
         val key = apiKey()?.takeIf { it.isNotBlank() } ?: throw OracleException(DomainError.Auth, "no API key")
@@ -192,5 +205,7 @@ class DeepSeekClient(
         const val HTTP_TOO_MANY = 429
         const val HTTP_SERVER_ERROR = 500
         const val MAX_ERROR_BODY = 200
+        const val WARM_EVERY_MILLIS = 60_000L
+        const val NANOS_PER_MILLI = 1_000_000L
     }
 }

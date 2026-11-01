@@ -95,6 +95,12 @@ class TextLayoutRulesTest {
         assertTrue(second.x > b.words.first().x, "continuation is indented past the marker")
     }
 
+    @Test fun aListMarkerIsItsOwnWordBeforeTheText() { // the map of a book read "1.Why RAG exists"
+        val (b, _) = lay(Block.ListItem(true, "1.", 0, listOf(Inline.Text("Why RAG exists"))))
+        assertEquals(listOf("1.", "Why", "RAG", "exists"), b.words.map { w -> w.chars.joinToString("") { it.ch.toString() } })
+        assertTrue(b.words[1].x > b.words[0].x + b.words[0].width, "a space after the number")
+    }
+
     @Test fun boldRunsAreMarkedAndMathFallsBackToText() {
         val (b, _) = lay(Block.Paragraph(listOf(Inline.Text("plain "), Inline.Text("strong", true), Inline.Math("x^2"))))
         assertEquals(listOf(false, true, false), b.words.map { it.bold })

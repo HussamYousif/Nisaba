@@ -56,6 +56,15 @@ sealed interface ScribeCommand {
     data class AnswerAt(val at: PagePoint) : ScribeCommand
 }
 
+/**
+ * How the page looks to the hand: the notebook's [paper] (on lined paper it writes on the lines) and how far an endless
+ * canvas is [zoom]ed (its answer column is as wide on screen at any zoom).
+ */
+class PageLook(
+    val paper: () -> com.nisaba.domain.notebook.Paper = { com.nisaba.domain.notebook.Paper.Blank },
+    val zoom: () -> Float = { 1f },
+)
+
 /** What the hand reports besides failures: a memory note, a cut-short answer, a block it couldn't lay out. */
 class ScribeNotices(
     val onMemoryNote: (String) -> Unit = {},
@@ -85,8 +94,7 @@ class AnswerScribeSession(
     private val notices: ScribeNotices = ScribeNotices(),
     /** Any voice by id (each writes in its own hand: Settings → The hand). */
     private val voices: (String) -> Persona = PersonaRegistry::of,
-    /** The notebook's paper: on lined paper the hand writes on the lines. */
-    private val paper: () -> com.nisaba.domain.notebook.Paper = { com.nisaba.domain.notebook.Paper.Blank },
+    private val look: PageLook = PageLook(),
     /** Where the hand's planning runs: one block after another, off the main thread (layout must not stall frames). */
     private val planScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default.limitedParallelism(1)),
 ) : ConversationSurface {
@@ -97,7 +105,7 @@ class AnswerScribeSession(
      * One answer's planner and where it got to; only ever touched inside [planScope] once created. [marks] = checking
      * work: plans each ✓/✗ beside its line instead of in the flow.
      */
-    private class PlanRun(val planner: ScribePlanUseCase, val ink: Int?, val marks: MarkPlanner?) {
+    private class PlanRun(val planner: ScribePlanUseCase, val ink: Int?, val marks: MarkPlanner?, val widthScale: Float = 1f) {
         var state: ScribePlanState = planner.start()
     }
 
@@ -146,7 +154,7 @@ class AnswerScribeSession(
         if (reqId != currentReq || run == null) startAnswer(reqId, personaId) // reads the page as it is now, on the caller's thread
         val r = run ?: return
         val markInk = (block as? Block.Mark)?.let { if (it.ok) TICK_INK else CROSS_INK } // a teacher's green tick, red cross
-        val ref = BlockRef(session, reqId, ++blocks, exchangeId, markInk ?: r.ink)
+        val ref = BlockRef(session, reqId, ++blocks, exchangeId, markInk ?: r.ink, r.widthScale)
         val page = answerPage
         planScope.launch {
             // a block the hand can't lay out is skipped, never fatal: the answer carries on and still finishes
@@ -174,10 +182,12 @@ class AnswerScribeSession(
         val u = utt
         answerPage = u?.pageId ?: pageId
         val userInk = userInkOf(u)
-        val lined = paper() == com.nisaba.domain.notebook.Paper.Lined && !page.isEndless && printed() == null
+        val lined = look.paper() == com.nisaba.domain.notebook.Paper.Lined && !page.isEndless && printed() == null
         // nothing of theirs to match (a lesson opening, a tidy copy): a calm, compact size; on lined paper, the lines' size
         val xHeight = when {
             lined -> com.nisaba.domain.notebook.Paper.RULE / LayoutRegion.LINE_HEIGHT_FACTOR
+            u?.purpose == Purpose.Book(com.nisaba.domain.book.BookStep.Overview) -> MAP_X_HEIGHT // the whole map on one page
+            u?.purpose is Purpose.Book -> BOOK_X_HEIGHT // a concept and its question on one page, room below for the answer
             userInk.isEmpty() -> OPENING_X_HEIGHT
             else -> estimateXHeight(userInk)
         }
@@ -191,7 +201,7 @@ class AnswerScribeSession(
         val speed = speedProfile(hand.speed ?: s.handSpeed)
         val marks = (u?.purpose as? Purpose.Check)?.let { MarkPlanner(it.lines, page, xHeight, glyphs, occupancy, seed, human, speed) }
         val lookup = OccupancyLookup { if (it == 0) occupancy else null }
-        run = PlanRun(ScribePlanUseCase(glyphs, region, lookup, seed, human, speed), hand.ink, marks)
+        run = PlanRun(ScribePlanUseCase(glyphs, region, lookup, seed, human, speed), hand.ink, marks, 1f / zoomOf(page))
     }
 
     /** [r] moved down so its baselines fall on the paper's lines (one line apart = one rule apart). */
@@ -218,8 +228,13 @@ class AnswerScribeSession(
         val question = u?.takeIf { it.purpose == Purpose.Writing || it.purpose == Purpose.About }?.bounds
         val small = maxOf(xHeight * GLOSS_SCALE, MIN_GLOSS_X_HEIGHT)
         val gloss = question?.let { q -> printed()?.let { glossRegion(page, it, q, small) } }
-        return gloss ?: LayoutRegion.below(page, a.x, a.y, xHeight)
+        val below = LayoutRegion.below(page, a.x, a.y, xHeight)
+        val z = zoomOf(page)
+        return gloss ?: below.copy(right = below.left + below.width / z, bottom = below.top + (below.bottom - below.top) / z)
     }
+
+    /** How far the canvas is zoomed (1 on a page). */
+    private fun zoomOf(page: PageSize) = look.zoom().takeIf { page.isEndless && it > 0f } ?: 1f
 
     /** A whole-page grid, or on an endless canvas just a window around the answer's column (the canvas is far too big). */
     private fun emptyOccupancy(page: PageSize, region: LayoutRegion) =
@@ -233,6 +248,8 @@ class AnswerScribeSession(
         const val INK_PAD = 12f
         const val WINDOW_PAD = 400f
         const val OPENING_X_HEIGHT = 32f
+        const val MAP_X_HEIGHT = 26f
+        const val BOOK_X_HEIGHT = 27f
         const val GLOSS_SCALE = 0.65f
         const val BASELINE_FACTOR = 1.7f // where the layout puts the first baseline below a region's top, in x-heights
         const val MIN_GLOSS_X_HEIGHT = 20f

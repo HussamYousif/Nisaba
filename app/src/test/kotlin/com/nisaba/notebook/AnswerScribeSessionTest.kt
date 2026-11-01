@@ -40,7 +40,7 @@ class AnswerScribeSessionTest {
     @Test fun eachVoiceWritesInItsOwnInkAndHand() {
         session.showInkwell(Utterance(PageId("question-page"), emptySet(), PageRect(200f, 300f, 600f, 360f)))
         session.planBlock(1, hello, ExchangeId("e1"), personaId = "zagreus")
-        session.planBlock(2, hello, ExchangeId("e2"), personaId = "book") // the sassy book: the answer ink in Settings
+        session.planBlock(2, hello, ExchangeId("e2"), personaId = "book") // Grimoire Noir: the answer ink in Settings
         settings = Settings(voiceHands = false)
         session.planBlock(3, hello, ExchangeId("e3"), personaId = "zagreus")
         assertEquals(listOf(PersonaRegistry.of("zagreus").hand.ink, null, null), played.map { it.ref.ink })

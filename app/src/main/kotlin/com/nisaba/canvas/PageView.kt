@@ -20,7 +20,6 @@ import com.nisaba.domain.shared.StrokeId
 import com.nisaba.domain.shared.fitTransform
 import com.nisaba.infra.render.BackgroundRenderer
 import com.nisaba.infra.render.InkRenderer
-import kotlin.math.abs
 
 /**
  * The page: paper + committed ink in one cached bitmap, plus the live stroke on top when the pen device
@@ -42,8 +41,11 @@ class PageView(
     internal var longPressed = false
     var onSizeKnown: (Int, Int) -> Unit = { _, _ -> }
     var topStripPx: Int = 96
-    /** Endless canvas only: the view's top-left in page space changed (to remember where you were). */
-    var onPan: (Float, Float) -> Unit = { _, _ -> }
+    /** Endless canvas only: the view's top-left in page space or its zoom changed (to remember where you were). */
+    var onPan: (Float, Float, Float) -> Unit = { _, _, _ -> }
+
+    /** Endless canvas only: a pinch changed the zoom (the panel wants a clean pass). */
+    var onZoomed: () -> Unit = {}
 
     init { pen.onLiveChanged = { onLive() } }
 
@@ -89,6 +91,8 @@ class PageView(
     internal var endless = false
     internal var panX = 0f
     internal var panY = 0f
+    internal var zoom = 1f // screen px per page unit ([ZOOM_LEVELS])
+    internal val pinch = Pinch()
     internal var lastX = 0f; internal var lastY = 0f
     internal var pendingDx = 0f; internal var pendingDy = 0f
     internal var lastPanMillis = 0L
@@ -109,6 +113,7 @@ class PageView(
         origin: PagePoint? = null,
         id: com.nisaba.domain.shared.PageId? = null,
         paper: com.nisaba.domain.notebook.Paper = com.nisaba.domain.notebook.Paper.Blank,
+        zoom: Float = 1f,
     ) {
         val samePage = id == pageId
         if (samePage && unchanged(size, bg, paper)) return
@@ -120,6 +125,7 @@ class PageView(
         if (endless) {
             panX = origin?.x ?: PageSize.ENDLESS_ORIGIN
             panY = origin?.y ?: PageSize.ENDLESS_ORIGIN
+            this.zoom = zoom
         }
         recomputeTransform()
         // another page: its ink comes in setStrokes right after, so the layer is built once, with it
@@ -151,15 +157,8 @@ class PageView(
     }
 
     // --- the hand writing (drawn straight into the ink layer), resume mark ----------------------------------------
-    internal val markPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFF27407A.toInt(); textSize = 64f; typeface = android.graphics.Typeface.SERIF
-    }
     internal var resumeMark: PagePoint? = null
     internal var selection: com.nisaba.domain.shared.PageRect? = null
-    internal val selectionPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFF111111.toInt(); style = android.graphics.Paint.Style.STROKE; strokeWidth = 3f
-        pathEffect = android.graphics.DashPathEffect(floatArrayOf(14f, 10f), 0f)
-    }
     internal val drawnByHand = HashSet<StrokeId>()
 
     /** What the hand drew that isn't committed yet: redrawn after any rebuild, so a redraw mid-answer can't wipe it. */
@@ -206,7 +205,7 @@ class PageView(
     }
 
     internal fun recomputeTransform() {
-        affine = if (endless) Affine(1f, -panX, -panY) else fitTransform(pageSize, width.toFloat(), height.toFloat())
+        affine = if (endless) Affine(zoom, -panX * zoom, -panY * zoom) else fitTransform(pageSize, width.toFloat(), height.toFloat())
     }
 
     internal fun rebuild() {
@@ -250,10 +249,10 @@ class PageView(
     override fun onDraw(canvas: Canvas) {
         layer?.let { canvas.drawBitmap(it, 0f, 0f, null) }
         canvas.save(); canvas.translate(affine.dx, affine.dy); canvas.scale(affine.scale, affine.scale)
-        resumeMark?.let { canvas.drawText("…", it.x, it.y, markPaint) }
+        resumeMark?.let { canvas.drawText("…", it.x, it.y, MARK_PAINT) }
         selection?.let { b ->
             val p = SELECTION_PAD
-            canvas.drawRect(b.left - p, b.top - p, b.right + p, b.bottom + p, selectionPaint)
+            canvas.drawRect(b.left - p, b.top - p, b.right + p, b.bottom + p, SELECTION_PAINT)
         }
         canvas.restore()
     }
@@ -263,17 +262,7 @@ class PageView(
             onStylusDownWhileScribing()                       // the raw layer is suspended while the hand writes
         }
         if (pen.handleTouch(e)) return true
-        if (e.getToolType(0) != MotionEvent.TOOL_TYPE_FINGER) return true
-        when (e.actionMasked) {
-            MotionEvent.ACTION_DOWN -> fingerDown(e)
-            MotionEvent.ACTION_POINTER_DOWN -> { maxPointers = maxOf(maxPointers, e.pointerCount); removeCallbacks(longPress) }
-            MotionEvent.ACTION_MOVE -> {
-                if (abs(e.x - downX) > TAP_SLOP || abs(e.y - downY) > TAP_SLOP) { moved = true; removeCallbacks(longPress) }
-                if (endless && maxPointers == 1) dragCanvas(e)
-            }
-            MotionEvent.ACTION_UP -> fingerUp(e)
-            MotionEvent.ACTION_CANCEL -> removeCallbacks(longPress)
-        }
+        if (e.getToolType(0) == MotionEvent.TOOL_TYPE_FINGER) fingerEvent(e)
         return true
     }
 
@@ -295,5 +284,6 @@ class PageView(
         const val FOLLOW_TARGET = 0.3f
         const val MIN_VISIBLE_WIDTH = 500f
         const val ENDLESS_LEFT_MARGIN = 200f
+        const val PINCH_SLOP = 60f
     }
 }

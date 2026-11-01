@@ -27,6 +27,7 @@ fun main(args: Array<String>) {
     when (args.firstOrNull()) {
         "preview" -> preview(opts, args.contains("--perfect"), args.contains("--nojoin"))
         "eval" -> eval(opts)
+        "book" -> book(opts)
         else -> println("usage: preview --in file.md --out out.png [--hand casual] [--seed 42] [--xheight 44] [--perfect]")
     }
 }
@@ -65,12 +66,31 @@ private fun preview(o: Map<String, String>, perfect: Boolean, noJoin: Boolean) {
 }
 
 /**
+ * `book --pdf book.pdf [--walk 2] [--answer "their answer to the last page's question"] [--persona teacher] [--model m]`:
+ * reads the book into its map as the app does (text from `pdftotext`, one page per form feed), then walks the first
+ * pages of it; see BookRunUseCase.
+ */
+private fun book(o: Map<String, String>) {
+    val pdf = File(o["pdf"] ?: error("--pdf required"))
+    val text = ProcessBuilder("pdftotext", "-enc", "UTF-8", pdf.path, "-").redirectErrorStream(false).start()
+        .inputStream.bufferedReader().readText()
+    val pages = text.split('\u000C').let { if (it.lastOrNull()?.isBlank() == true) it.dropLast(1) else it }
+    val settings = com.nisaba.domain.settings.Settings(model = o["model"] ?: "deepseek-flash")
+    val run = BookRunUseCase(EvalOracleClient(deepSeekKey()), EvalPageRenderer(loadHand("casual")), settings)
+    run(pdf.nameWithoutExtension, pages, com.nisaba.domain.persona.PersonaRegistry.of(o["persona"] ?: "teacher"),
+        (o["walk"] ?: "0").toInt(), o["answer"])
+}
+
+private fun deepSeekKey(): String =
+    File(".env").readLines().firstOrNull { it.startsWith("DEEPSEEK_API_KEY=") }?.substringAfter('=')?.trim('"', ' ')
+        ?: error("DEEPSEEK_API_KEY missing from .env")
+
+/**
  * `eval [--persona id,id|all] [--case id,id] [--temperature-scale 1.0] [--out captures/eval.json]`: the real request
  * builder and parser against DeepSeek (key from .env), every voice × case scored; see EvalCaseModel.
  */
 private fun eval(o: Map<String, String>) {
-    val key = File(".env").readLines().firstOrNull { it.startsWith("DEEPSEEK_API_KEY=") }?.substringAfter('=')?.trim('"', ' ')
-        ?: error("DEEPSEEK_API_KEY missing from .env")
+    val key = deepSeekKey()
     val personas = o["persona"]?.takeIf { it != "all" }?.split(',')?.map { com.nisaba.domain.persona.PersonaRegistry.of(it) }
         ?: com.nisaba.domain.persona.PersonaRegistry.all
     val cases = o["case"]?.split(',')?.let { ids -> EVAL_CASES.filter { it.id in ids } } ?: EVAL_CASES

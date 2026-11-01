@@ -16,6 +16,9 @@ private const val CHARS_PER_TOKEN = 3.5
 private const val WINDOW_BLOCK = 20
 private const val PAGE_TAG_TOKENS = 4
 
+/** Pages either side of a book concept's own: the map's page numbers are a reader's estimate. */
+private const val SPAN_PAD = 2
+
 /**
  * Roughly the tokens [text] costs: about 3.5 characters each for alphabetic scripts, about one per character for
  * Chinese, Japanese and Korean (which the plain character count under-reads two to three times).
@@ -26,17 +29,25 @@ fun estimateTokens(text: String): Int {
 }
 
 /**
- * Document pages as `[p.N] text`. Whole document when it fits [maxTokens]; otherwise the [WINDOW_BLOCK]-page block
- * holding [currentPage] (0-based) with the blocks either side, shrunk a page at a time until it fits. The window only
- * moves when the reader crosses into another block, so turning pages inside one keeps the cached prompt prefix (the
- * document sits in the system message). Returns null when there is no text at all (scanned PDFs: the image carries it).
+ * Document pages as `[p.N] text`. Whole document when it fits [maxTokens]; otherwise [span] (0-based: a book concept's
+ * own pages, give or take [SPAN_PAD]) when it fits; otherwise the [WINDOW_BLOCK]-page block holding [currentPage]
+ * (0-based) with the blocks either side, shrunk a page at a time until it fits. The window only moves when the reader
+ * crosses into another block (or concept), so turning pages inside one keeps the cached prompt prefix (the document sits
+ * in the system message). Returns null when there is no text at all (scanned PDFs: the image carries it).
  */
-fun formatDocumentContext(pages: List<String>, currentPage: Int?, maxTokens: Int = (TOKEN_BUDGET * DOCUMENT_SHARE).toInt()): String? {
+fun formatDocumentContext(
+    pages: List<String>,
+    currentPage: Int?,
+    maxTokens: Int = (TOKEN_BUDGET * DOCUMENT_SHARE).toInt(),
+    span: IntRange? = null,
+): String? {
     if (pages.all { it.isBlank() }) return null
     fun render(range: IntRange) = range.joinToString("\n\n") { "[p.${it + 1}] ${pages[it].trim()}" }
     val all = render(pages.indices)
     if (estimateTokens(all) <= maxTokens) return all
-    val center = (currentPage ?: 0).coerceIn(0, pages.lastIndex)
+    span?.let { (it.first - SPAN_PAD).coerceAtLeast(0)..(it.last + SPAN_PAD).coerceAtMost(pages.lastIndex) }
+        ?.takeIf { !it.isEmpty() }?.let(::render)?.takeIf { estimateTokens(it) <= maxTokens }?.let { return it }
+    val center = (currentPage ?: span?.let { (it.first + it.last) / 2 } ?: 0).coerceIn(0, pages.lastIndex)
     val block = center / WINDOW_BLOCK
     var first = ((block - 1) * WINDOW_BLOCK).coerceAtLeast(0)
     var last = ((block + 2) * WINDOW_BLOCK - 1).coerceAtMost(pages.lastIndex)
@@ -214,19 +225,22 @@ private fun instructionFor(input: ContextInput, trailingNotes: List<String>) = b
         p is Purpose.Check -> append(" ").append(checkReminder(input.persona))
         else -> {
             val words = if (glosses) minOf(input.words, GLOSS_WORDS) else input.words
-            append(" ").append(voiceReminder(input.persona, input.teachGoal != null || input.book != null, words))
+            val tutors = input.teachGoal != null || input.book != null
+            append(" ").append(voiceReminder(input.persona, tutors, words, transcribes = !p.textOnly))
         }
     }
 }
 
-/** Where the document window centres: a walked concept's pages, the page they are on, or the page last cited. */
-private fun documentCentre(input: ContextInput): Int? {
-    val book = input.book?.map
+/** The book concept a request is about: the one being walked, or the one the open page belongs to. */
+private fun bookConcept(input: ContextInput): com.nisaba.domain.book.Concept? {
     val concept = (input.purpose as? Purpose.Book)?.step?.let { it as? com.nisaba.domain.book.BookStep.Concept }?.index
         ?: input.book?.concept.takeIf { input.purpose !is Purpose.Book }
-    val walked = concept?.let { book?.concepts?.getOrNull(it) }
-    return walked?.let { com.nisaba.domain.book.centrePage(it) } ?: input.currentDocumentPage ?: lastCitedPage(input.exchanges)
+    return concept?.let { input.book?.map?.concepts?.getOrNull(it) }
 }
+
+/** Where the document window centres: the page they are on, or the page last cited (a book concept has its own pages). */
+private fun documentCentre(input: ContextInput): Int? = input.currentDocumentPage ?: lastCitedPage(input.exchanges)
+    .takeIf { bookConcept(input) == null }
 
 /** The map of the book and the whole picture work from the map alone: no pages of text (a book is long). */
 private fun bookPageWithoutText(input: ContextInput): Boolean {
@@ -235,7 +249,8 @@ private fun bookPageWithoutText(input: ContextInput): Boolean {
 }
 
 fun buildRequest(input: ContextInput): OracleRequest {
-    val doc = formatDocumentContext(input.documentPages, documentCentre(input)).takeUnless { bookPageWithoutText(input) }
+    val span = bookConcept(input)?.let { com.nisaba.domain.book.conceptSpan(it) }
+    val doc = formatDocumentContext(input.documentPages, documentCentre(input), span = span).takeUnless { bookPageWithoutText(input) }
     val memory = formatMemoryContext(input.facts, (TOKEN_BUDGET * MEMORY_SHARE).toInt())
     val (history, trailingNotes) = historyTurns(input.exchanges)
     val imageTokens = if (input.purpose.textOnly) 0 else IMAGE_TOKENS * (if (input.snapshot.focus != null) 2 else 1)

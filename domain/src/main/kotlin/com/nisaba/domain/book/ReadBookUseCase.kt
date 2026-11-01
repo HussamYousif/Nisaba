@@ -59,11 +59,13 @@ class ReadBookUseCase(private val oracle: Oracle, private val store: BookStore) 
             }
             failed?.let { return Outcome.Err(it) }
         }
+        val concepts = conceptRange(pages)
+        val tokens = MAP_TOKENS + TOKENS_PER_CONCEPT * concepts.last // a long book's map is long
         val mapping = if (parts.size == 1) {
-            request(MAP_SYSTEM, formatPages(pages, pages.indices), mapInstructionWhole(title, pages.size), model, MAP_TOKENS)
+            request(MAP_SYSTEM, formatPages(pages, pages.indices), mapInstructionWhole(title, pages.size, concepts), model, tokens)
         } else {
             val ideas = reading.ideas.toSortedMap().values.flatten()
-            request(MAP_SYSTEM, null, mapInstructionFromIdeas(title, pages.size, ideas), model, MAP_TOKENS)
+            request(MAP_SYSTEM, null, mapInstructionFromIdeas(title, pages.size, ideas, concepts), model, tokens)
         }
         val reply = when (val r = ask(mapping)) {
             is Outcome.Err -> return r
@@ -93,8 +95,9 @@ class ReadBookUseCase(private val oracle: Oracle, private val store: BookStore) 
         const val NO_TEXT = "This PDF has almost no text to read (a scan?), so there is no map to make of it."
         const val NO_MAP = "Couldn't make a map of this book."
         private const val PARALLEL = 4
-        private const val READ_TOKENS = 900
-        private const val MAP_TOKENS = 2400
+        private const val READ_TOKENS = 1200
+        private const val MAP_TOKENS = 800
+        private const val TOKENS_PER_CONCEPT = 80
         private const val TEMPERATURE = 0.3
     }
 }

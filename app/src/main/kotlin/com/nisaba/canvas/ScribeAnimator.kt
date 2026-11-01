@@ -34,7 +34,15 @@ class ChoreographerFrames : ScribeFrames {
  * Which answer block strokes came from: the page session that asked ([session]), its request, the block's 1-based
  * number within it, and the exchange the answer is saved under. [ink] = the answering voice's own ink (ARGB), if any.
  */
-data class BlockRef(val session: Int, val reqId: Int, val seq: Int, val exchangeId: ExchangeId, val ink: Int? = null)
+data class BlockRef(
+    val session: Int,
+    val reqId: Int,
+    val seq: Int,
+    val exchangeId: ExchangeId,
+    val ink: Int? = null,
+    /** The pen's thickness × this (an answer on a zoomed-out canvas is written thicker, to look the same on screen). */
+    val widthScale: Float = 1f,
+)
 
 /**
  * Plays timed pen strokes onto a [ScribeCanvas] at ~20 fps, one letter at a time. Blocks can be [enqueue]d while playing

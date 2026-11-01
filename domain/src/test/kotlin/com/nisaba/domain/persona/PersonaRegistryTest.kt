@@ -6,11 +6,11 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class PersonaRegistryTest {
-    @Test fun idsAreUniqueAndTheDefaultIsTheSassyBook() {
+    @Test fun idsAreUniqueAndTheDefaultIsGrimoireNoir() {
         val ids = PersonaRegistry.all.map { it.id }
         assertEquals(ids.size, ids.toSet().size)
         assertEquals("book", PersonaRegistry.default.id)
-        assertTrue(PersonaRegistry.default.voice.contains("Grimoire Weiss")) // notebooks from before voices keep theirs
+        assertTrue(PersonaRegistry.default.voice.contains("Grimoire Noir")) // notebooks from before voices keep the default
     }
 
     @Test fun anUnknownOrMissingIdFallsBackToTheDefault() {

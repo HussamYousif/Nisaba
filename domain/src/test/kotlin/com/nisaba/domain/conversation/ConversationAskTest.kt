@@ -59,6 +59,7 @@ class ConversationAskTest {
         s.onPenDown(); runCurrent()
         s.onPenUp(StrokeId("w"), PageRect(100f, 100f, 300f, 140f), page); runCurrent()
         assertIs<ConvState.Pausing>(s.status.value.state)
+        assertEquals(1, oracle.warmed) // the connection opens while they pause
         s.askAbout(page, setOf(StrokeId("w")), PageRect(90f, 90f, 320f, 150f)); runCurrent()
         assertEquals(1, oracle.requests.size)
         assertTrue(oracle.requests.single().instruction.startsWith(INSTRUCTION_ABOUT))

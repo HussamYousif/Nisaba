@@ -13,6 +13,7 @@ private val ALIASES = mapOf(
     "approx" to "approx", "equiv" to "equiv", "ldots" to "ldots", "cdots" to "ldots", "dots" to "ldots", "partial" to "partial",
     "nabla" to "nabla", "propto" to "propto", "in" to "in", "subset" to "subset", "forall" to "forall", "exists" to "exists",
     "degree" to "degree", "circ" to "degree", "angle" to "angle", "perp" to "perp", "sim" to "sim", "lt" to "<", "gt" to ">",
+    "lfloor" to "lfloor", "rfloor" to "rfloor", "lceil" to "lceil", "rceil" to "rceil",
 )
 
 private val BIG_OPS = mapOf("sum" to "sum", "prod" to "prod", "int" to "int", "oint" to "int", "lim" to "lim")
@@ -26,7 +27,10 @@ private val LITERAL_ESCAPES = setOf('%', '$', '&', '#', '_', '{', '}')
 private val MATRIX_ENVS = mapOf("pmatrix" to ("(" to ")"), "bmatrix" to ("[" to "]"), "matrix" to ("" to ""), "vmatrix" to ("|" to "|"))
 private val FRACTIONS = setOf("frac", "dfrac", "tfrac")
 private val TEXT_COMMANDS = setOf("text", "mathrm", "textbf", "mathbf", "operatorname")
-private val DELIMITER_NAMES = mapOf("|" to "||", "langle" to "<", "rangle" to ">", "lbrace" to "{", "rbrace" to "}")
+private val DELIMITER_NAMES = mapOf(
+    "|" to "||", "langle" to "<", "rangle" to ">", "lbrace" to "{", "rbrace" to "}",
+    "lfloor" to "[", "rfloor" to "]", "lceil" to "[", "rceil" to "]", // a stretched fence: square brackets come closest
+)
 private const val MAX_DEPTH = 24
 
 /** LaTeX subset → [MathNode]. Never throws: malformed input yields a best-effort tree, unknown commands become text. */

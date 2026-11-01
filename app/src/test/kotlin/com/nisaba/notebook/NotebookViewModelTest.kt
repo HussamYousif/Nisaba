@@ -58,16 +58,22 @@ class NotebookViewModelTest {
     private suspend fun open(
         scope: TestScope,
         sizes: List<com.nisaba.domain.shared.PageSize> = emptyList(),
+        endless: Boolean = false,
+        memory: NotebookMemory = NotebookMemory(),
     ): Pair<NotebookViewModel, NotebookId> {
         val create = CreateNotebookUseCase(store, clock, FakeIdGen("n"))
-        val nb = if (sizes.isEmpty()) create("Maths") else create("Book", com.nisaba.domain.shared.DocumentId("d"), sizes)
+        val nb = when {
+            endless -> create("Canvas", endless = true)
+            sizes.isEmpty() -> create("Maths")
+            else -> create("Book", com.nisaba.domain.shared.DocumentId("d"), sizes)
+        }
         val deps = NotebookDeps(
             nb.id, ObserveNotebookUseCase(store), InsertPageUseCase(store, FakeIdGen("pg")), RenameNotebookUseCase(store, clock),
             InkUseCases(
                 LoadPageInkUseCase(ink), CommitStrokeUseCase(ink), CommitStrokesUseCase(ink), EraseUseCase(ink, ids),
                 UndoUseCase(ink), RedoUseCase(ink), EraseAnswerUseCase(ink), ReplaceStrokesUseCase(ink), RemoveStrokesUseCase(ink),
             ),
-            SetListeningUseCase(store), ids,
+            SetListeningUseCase(store), ids, memory = memory,
             changes = NotebookChanges(
                 SetPersonaUseCase(store), setStyle = com.nisaba.domain.notebook.SetAnswerStyleUseCase(store)::invoke,
                 setPrivate = com.nisaba.domain.notebook.SetPrivateUseCase(store)::invoke,
@@ -104,6 +110,22 @@ class NotebookViewModelTest {
         val fit = com.nisaba.domain.shared.fitTransform(tall, 930f, 1240f)
         assertEquals((465f - fit.dx) / fit.scale, p.xs.first(), 1f) // not the first page's ×2
         assertEquals(620f / fit.scale, p.ys.first(), 1f)
+    }
+
+    @Test fun aZoomedCanvasMapsThePenAndKeepsStrokesAsThickOnScreen() = runTest {
+        val saved = mutableListOf<Triple<PageId, PagePoint, Float>>()
+        val memory = NotebookMemory(loadZoom = { 0.5f }, saveView = { p, at, z -> saved += Triple(p, at, z) })
+        val (vm, _) = open(this, endless = true, memory = memory)
+        assertEquals(0.5f, vm.state.value.zoom) // the zoom it was left at
+        vm.onPan(1000f, 2000f, 0.5f)
+        vm.onPenEvent(PenEvent.StrokeDone(line(100f, 200f, 50f))); runCurrent()
+        val s = vm.state.value.strokes.single()
+        assertEquals(1200f, s.points.xs.first(), 0.01f) // 1000 + 100 / 0.5
+        assertEquals(2100f, s.points.ys.first(), 0.01f)
+        assertEquals(PenSize.Medium.width * 2f, s.width, 0.01f)
+        assertEquals(0.5f, saved.last().third)
+        val area = vm.visibleArea()
+        assertEquals(1000f + 930f * 2f, area.right, 0.01f)
     }
 
     @Test fun aBookNotebookReadsItsBookThenOffersTheWalk() = runTest {

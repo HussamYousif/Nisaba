@@ -156,7 +156,7 @@ private fun InkPane(s: Settings, vm: SettingsViewModel) {
     Choice(listOf(AnswerInk.Lapis to "Lapis blue", AnswerInk.Black to "Black"), s.answerInk, vm::setInk)
     if (s.voiceHands) {
         Text(
-            "Each voice writes in its own ink (The hand → Voices): this is the ink of The sassy book and Plain.",
+            "Each voice writes in its own ink (The hand → Voices): this is the ink of Grimoire Noir and Plain.",
             style = MaterialTheme.typography.labelLarge, color = c.faint,
         )
     }

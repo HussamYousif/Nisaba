@@ -32,7 +32,9 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.nisaba.canvas.PageView
+import com.nisaba.canvas.fitArea
 import com.nisaba.canvas.jumpTo
+import com.nisaba.canvas.zoomTo
 import com.nisaba.canvas.prepareAnswerAt
 import com.nisaba.canvas.showResumeMark
 import com.nisaba.canvas.showSelection
@@ -102,12 +104,14 @@ fun NotebookScreen(
                     v.onMultiTap = { n -> if (n == 2) vm.undo(announce = true) else vm.redo(announce = true) } // can be a palm
                     v.onTopTap = { vm.showToolbar() }
                     v.onPan = vm::onPan
+                    v.onZoomed = vm::onZoomed
                     v.onLongPress = vm::onLongPress
                     pageView = v
                 }
             },
             update = { v ->
-                v.setPage(state.pageSize, state.background, state.viewOrigin, state.pageId, state.paper); v.setStrokes(state.strokes)
+                v.setPage(state.pageSize, state.background, state.viewOrigin, state.pageId, state.paper, state.zoom)
+                v.setStrokes(state.strokes)
                 v.showSelection(state.selection?.bounds ?: state.highlight)
             },
         )
@@ -174,12 +178,13 @@ private fun NotebookOverlays(state: NotebookUiState, vm: NotebookViewModel) {
     when (state.toolPanel) {
         ToolPanel.Pen -> PenPanelComponent(state, vm)
         ToolPanel.Shapes -> ShapePanelComponent(state, vm)
+        ToolPanel.Habits -> HabitsPanelComponent(state, vm)
         null -> Unit
     }
-    if (state.overview) CanvasOverviewComponent(state, vm.visibleArea(), vm::jumpTo, vm::goHome, vm::closeOverview)
+    if (state.overview) CanvasOverviewComponent(state, vm.visibleArea(), vm::jumpTo, vm::seeEverything, vm::goHome, vm::closeOverview)
     state.answerMenu?.let { AnswerMenuComponent(it, vm) }
     if (state.progressOpen) LessonProgressDialog(state, vm::closeProgress)
-    if (state.bookOpen) state.book?.let { BookMapComponent(it, vm) }
+    if (state.bookOpen) state.book?.let { BookMapComponent(it, state.lessonTopics, vm) }
     if (state.voiceOpen) VoiceDialogComponent(state.personaId, state.style, vm::setVoice, vm::closeVoice)
     if (state.renaming) {
         var name by remember { mutableStateOf(state.title) }
@@ -204,7 +209,10 @@ private fun ScribeWiring(
     eink: EinkDevice,
 ) {
     if (view == null || animator == null) return
-    animator.penFor = { tone, ref -> answerPen(tone, state.answerInk, state.codeHighlight, ref?.ink) }
+    animator.penFor = { tone, ref ->
+        val pen = answerPen(tone, state.answerInk, state.codeHighlight, ref?.ink)
+        pen.copy(widthScale = pen.widthScale * (ref?.widthScale ?: 1f))
+    }
     view.showResumeMark(state.resumeMark)
     DisposableEffect(animator) {
         animator.onActiveChanged = { active -> if (active) { pen.suspendRawInk(); eink.fast() } else { pen.resumeRawInk(); eink.normal() } }
@@ -254,11 +262,14 @@ private fun NotebookEffects(vm: NotebookViewModel, pageView: PageView?, pen: Pen
             when (fx) {
                 is NotebookEffect.Refresh -> if (fx.full) eink.fullRefresh(v) else eink.cleanPass(v, null)
                 is NotebookEffect.PanTo -> v.jumpTo(fx.origin)
+                is NotebookEffect.Zoom -> v.zoomTo(fx.zoom)
+                is NotebookEffect.ShowArea -> v.fitArea(fx.area)
                 is NotebookEffect.Copy -> clipboard.setText(androidx.compose.ui.text.AnnotatedString(fx.text))
                 is NotebookEffect.Share -> context.startActivity(shareIntent(fx.subject, fx.text))
                 is NotebookEffect.Remind -> remind(fx.reminder)
                 is NotebookEffect.Export -> exportAs(fx)
                 NotebookEffect.Repaint -> { pen.suspendRawInk(); v.forgetLiveInk(); v.reloadBackground(); pen.resumeRawInk() }
+                NotebookEffect.ClearLoop -> if (v.liveStrokesAwaitingCommit > 0) { v.forgetLiveInk(); v.reloadBackground() }
             }
         }
     }

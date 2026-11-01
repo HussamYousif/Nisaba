@@ -78,8 +78,10 @@ class ConversationSession(
     }
 
     fun onPenDown() = dispatch(ConvEvent.PenDown)
-    fun onPenUp(strokeId: StrokeId, bounds: PageRect, pageId: PageId) =
+    fun onPenUp(strokeId: StrokeId, bounds: PageRect, pageId: PageId) {
+        deps.oracle.warmUp() // the pause is coming: the request then skips the handshake
         dispatch(ConvEvent.PenUp(strokeId, bounds, pageId, deps.clock.nowMillis()))
+    }
     fun onPenAborted() = dispatch(ConvEvent.PenAborted(deps.clock.nowMillis()))
 
     /** Ink was erased: the utterance keeps only its strokes still on the page; none left = nothing to ask. */

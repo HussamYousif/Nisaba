@@ -49,8 +49,11 @@ sealed interface Purpose {
     /** A page of a book walk: the map of the book, one of its concepts, or the whole picture (on a fresh page). */
     data class Book(val step: com.nisaba.domain.book.BookStep) : Purpose
 
-    /** Asked for there and then (a menu, a lasso): goes even while Nisaba isn't listening. */
-    val explicit: Boolean get() = this !is Writing && this !is Opening && this !is Resume
+    /**
+     * Asked for there and then (a menu, a lasso): goes even while Nisaba isn't listening. So does a lesson's opening:
+     * making a lesson asked to be taught, and a muted one otherwise sat on a blank page, waiting for a quill tap.
+     */
+    val explicit: Boolean get() = this !is Writing && this !is Resume
 
     /** Needs no picture of the page: it works from the notebook's history alone (cheaper, faster). */
     val textOnly: Boolean get() = this is Quiz || this is Daily || this is Recap || this is Review || this is Book

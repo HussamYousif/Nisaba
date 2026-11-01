@@ -76,6 +76,15 @@ fun PenPanelComponent(state: NotebookUiState, vm: NotebookViewModel) {
     }
 }
 
+/** When Nisaba answers here and how long (also in ⋯ → Voice), a hold of the eye away. Choices apply at once. */
+@Composable
+fun HabitsPanelComponent(state: NotebookUiState, vm: NotebookViewModel) {
+    NisabaDialog("How Nisaba answers here", vm::closePanel) {
+        com.nisaba.persona.AnswerStyleComponent(state.style, vm::setStyle)
+        NisabaButton("Done", vm::closePanel, Modifier.fillMaxWidth())
+    }
+}
+
 private val SHAPES = listOf(
     Triple(ShapeKind.Auto, NisabaIcon.ShapeAuto, "Auto"),
     Triple(ShapeKind.Line, NisabaIcon.ShapeLine, "Line"),

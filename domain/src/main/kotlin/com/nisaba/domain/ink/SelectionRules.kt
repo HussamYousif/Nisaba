@@ -11,20 +11,40 @@ private const val INSIDE_SHARE = 0.6f
 /** A line of handwriting: where it is and the strokes it is made of, top to bottom. */
 data class InkLine(val bounds: PageRect, val strokes: List<Stroke>)
 
+/** A lasso's points closer together than this (page units) add nothing to which ink it goes around. */
+private const val LOOP_STEP = 4f
+
 /**
  * The strokes a lasso [loop] (page units, closed implicitly) goes around: most of a stroke's points inside the loop.
- * Even-odd rule, so a loop drawn either way round works.
+ * Even-odd rule, so a loop drawn either way round works. A stroke is given up as soon as too many of its points are
+ * out (a dense page has millions of point-in-loop tests otherwise).
  */
 fun strokesInLoop(strokes: List<Stroke>, loop: List<PagePoint>): List<Stroke> {
     if (loop.size < 3) return emptyList()
     val box = loopBounds(loop)
+    val edges = thinned(loop)
     return strokes.filter { s ->
-        if (!s.bounds.intersects(box)) return@filter false
         val p = s.points
-        var inside = 0
-        for (i in 0 until p.size) if (insideLoop(p.xs[i], p.ys[i], loop)) inside++
-        p.size > 0 && inside >= p.size * INSIDE_SHARE
+        if (p.size == 0 || !s.bounds.intersects(box)) return@filter false
+        val allowedOut = p.size - kotlin.math.ceil(p.size * INSIDE_SHARE).toInt()
+        var out = 0
+        for (i in 0 until p.size) {
+            val x = p.xs[i]; val y = p.ys[i]
+            val inside = x >= box.left && x <= box.right && y >= box.top && y <= box.bottom && insideLoop(x, y, edges)
+            if (!inside && ++out > allowedOut) return@filter false
+        }
+        true
     }
+}
+
+/** [loop] with points closer than [LOOP_STEP] to the last one kept dropped (the shape is the same, the tests fewer). */
+private fun thinned(loop: List<PagePoint>): List<PagePoint> {
+    val kept = ArrayList<PagePoint>(loop.size)
+    for (pt in loop) {
+        val last = kept.lastOrNull()
+        if (last == null || kotlin.math.abs(pt.x - last.x) + kotlin.math.abs(pt.y - last.y) >= LOOP_STEP) kept += pt
+    }
+    return if (kept.size >= 3) kept else loop
 }
 
 fun loopBounds(loop: List<PagePoint>) = PageRect(loop.minOf { it.x }, loop.minOf { it.y }, loop.maxOf { it.x }, loop.maxOf { it.y })

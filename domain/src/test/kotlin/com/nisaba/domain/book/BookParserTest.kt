@@ -40,6 +40,36 @@ class BookParserTest {
         assertEquals("The Burnout Society — Byung-Chul Han", named.title)
     }
 
+    @Test fun chaptersKeepTheirPlaceAmongTheIdeas() {
+        val reply = """
+            <idea pages="140-150">Reliability :: Faults are not failures</idea>
+            <chapter pages="151">5. Replication</chapter>
+            <idea pages="151-156">Leaders and followers :: One node takes the writes</idea>
+        """.trimIndent()
+        val ideas = parseIdeas(reply, pageCount = 600)
+        assertEquals(listOf("Reliability", "5. Replication", "Leaders and followers"), ideas.map { it.title })
+        assertEquals(BookIdea("5. Replication", "", 151, 151, chapter = true), ideas[1])
+        assertFalse(ideas[0].chapter || ideas[2].chapter)
+    }
+
+    @Test fun aLongBooksMapGroupsItsManyConceptsUnderParts() {
+        val reply = buildString {
+            append("<thesis>Data systems are trade-offs.</thesis>\n")
+            for (part in 1..6) {
+                append("<part> Part $part </part>\n")
+                for (k in 1..5) append("<concept pages=\"${part * 50 + k}\">Concept $part.$k :: why</concept>\n")
+            }
+        }
+        val map = assertNotNull(parseBookMap(reply, "ddia", 600))
+        assertEquals(30, map.concepts.size) // a long book is no longer cut to 16
+        assertEquals("Part 1", map.concepts.first().part)
+        assertEquals("Part 6", map.concepts.last().part)
+        assertEquals(listOf("Part 2"), map.concepts.filter { it.title.startsWith("Concept 2.") }.map { it.part }.distinct())
+        val three = (1..3).joinToString("") { "<concept pages=\"$it\">C$it</concept>" }
+        val short = assertNotNull(parseBookMap(three, "s", 9))
+        assertTrue(short.concepts.all { it.part.isEmpty() })
+    }
+
     @Test fun nextIsAnInstructionNeverInk() {
         assertTrue(hasNextTag("<next/><heard>neste</heard>"))
         assertTrue(hasNextTag("<Next />"))

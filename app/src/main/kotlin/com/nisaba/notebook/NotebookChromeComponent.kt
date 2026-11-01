@@ -59,6 +59,7 @@ internal fun TopOfPage(
     Column(modifier) {
         if (state.toolbarVisible) NotebookToolbarComponent(state, vm, onBack)
         state.failure?.let { FailureChip(it, if (state.failureRetries) vm::retry else onOpenSettings, state.failureRetries) }
+        if (state.held && state.failure == null) MemoryChip(HELD_LINE, vm::askNow, mark = "›")
         state.book?.reading?.let { MemoryChip(readingLine(it), {}, mark = "…") }
         state.bookFailure?.let { FailureChip("Couldn't read the book: $it", vm::retryBook) }
         state.memoryNote?.let { MemoryChip(it, vm::dismissMemoryNote) }
@@ -66,3 +67,6 @@ internal fun TopOfPage(
         state.reminder?.let { ReminderChip(reminderLine(it), vm::addReminder, vm::dismissReminder) }
     }
 }
+
+/** What a muted page says while writing waits (a tap asks). */
+internal const val HELD_LINE = "Not listening here (the eye is closed) · tap to ask"

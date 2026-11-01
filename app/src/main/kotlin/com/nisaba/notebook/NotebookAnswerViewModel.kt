@@ -60,7 +60,7 @@ fun NotebookViewModel.tidyPage() {
 /** A finger held on the page: if it is on an answer, offer what can be done with it. */
 fun NotebookViewModel.onLongPress(viewX: Float, viewY: Float) {
     val page = currentPage() ?: return
-    val ex = answerAt(edit?.ink?.strokes.orEmpty(), affine.toPage(viewX, viewY), ANSWER_HIT) ?: return
+    val ex = answerAt(edit?.ink?.strokes.orEmpty(), affine.toPage(viewX, viewY), ANSWER_HIT / penScale) ?: return
     ownScope.launch {
         val saved = deps.sources.exchange(ex)
         val again = deps.sessions != null && saved?.focus != null && saved.pageId == page.id
@@ -195,9 +195,9 @@ internal fun NotebookViewModel.answerStrokes(written: List<TimedStroke>, ref: Bl
     return written.map { t ->
         val pen = answerPen(t.tone, settings.answerInk, settings.codeHighlight, ref?.ink)
         val p = t.points
-        val t0 = p.ts.first()
+        val t0 = p.ts.first(); val width = STROKE_WIDTH * pen.widthScale * (ref?.widthScale ?: 1f)
         val points = InkPoints(p.xs, p.ys, p.ps, IntArray(p.size) { p.ts[it] - t0 })
-        Stroke(StrokeId(deps.idGen.next()), points, STROKE_WIDTH * pen.widthScale, pen.color, StrokeOrigin.Oracle(exchange))
+        Stroke(StrokeId(deps.idGen.next()), points, width, pen.color, StrokeOrigin.Oracle(exchange))
     }
 }
 
@@ -266,7 +266,8 @@ internal fun NotebookViewModel.startSession(page: Page) {
             ::memoryNote, onCutShort = { mutableState.update { it.copy(notice = CUT_SHORT_NOTICE) } },
             onReminder = { r -> mutableState.update { it.copy(reminder = r) } }, onBookNext = { nextBookStep() },
         ),
-        voices = { deps.sources.voices().of(it) }, paper = { notebook?.notebook?.paper ?: com.nisaba.domain.notebook.Paper.Blank },
+        voices = { deps.sources.voices().of(it) },
+        look = PageLook({ notebook?.notebook?.paper ?: com.nisaba.domain.notebook.Paper.Blank }, { penScale }),
     )
     answerScribe = scribe
     val context = object : ConversationContextPorts {
@@ -285,11 +286,10 @@ internal fun NotebookViewModel.startSession(page: Page) {
     statusJob?.cancel()
     statusJob = ownScope.launch {
         created.status.collect { st ->
-            val waiting = st.state is ConvState.Pausing || st.state is ConvState.Held
+            val held = st.state is ConvState.Held
+            val waiting = st.state is ConvState.Pausing || held
             val working = st.state is ConvState.Thinking || st.state is ConvState.Scribing
-            mutableState.update {
-                if (it.askable == waiting && it.working == working) it else it.copy(askable = waiting, working = working)
-            }
+            mutableState.update { it.copy(askable = waiting, working = working, held = held) } // equal: no new state
         }
     }
     deps.memory.loadPending(page.id)?.let { utt -> deps.memory.savePending(page.id, null); created.askPending(utt) }

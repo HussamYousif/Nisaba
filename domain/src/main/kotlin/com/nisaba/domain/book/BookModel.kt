@@ -4,7 +4,8 @@ import com.nisaba.domain.shared.PageId
 
 /**
  * One core concept of a book, as its map lists it. Pages are 1-based, as the book's text is cited ("p. 12");
- * [pageId] is the notebook page it was walked through on (null: not yet).
+ * [pageId] is the notebook page it was walked through on (null: not yet). [part] = the part or chapter of the book it
+ * belongs to ("" in a short book's map, which needs no grouping).
  */
 data class Concept(
     val title: String,
@@ -12,13 +13,17 @@ data class Concept(
     val firstPage: Int,
     val lastPage: Int,
     val pageId: PageId? = null,
+    val part: String = "",
 ) {
     val walked: Boolean get() = pageId != null
     val pages: String get() = if (firstPage == lastPage) "p. $firstPage" else "pp. $firstPage–$lastPage"
 }
 
-/** An idea one part of a long book develops: the first pass, before the map is made from all of them. */
-data class BookIdea(val title: String, val summary: String, val firstPage: Int, val lastPage: Int)
+/**
+ * An idea one part of a long book develops: the first pass, before the map is made from all of them. A [chapter] is no
+ * idea but where a chapter or part of the book begins (its title), so the map can group concepts the way the book does.
+ */
+data class BookIdea(val title: String, val summary: String, val firstPage: Int, val lastPage: Int, val chapter: Boolean = false)
 
 /** Reading a long book takes a request per part: how many parts, and the ideas of those read so far (by part). */
 data class BookReading(val parts: Int, val ideas: Map<Int, List<BookIdea>> = emptyMap()) {

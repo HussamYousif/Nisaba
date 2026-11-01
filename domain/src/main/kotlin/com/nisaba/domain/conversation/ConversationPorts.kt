@@ -8,6 +8,9 @@ import kotlinx.coroutines.flow.Flow
 /** The model. Cold flow: collecting sends the request, cancelling the collector aborts it. Errors are [OracleException]. */
 interface Oracle {
     fun ask(request: OracleRequest): Flow<OracleEvent>
+
+    /** A question is probably coming (they are writing): open the connection now, so the request doesn't wait for it. */
+    fun warmUp() = Unit
 }
 
 interface PageSnapshotter {

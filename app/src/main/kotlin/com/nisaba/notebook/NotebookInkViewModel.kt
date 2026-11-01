@@ -36,17 +36,18 @@ fun NotebookViewModel.onPenEvent(e: PenEvent) {
                 tool.erases -> onPenEvent(PenEvent.EraseDone(List(e.points.size) { PagePoint(e.points.xs[it], e.points.ys[it]) }))
                 tool == PenTool.Lasso -> {
                     onLasso(points); session?.onPenAborted()
-                    effectSink.tryEmit(NotebookEffect.Repaint) // a pen that draws its own live ink drew the loop
+                    effectSink.tryEmit(NotebookEffect.ClearLoop)
                 }
-                tool == PenTool.Shape -> ownScope.launch { commitShape(page, points) }
-                else -> ownScope.launch { commitStroke(page, points) }
+                tool == PenTool.Shape -> { val w = penWidth(); ownScope.launch { commitShape(page, points, w) } }
+                else -> { val w = penWidth(); ownScope.launch { commitStroke(page, points, w) } }
             }
         }
         is PenEvent.EraseDone -> {
             val page = currentPage()?.id ?: return
             val path = e.path.map { affine.toPage(it.x, it.y) }
             val mode = if (mutableState.value.tool == PenTool.AreaEraser) EraseMode.Area else EraseMode.Stroke
-            ownScope.launch { erase(page, mode, path); session?.onErased(edit?.ink?.strokes.orEmpty()); session?.onPenAborted() }
+            val radius = eraserRadius / penScale // as wide on screen at any zoom
+            ownScope.launch { erase(page, mode, path, radius); session?.onErased(edit?.ink?.strokes.orEmpty()); session?.onPenAborted() }
         }
     }
 }
@@ -87,7 +88,7 @@ internal suspend fun NotebookViewModel.editOpenPage(pageId: PageId, change: susp
     inkEdit.editOpen(pageId, change).also { if (it) publish() }
 
 /** A shape-tool stroke: a drag becomes the picked shape; in Auto a rough shape is cleaned up, anything else kept. */
-internal suspend fun NotebookViewModel.commitShape(pageId: PageId, points: InkPoints) {
+internal suspend fun NotebookViewModel.commitShape(pageId: PageId, points: InkPoints, width: Float = penWidth()) {
     if (points.size == 0) return
     val kind = mutableState.value.shape
     val clean = if (kind == ShapeKind.Auto) {
@@ -95,21 +96,24 @@ internal suspend fun NotebookViewModel.commitShape(pageId: PageId, points: InkPo
     } else {
         shapeStroke(kind, PagePoint(points.xs.first(), points.ys.first()), PagePoint(points.xs.last(), points.ys.last()))
     }
-    commitStroke(pageId, clean ?: points)
+    commitStroke(pageId, clean ?: points, width)
     if (clean != null) effectSink.emit(NotebookEffect.Repaint) // the freehand live ink gives way to the clean shape
 }
 
-internal suspend fun NotebookViewModel.commitStroke(pageId: PageId, points: InkPoints) {
+/** The pen's thickness in page units now: on a zoomed canvas, what looks like the picked size on screen. */
+internal fun NotebookViewModel.penWidth() = mutableState.value.penSize.width / penScale
+
+internal suspend fun NotebookViewModel.commitStroke(pageId: PageId, points: InkPoints, width: Float = penWidth()) {
     val s = mutableState.value
-    val stroke = Stroke(StrokeId(deps.idGen.next()), points, s.penSize.width, InkColor(s.penInk), StrokeOrigin.User)
+    val stroke = Stroke(StrokeId(deps.idGen.next()), points, width, InkColor(s.penInk), StrokeOrigin.User)
     editAnyPage(pageId) { deps.ink.commit(it, stroke) }
     if (currentPage()?.id == pageId) session?.onPenUp(stroke.id, stroke.bounds, pageId)
     deps.changes.touch(deps.notebookId)
     hideToolbarLater()
 }
 
-internal suspend fun NotebookViewModel.erase(pageId: PageId, mode: EraseMode, path: List<PagePoint>) {
-    if (editOpenPage(pageId) { deps.ink.erase(it, mode, path, eraserRadius) }) effectSink.emit(NotebookEffect.Refresh(full = false))
+internal suspend fun NotebookViewModel.erase(pageId: PageId, mode: EraseMode, path: List<PagePoint>, radius: Float = eraserRadius) {
+    if (editOpenPage(pageId) { deps.ink.erase(it, mode, path, radius) }) effectSink.emit(NotebookEffect.Refresh(full = false))
 }
 
 internal fun NotebookViewModel.toPagePoints(v: InkPoints): InkPoints {

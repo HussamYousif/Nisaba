@@ -5,6 +5,7 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- reminders the notebook was asked for, when there is no calendar app (a Boox has none) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <application
         android:name=".app.NisabaApp"
         android:allowBackup="false"
@@ -38,5 +39,11 @@
             </intent-filter>
         </activity>
         <receiver android:name="com.nisaba.device.ReminderAlarmReceiver" android:exported="false" />
+        <receiver android:name="com.nisaba.device.ReminderBootReceiver" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

@@ -187,7 +187,7 @@ class AppGraph(private val app: Application) {
         com.nisaba.domain.notebook.PinNotebookUseCase(notebooks), com.nisaba.domain.notebook.TrashNotebookUseCase(notebooks, clock),
         com.nisaba.domain.notebook.RestoreNotebookUseCase(notebooks),
         com.nisaba.domain.notebook.EmptyTrashUseCase(notebooks, DeleteNotebookUseCase(notebooks, inkStore, documents), clock),
-        com.nisaba.domain.notebook.ListTrashUseCase(notebooks),
+        com.nisaba.domain.notebook.ListTrashUseCase(notebooks), bookMap = books::get,
     )
 
     /** Whether there is a network at all (a question that failed offline is asked again when it comes back). */
@@ -228,7 +228,7 @@ class AppGraph(private val app: Application) {
                     setListening = SetListeningUseCase(notebooks), idGen = idGen,
                     settings = settings.observe(), sessions = sessionFactory(id), hands = ::hand,
                     memory = NotebookMemory(
-                        { settings.update { it.copy(hintSeen = true) } }, prefs::loadView, prefs::saveView,
+                        { settings.update { it.copy(hintSeen = true) } }, prefs::loadView, prefs::loadZoom, prefs::saveView,
                         { ink, size -> settings.update { it.copy(penInk = ink, penSize = size) } },
                         prefs::lastPage, prefs::saveLastPage, prefs::loadPending, prefs::savePending,
                         prefs::lastDaily, prefs::saveLastDaily,
@@ -238,6 +238,7 @@ class AppGraph(private val app: Application) {
                         lastExchangeMillis = { exchanges.listByNotebook(id).maxOfOrNull { it.createdAtMillis } },
                         thumbnail = thumbnails::of, export = { asPdf, uri -> files.export(id, asPdf, uri) },
                         books = com.nisaba.notebook.NotebookBooks(books::observe, bookReader::read, bookReader::failure),
+                        pickInLoop = { s, l -> withContext(Dispatchers.Default) { com.nisaba.domain.ink.strokesInLoop(s, l) } },
                     ),
                     changes = com.nisaba.notebook.NotebookChanges(
                         SetPersonaUseCase(notebooks), { touchNotebook(it) },

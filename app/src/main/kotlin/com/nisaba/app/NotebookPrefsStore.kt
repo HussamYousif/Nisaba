@@ -22,10 +22,15 @@ class NotebookPrefsStore(context: Context) {
 
     fun saveLastDaily(nb: NotebookId, day: String) = dailyPrefs.edit().putString(nb.value, day).apply()
 
-    fun loadView(page: PageId): PagePoint? =
-        viewPrefs.getString(page.value, null)?.split(',')?.let { if (it.size == 2) PagePoint(it[0].toFloat(), it[1].toFloat()) else null }
+    /** "x,y" or "x,y,zoom": where an endless canvas's view was left. */
+    private fun view(page: PageId): List<Float>? =
+        viewPrefs.getString(page.value, null)?.split(',')?.mapNotNull { it.toFloatOrNull() }?.takeIf { it.size >= 2 }
 
-    fun saveView(page: PageId, at: PagePoint) = viewPrefs.edit().putString(page.value, "${at.x},${at.y}").apply()
+    fun loadView(page: PageId): PagePoint? = view(page)?.let { PagePoint(it[0], it[1]) }
+
+    fun loadZoom(page: PageId): Float = view(page)?.getOrNull(2)?.takeIf { it > 0f } ?: 1f
+
+    fun saveView(page: PageId, at: PagePoint, zoom: Float) = viewPrefs.edit().putString(page.value, "${at.x},${at.y},$zoom").apply()
 
     fun lastPage(nb: NotebookId): PageId? = lastPagePrefs.getString(nb.value, null)?.let(::PageId)
 

@@ -14,6 +14,12 @@ class MathParserTest {
         assertEquals(sym("x"), parseMath("x"))
     }
 
+    @Test fun floorAndCeilingAreSymbolsNotLiteralCommands() { // a quorum's floor(n/2) + 1 was written as the raw command
+        val quorum = row(sym("lfloor"), sym("n"), sym("/"), sym("2"), sym("rfloor"), sym("+"), sym("1"))
+        assertEquals(quorum, parseMath("\\lfloor n/2 \\rfloor + 1"))
+        for (s in listOf("lfloor", "rfloor", "lceil", "rceil")) assertEquals(sym(s), parseMath("\\$s"))
+    }
+
     @Test fun scriptsAttachToTheAtomBeforeThem() {
         assertEquals(MathNode.Sup(sym("x"), sym("2")), parseMath("x^2"))
         assertEquals(MathNode.Sub(sym("a"), sym("1")), parseMath("a_1"))

@@ -70,9 +70,9 @@ fun PersonaPickerComponent(selected: String, onSelect: (String) -> Unit, modifie
         val picked = voices.of(selected)
         VoiceSampleComponent(picked.sample, inkOf(picked, c.lapis))
         if (own != null && PersonaRegistry.isOwn(selected) && voices.own.any { it.id == selected }) {
-            // its notebooks go back to The sassy book: a second tap, so a stray one never does it
+            // its notebooks go back to Grimoire Noir: a second tap, so a stray one never does it
             com.nisaba.ui.theme.NisabaConfirmButton(
-                "Forget this voice", "Forget it? Its notebooks get The sassy book",
+                "Forget this voice", "Forget it? Its notebooks get Grimoire Noir",
                 { own.forget(selected); onSelect(PersonaRegistry.DEFAULT_ID) },
             )
         }

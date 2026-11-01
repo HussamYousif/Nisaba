@@ -9,7 +9,6 @@ import com.nisaba.domain.ink.Stroke
 import com.nisaba.domain.ink.StrokeOrigin
 import com.nisaba.domain.ink.loopBounds
 import com.nisaba.domain.ink.movedBy
-import com.nisaba.domain.ink.strokesInLoop
 import com.nisaba.domain.ink.utteranceBounds
 import com.nisaba.domain.shared.PagePoint
 import com.nisaba.domain.shared.PageRect
@@ -37,9 +36,14 @@ internal fun NotebookViewModel.onLasso(points: InkPoints) {
         return
     }
     val loop = List(points.size) { PagePoint(points.xs[it], points.ys[it]) }
-    val picked = strokesInLoop(edit?.ink?.strokes.orEmpty(), loop)
-    val bounds = utteranceBounds(picked) ?: loopBounds(loop).takeIf { it.width >= MIN_LOOP && it.height >= MIN_LOOP }
-    mutableState.update { it.copy(selection = bounds?.let { b -> InkSelection(picked.mapTo(HashSet()) { s -> s.id }, b) }) }
+    val strokes = edit?.ink?.strokes.orEmpty()
+    val page = currentPage()?.id
+    ownScope.launch {
+        val picked = deps.sources.pickInLoop(strokes, loop)
+        if (currentPage()?.id != page) return@launch // turned away meanwhile
+        val bounds = utteranceBounds(picked) ?: loopBounds(loop).takeIf { it.width >= MIN_LOOP && it.height >= MIN_LOOP }
+        mutableState.update { it.copy(selection = bounds?.let { b -> InkSelection(picked.mapTo(HashSet()) { s -> s.id }, b) }) }
+    }
 }
 
 fun NotebookViewModel.clearSelection() = mutableState.update { it.copy(selection = null) }

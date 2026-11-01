@@ -6,6 +6,7 @@ import com.nisaba.domain.settings.PenSize
 import com.nisaba.domain.shared.PagePoint
 import com.nisaba.domain.shared.PageRect
 import com.nisaba.domain.shared.PageSize
+import com.nisaba.domain.shared.union
 import com.nisaba.notebook.NotebookViewModel.Companion.PAGE_GRID_SIZE
 import com.nisaba.notebook.NotebookViewModel.Companion.RESHOW_GUARD_MILLIS
 import kotlinx.coroutines.delay
@@ -41,6 +42,12 @@ fun NotebookViewModel.setVoice(personaId: String, style: com.nisaba.domain.noteb
     ownScope.launch { set(deps.notebookId, personaId); deps.changes.setStyle(deps.notebookId, style) }
 }
 
+/** Answering habits changed from the bar (hold the eye): they apply from the next answer. */
+fun NotebookViewModel.setStyle(style: com.nisaba.domain.notebook.AnswerStyle) {
+    ownScope.launch { deps.changes.setStyle(deps.notebookId, style) }
+}
+fun NotebookViewModel.openHabits() = openPanel(ToolPanel.Habits)
+
 fun NotebookViewModel.showProgress() = mutableState.update { it.copy(progressOpen = true) }
 fun NotebookViewModel.closeProgress() = mutableState.update { it.copy(progressOpen = false) }
 
@@ -50,11 +57,33 @@ fun NotebookViewModel.closeOverview() = mutableState.update { it.copy(overview =
 /** What the view shows now (page space), for the overview's outline. */
 fun NotebookViewModel.visibleArea(): PageRect {
     val o = viewOrigin ?: PagePoint(0f, 0f)
-    return PageRect(o.x, o.y, o.x + viewW, o.y + viewH)
+    return PageRect(o.x, o.y, o.x + viewW / viewZoom, o.y + viewH / viewZoom)
 }
 
 /** Centres the endless canvas on [p] (a spot picked in the overview). */
-fun NotebookViewModel.jumpTo(p: PagePoint) = goTo(PagePoint(p.x - viewW / 2f, p.y - viewH / 2f))
+fun NotebookViewModel.jumpTo(p: PagePoint) = goTo(PagePoint(p.x - viewW / (2f * viewZoom), p.y - viewH / (2f * viewZoom)))
+
+/** The canvas one zoom level closer ([dir] > 0) or further; 0 = back to 100 %. */
+fun NotebookViewModel.zoom(dir: Int) {
+    usedToolbar()
+    val z = if (dir == 0) 1f else com.nisaba.canvas.stepZoom(viewZoom, dir)
+    if (z == viewZoom) return
+    ownScope.launch { effectSink.emit(NotebookEffect.Zoom(z)); effectSink.emit(NotebookEffect.Refresh(full = false)) }
+}
+
+/** A pinch zoomed the canvas: one clean pass clears what the steps left behind. */
+fun NotebookViewModel.onZoomed() { ownScope.launch { effectSink.emit(NotebookEffect.Refresh(full = false)) } }
+
+/** Zooms out until everything written on the canvas is in view. */
+fun NotebookViewModel.seeEverything() {
+    val all = edit?.ink?.strokes.orEmpty().map { it.bounds }.reduceOrNull { a, b -> a.union(b) } ?: return goHome()
+    closeOverview()
+    val pad = SEE_ALL_PAD
+    val area = PageRect(all.left - pad, all.top - pad, all.right + pad, all.bottom + pad)
+    ownScope.launch { effectSink.emit(NotebookEffect.ShowArea(area)); effectSink.emit(NotebookEffect.Refresh(full = true)) }
+}
+
+private const val SEE_ALL_PAD = 80f
 
 /** Back to where the canvas starts. */
 fun NotebookViewModel.goHome() = goTo(PagePoint(PageSize.ENDLESS_ORIGIN, PageSize.ENDLESS_ORIGIN))

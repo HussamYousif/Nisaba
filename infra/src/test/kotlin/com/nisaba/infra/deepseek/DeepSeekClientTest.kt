@@ -58,6 +58,15 @@ class DeepSeekClientTest {
     private fun sse(vararg data: String) = data.joinToString("") { "data: $it\n\n" }
     private fun chunk(text: String) = """{"choices":[{"delta":{"content":${JsonPrimitive(text)}}}]}"""
 
+    @Test fun warmingUpOpensTheConnectionAtMostOnceAMinute() {
+        server.enqueue(MockResponse().setResponseCode(404))
+        val c = client()
+        c.warmUp(); c.warmUp()
+        val head = server.takeRequest(5, java.util.concurrent.TimeUnit.SECONDS)
+        assertEquals("HEAD", head?.method)
+        assertEquals(null, server.takeRequest(300, java.util.concurrent.TimeUnit.MILLISECONDS))
+    }
+
     @Test fun aReplyStoppedByTheTokenLimitSaysSo() = runBlocking {
         val body = sse(
             chunk("<answer>"), """{"choices":[{"delta":{"content":"Os"},"finish_reason":"length"}]}""",

@@ -19,7 +19,8 @@ import java.time.ZoneId
  * Nisaba's own reminders, for a device with no calendar app (a Boox has none): an alarm wakes [ReminderAlarmReceiver]
  * at the time, which posts a notification with the words. A Boox refuses wake-up alarms to apps it doesn't list, so a
  * plain alarm is set too (it fires while the device is awake), and every reminder is also kept until posted: one that
- * is due when Nisaba next comes to the front is posted then ([catchUp]). Lost on a reboot only if never opened again.
+ * is due when Nisaba next comes to the front is posted then ([catchUp]). A reboot clears alarms: they are set again
+ * when the device has started ([rearm]).
  */
 object ReminderDevice {
     private const val CHANNEL = "reminders"
@@ -38,15 +39,29 @@ object ReminderDevice {
         if (millis <= System.currentTimeMillis()) return false
         val key = r.at + "|" + r.text
         prefs(context).edit().putLong(key, millis).apply()
+        arm(context, key, millis)
+        return true
+    }
+
+    /** After a reboot (or an update): every kept reminder's alarms again; one whose time passed meanwhile is posted. */
+    fun rearm(context: Context) {
+        val now = System.currentTimeMillis()
+        for ((key, at) in prefs(context).all) {
+            if (at !is Long) continue
+            if (at <= now) post(context, key.substringAfter('|'), key) else arm(context, key, at)
+        }
+    }
+
+    private fun arm(context: Context, key: String, millis: Long) {
         val alarms = context.getSystemService(AlarmManager::class.java)
         for (type in listOf(AlarmManager.RTC_WAKEUP, AlarmManager.RTC)) {
-            val intent = Intent(context, ReminderAlarmReceiver::class.java).putExtra(EXTRA_TEXT, r.text).putExtra(EXTRA_KEY, key)
+            val intent = Intent(context, ReminderAlarmReceiver::class.java)
+                .putExtra(EXTRA_TEXT, key.substringAfter('|')).putExtra(EXTRA_KEY, key)
             val pending = PendingIntent.getBroadcast(
                 context, key.hashCode() * 2 + type, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             )
             runCatching { alarms.setAndAllowWhileIdle(type, millis, pending) }
         }
-        return true
     }
 
     /** Posts every kept reminder that is due (Nisaba came to the front; an alarm may have been refused). */
@@ -74,6 +89,15 @@ object ReminderDevice {
     }
 
     private fun prefs(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+}
+
+/** The device started (or Nisaba was updated): alarms are gone, so the kept reminders set theirs again. */
+class ReminderBootReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action == Intent.ACTION_BOOT_COMPLETED || intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) {
+            ReminderDevice.rearm(context)
+        }
+    }
 }
 
 /** The alarm for a reminder went off: post it. */

@@ -135,7 +135,7 @@ class OwnVoiceTest {
     @Test fun failuresOpenInTheVoice() {
         val offline = DomainError.Network(NetworkKind.Offline)
         assertEquals("The ink wouldn't flow: no connection", failureMessage(offline))
-        assertEquals("Bah. The ink wouldn't flow: no connection", failureMessage(offline, PersonaRegistry.default.oops))
+        assertEquals("Tch. The ink wouldn't flow: no connection", failureMessage(offline, PersonaRegistry.default.oops))
         assertEquals("The ink wouldn't flow: no connection", failureMessage(offline, " "))
     }
 }

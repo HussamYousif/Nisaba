@@ -53,6 +53,8 @@ data class NotebookUiState(
     /** An endless canvas: no pages, the view pans. [viewOrigin] = where the view starts (page space), when remembered. */
     val endless: Boolean = false,
     val viewOrigin: PagePoint? = null,
+    /** How far the endless canvas is zoomed (screen px per page unit; 1 = as written on a page). */
+    val zoom: Float = 1f,
     /** A finger is held on an answer: what can be done with it. */
     val answerMenu: AnswerMenu? = null,
     /** The endless canvas zoomed out to fit (until a spot is picked). */
@@ -72,6 +74,8 @@ data class NotebookUiState(
     val pageGridScreen: Int = 0,
     /** There is writing Nisaba has not been asked about yet (Ask now would send it). */
     val askable: Boolean = false,
+    /** Listening is off and writing waits for Ask now: a chip says so (the closed eye alone went unnoticed). */
+    val held: Boolean = false,
     /** Nisaba is thinking about or writing an answer (the corner star says so while the bar is hidden). */
     val working: Boolean = false,
     /** The voice Nisaba answers in here; [voiceOpen] = its picker is up. */
@@ -107,7 +111,8 @@ data class NotebookUiState(
         pickerOpen || overview || answerMenu != null || progressOpen || renaming || voiceOpen || paperOpen || bookOpen
 }
 
-enum class ToolPanel { Pen, Shapes }
+/** A small panel over the page: the pen's inks and sizes, the shapes, or how Nisaba answers here (hold the eye). */
+enum class ToolPanel { Pen, Shapes, Habits }
 
 /** What the lasso picked: [ids] inside [bounds] (page units); no ids = a loop around printed text. [colours] = inks shown. */
 data class InkSelection(
@@ -132,8 +137,17 @@ sealed interface NotebookEffect {
     /** Show the endless canvas from [origin] (page space, the view's top-left). */
     data class PanTo(val origin: PagePoint) : NotebookEffect
 
+    /** Zoom the endless canvas to [zoom] around the middle of the view. */
+    data class Zoom(val zoom: Float) : NotebookEffect
+
+    /** Show [area] of the endless canvas whole, zoomed out as far as it needs. */
+    data class ShowArea(val area: com.nisaba.domain.shared.PageRect) : NotebookEffect
+
     /** Repaint the page from its committed ink (live ink drawn under the pen was replaced, e.g. by a clean shape). */
     data object Repaint : NotebookEffect
+
+    /** The lasso's loop is done: wiped if the app drew it as live ink (the Onyx pen draws none with the lasso). */
+    data object ClearLoop : NotebookEffect
 
     /** Put [text] on the clipboard. */
     data class Copy(val text: String) : NotebookEffect

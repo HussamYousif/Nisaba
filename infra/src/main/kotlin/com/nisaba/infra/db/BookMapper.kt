@@ -7,15 +7,20 @@ import com.nisaba.domain.book.Concept
 import com.nisaba.domain.shared.PageId
 
 fun BookMap.toDto() = BookMapDto(
-    title, thesis, concepts.map { ConceptDto(it.title, it.summary, it.firstPage, it.lastPage, it.pageId?.value) },
+    title, thesis, concepts.map { ConceptDto(it.title, it.summary, it.firstPage, it.lastPage, it.pageId?.value, it.part) },
     overviewPageId?.value, synthesisPageId?.value, reading?.parts,
-    reading?.ideas.orEmpty().mapValues { (_, ideas) -> ideas.map { BookIdeaDto(it.title, it.summary, it.firstPage, it.lastPage) } },
+    reading?.ideas.orEmpty().mapValues { (_, ideas) ->
+        ideas.map { BookIdeaDto(it.title, it.summary, it.firstPage, it.lastPage, it.chapter) }
+    },
 )
 
 fun BookMapDto.toModel() = BookMap(
-    title, thesis, concepts.map { Concept(it.title, it.summary, it.firstPage, it.lastPage, it.pageId?.let(::PageId)) },
+    title, thesis, concepts.map { Concept(it.title, it.summary, it.firstPage, it.lastPage, it.pageId?.let(::PageId), it.part) },
     overviewPageId?.let(::PageId), synthesisPageId?.let(::PageId),
     readingParts?.let { parts ->
-        BookReading(parts, readingIdeas.mapValues { (_, ideas) -> ideas.map { BookIdea(it.title, it.summary, it.firstPage, it.lastPage) } })
+        BookReading(
+            parts,
+            readingIdeas.mapValues { (_, ideas) -> ideas.map { BookIdea(it.title, it.summary, it.firstPage, it.lastPage, it.chapter) } },
+        )
     },
 )

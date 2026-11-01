@@ -46,10 +46,11 @@ internal fun NotebookViewModel.writeOnFreshPage(purpose: Purpose) {
 
 /**
  * Settings → A page each morning: the first time a notebook is opened on a new day (and it was written in on an
- * earlier one), Nisaba starts the day's page at the end. Not in lesson notebooks or on an endless canvas.
+ * earlier one), Nisaba starts the day's page at the end. Not in lessons, book walks or on an endless canvas.
  */
 internal suspend fun NotebookViewModel.maybeDailyPage(nb: NotebookWithPages) {
-    if (!settings.dailyPage || nb.notebook.teachGoal != null || deps.sessions == null) return
+    val taught = nb.notebook.teachGoal != null || nb.notebook.book // a lesson or a book walk keeps its own pages
+    if (!settings.dailyPage || taught || deps.sessions == null) return
     if (nb.pages.lastOrNull()?.size?.isEndless != false) return
     val today = LocalDate.now().toString()
     if (deps.memory.lastDaily(deps.notebookId) == today) return

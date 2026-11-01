@@ -17,8 +17,9 @@ data class CoverItem(
     val pinned: Boolean = false,
     /** "edited 2 h ago" (for the trash: "deleted 3 days ago"). */
     val edited: String = "",
-    /** A book walk. */
+    /** A book walk, and how far it has got ("3 of 9"). */
     val book: Boolean = false,
+    val progress: String = "",
 )
 
 /** What "New" makes: the first thing it asks. */

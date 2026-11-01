@@ -16,7 +16,14 @@ data class BookMapDto(
 )
 
 @Serializable
-data class ConceptDto(val title: String, val summary: String = "", val firstPage: Int, val lastPage: Int, val pageId: String? = null)
+data class ConceptDto(
+    val title: String,
+    val summary: String = "",
+    val firstPage: Int,
+    val lastPage: Int,
+    val pageId: String? = null,
+    val part: String = "",
+)
 
 @Serializable
-data class BookIdeaDto(val title: String, val summary: String = "", val firstPage: Int, val lastPage: Int)
+data class BookIdeaDto(val title: String, val summary: String = "", val firstPage: Int, val lastPage: Int, val chapter: Boolean = false)

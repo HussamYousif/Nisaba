@@ -3,7 +3,7 @@ package com.nisaba.domain.conversation
 import com.nisaba.domain.persona.Persona
 
 /** Bump when [systemPrompt] or a voice changes; stored on every exchange so answers can be compared across versions. */
-const val PROMPT_VERSION = 17
+const val PROMPT_VERSION = 19
 
 private const val WORDS = "{words}"
 
@@ -39,7 +39,7 @@ When you answer:
 - The document text (if any) and earlier exchanges are context; cite pages as (p. 12) when you use the document.
 - If the writing is illegible, say so in one line and ask them to rewrite it.
 - A circle, underline, bracket or arrow in the new writing points at what they mean (printed text, older notes, one of your answers); a "?" beside it asks what it means or how it works. Answer about what it points at.
-- Use only this markup inside <answer>: paragraphs; # or ## headings; "- " and "1. " lists; **bold**; inline math like ${'$'}a^2+b^2${'$'} and display math between ${'$'}${'$'} lines (LaTeX subset: \frac \sqrt ^ _ \sum \int \lim \infty \pm \cdot \times \le \ge \ne \approx \to, Greek letters, \left( \right), \begin{pmatrix}); pipe tables (at most 6 columns, 12 rows, short cells, with a |---| separator row); and diagrams.
+- Use only this markup inside <answer>: paragraphs; # or ## headings; "- " and "1. " lists; **bold**; inline math like ${'$'}a^2+b^2${'$'} and display math between ${'$'}${'$'} lines (LaTeX subset: \frac \sqrt ^ _ \sum \int \lim \infty \pm \cdot \times \le \ge \ne \approx \to \lfloor \rfloor \lceil \rceil, Greek letters, \left( \right), \begin{pmatrix}); pipe tables (at most 6 columns, 12 rows, short cells, with a |---| separator row); and diagrams.
 - A diagram is a fenced block starting with ```diagram containing one <svg viewBox="0 0 1000 1000"> that uses only path (M L Q C Z), line, polyline, circle, ellipse and rect with stroke only, no text, at most 40 elements. After </svg>, list labels one per line as: Label @ x,y (coordinates in the 1000x1000 space). Draw big shapes first, then details, then labels.
 - Code only when they ask for code or it is clearly the best answer: a fenced block starting with ```language, always naming the language (```python, ```haskell, ```clojure, ```csharp, ```postgresql, …), at most 15 lines of at most 48 characters, indentation with spaces, no comments unless they help. It is handwritten too, so keep it minimal.
 - No links, no emoji, no *italics* or other asterisks except **bold**.
@@ -79,12 +79,14 @@ This notebook is a lesson: you are this person's tutor for the document below (s
 
 /**
  * The last line of every request that speaks in the voice: rules near the end of a long context are the ones the model
- * keeps, and after a change of voice the history is full of the old one. Lessons set their own length.
+ * keeps, and after a change of voice the history is full of the old one. Lessons set their own length. A request with
+ * no new writing ([transcribes] false: a quiz, a page of a book walk) ends with an empty `<heard>`, or the model fills it
+ * with the instruction.
  */
-fun voiceReminder(persona: Persona, lesson: Boolean, words: Int = persona.words): String = when {
+fun voiceReminder(persona: Persona, lesson: Boolean, words: Int = persona.words, transcribes: Boolean = true): String = when {
     lesson -> "Stay in your voice (${persona.name}), in the language they wrote in."
     else -> "Stay in your voice (${persona.name}), in the language they wrote in, at most $words words unless asked for more."
-} + " Always end with <heard>…</heard>."
+} + if (transcribes) " Always end with <heard>…</heard>." else " Always end with <heard></heard>, empty: nothing new was written."
 
 
 /** Copying notes is not the place for a playful voice: low temperature, whatever the notebook's voice. */

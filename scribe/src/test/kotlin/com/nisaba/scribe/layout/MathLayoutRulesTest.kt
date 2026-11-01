@@ -87,4 +87,8 @@ class MathLayoutRulesTest {
         assertTrue(box("\\ln W").width > box("\\text{ln}W").width + 0.1f) // "ln W", not "lnW"
         assertEquals(box("\\text{sin}(x)").width, box("\\sin(x)").width, 0.001f) // "sin(x)"
     }
+
+    @Test fun floorAndCeilingHavePenPaths() {
+        for (s in listOf("lfloor", "rfloor", "lceil", "rceil")) kotlin.test.assertNotNull(symbolPaths(s), s)
+    }
 }

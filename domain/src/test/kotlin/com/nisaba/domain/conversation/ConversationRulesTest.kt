@@ -235,6 +235,14 @@ class ConversationRulesTest {
         val muted = run(ConvSettings(3500, listening = false)).send(ConvEvent.Begin(utt))
         assertEquals(ConvState.Held(utt), muted.state)
         assertEquals(1, muted.send(ConvEvent.AskNow).effect<ConvEffect.SendRequest>().size)
+        val back = utt.copy(purpose = Purpose.Resume) // coming back to a muted lesson: it waits too
+        assertEquals(ConvState.Held(back), run(ConvSettings(3500, listening = false)).send(ConvEvent.Begin(back)).state)
+    }
+
+    @Test fun aLessonOpensEvenWhenMuted() {
+        val utt = Utterance(page, emptySet(), PageRect(120f, 160f, 120f, 160f), Purpose.Opening)
+        val muted = run(ConvSettings(3500, listening = false)).send(ConvEvent.Begin(utt))
+        assertEquals(utt, muted.effect<ConvEffect.SendRequest>().single().utt)
     }
 
     @Test fun askingAgainGoesEvenWhenMutedAndAfterAStoppedAnswer() {

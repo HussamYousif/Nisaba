@@ -62,16 +62,19 @@ internal fun ConversationSession.maybeFinalize(p: PendingExchange) {
     }
 }
 
+/** A lesson notebook, or a book walk: Nisaba judges their answers and records each topic (concept) as learned or shaky. */
+private val ConversationSession.tutors: Boolean get() = deps.context.teachGoal != null || deps.context.book != null
+
 internal suspend fun ConversationSession.lessonProgress(): String? {
     val store = deps.lessons ?: return null
-    if (deps.context.teachGoal == null) return null
+    if (!tutors) return null
     return formatLessonProgress(store.topics(deps.notebookId))
 }
 
-/** Records the reply's `<topic>` tags in a lesson notebook; like memory, a hiccup never disturbs the page. */
+/** Records the reply's `<topic>` tags in a lesson notebook or book walk; like memory, a hiccup never disturbs the page. */
 internal suspend fun ConversationSession.recordTopics(exchange: Exchange) {
     val store = deps.lessons ?: return
-    if (deps.context.teachGoal == null) return
+    if (!tutors) return
     val topics = parseTopics(exchange.answerMarkup, deps.clock.nowMillis()).takeIf { it.isNotEmpty() } ?: return
     try {
         val before = store.topics(deps.notebookId).associateBy { it.topic.lowercase() }

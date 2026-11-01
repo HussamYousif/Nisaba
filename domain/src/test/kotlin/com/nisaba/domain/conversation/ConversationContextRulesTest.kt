@@ -79,7 +79,7 @@ class ConversationContextRulesTest {
         val r = buildRequest(ContextInput(emptyList(), null, emptyList(), snap, Settings(), persona = zagreus))
         assertTrue(r.system.startsWith(zagreus.voice))
         assertTrue(r.system.contains("at most ${zagreus.words} words"))
-        assertTrue(!r.system.contains("{words}") && !r.system.contains("Grimoire Weiss"))
+        assertTrue(!r.system.contains("{words}") && !r.system.contains("Grimoire Noir"))
         assertEquals(zagreus.temperature, r.options.temperature)
         assertTrue(r.instruction.endsWith(voiceReminder(zagreus, lesson = false)))
         // a tidy copy is the person's notes, not a performance: no voice line, a cool temperature
@@ -153,6 +153,24 @@ class ConversationContextRulesTest {
         assertEquals(140, lastCitedPage(taught))
         val r = buildRequest(ContextInput(pages, null, taught, snap, Settings(), teachGoal = ""))
         assertTrue(r.documentContext!!.contains("[p.141]") && !r.documentContext!!.contains("[p.1] "))
+    }
+
+    @Test fun aBookConceptReadsItsOwnPagesAndWritesNoTranscription() {
+        val pages = List(600) { "page-$it " + "x".repeat(2500) }
+        val concept = com.nisaba.domain.book.Concept("Replication lag", "", 161, 170)
+        val map = com.nisaba.domain.book.BookMap("DDIA", concepts = listOf(concept, concept.copy("Quorums", "", 171, 180)))
+        val walk = Purpose.Book(com.nisaba.domain.book.BookStep.Concept(0))
+        val book = com.nisaba.domain.book.BookPlace(map, null)
+        val textOnly = PageSnapshot(ByteArray(0), null)
+        val r = buildRequest(ContextInput(pages, null, emptyList(), textOnly, Settings(), purpose = walk, book = book))
+        val doc = r.documentContext!!
+        assertTrue("[p.159]" in doc && "[p.172]" in doc, "its pages, give or take two")
+        assertTrue("[p.158]" !in doc && "[p.173]" !in doc, "nothing more: ${doc.length} characters")
+        assertTrue(r.instruction.endsWith("Always end with <heard></heard>, empty: nothing new was written."), r.instruction)
+        // a question written on that concept's page reads the same pages (the cached prefix holds) and is transcribed
+        val asked = buildRequest(ContextInput(pages, null, emptyList(), snap, Settings(), book = book.copy(concept = 0)))
+        assertEquals(doc, asked.documentContext)
+        assertTrue(asked.instruction.endsWith("Always end with <heard>…</heard>."))
     }
 
     @Test fun overBudgetHistoryIsTrimmedWellBelowItSoTheNextRequestsKeepTheirPrefix() {

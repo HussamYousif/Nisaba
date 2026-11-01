@@ -22,6 +22,15 @@ fun PageView.showSelection(bounds: com.nisaba.domain.shared.PageRect?) {
 
 private const val SELECTION_STROKE = 6f
 
+internal val MARK_PAINT = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+    color = 0xFF27407A.toInt(); textSize = 64f; typeface = android.graphics.Typeface.SERIF
+}
+
+internal val SELECTION_PAINT = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+    color = 0xFF111111.toInt(); style = android.graphics.Paint.Style.STROKE; strokeWidth = 3f
+    pathEffect = android.graphics.DashPathEffect(floatArrayOf(14f, 10f), 0f)
+}
+
 fun PageView.showResumeMark(at: PagePoint?) {
     val old = resumeMark; resumeMark = at
     old?.let { invalidate(dirtyAround(it, MARK_REACH)) }
@@ -43,8 +52,8 @@ internal fun PageView.dirtyOf(b: com.nisaba.domain.shared.PageRect, pad: Float):
 internal fun PageView.visibleStrokes(area: Rect? = null): List<com.nisaba.domain.ink.Stroke> {
     if (!endless) return strokes
     val a = area ?: Rect(0, 0, width, height)
-    val w = PageView.MAX_WIDTH
-    val l = panX + a.left - w; val t = panY + a.top - w
-    val r = panX + a.right + w; val b = panY + a.bottom + w
+    val w = PageView.MAX_WIDTH / zoom // a stroke written zoomed out is that much wider in page units
+    val l = panX + a.left / zoom - w; val t = panY + a.top / zoom - w
+    val r = panX + a.right / zoom + w; val b = panY + a.bottom / zoom + w
     return strokes.filter { s -> s.bounds.let { it.right >= l && it.left <= r && it.bottom >= t && it.top <= b } }
 }

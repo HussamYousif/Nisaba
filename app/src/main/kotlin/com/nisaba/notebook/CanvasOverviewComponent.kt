@@ -48,10 +48,18 @@ private fun fit(area: PageRect, box: Size): Fit {
 
 /**
  * The whole endless canvas at a glance: everything written, shrunk to fit, with the current view outlined. A tap
- * jumps there; Home goes back to where the canvas starts. One still picture (e-ink).
+ * jumps there (at the zoom you're at); See everything zooms out to fit it all; Home goes back to where the canvas
+ * starts. One still picture (e-ink).
  */
 @Composable
-fun CanvasOverviewComponent(state: NotebookUiState, view: PageRect, onJump: (PagePoint) -> Unit, onHome: () -> Unit, onClose: () -> Unit) {
+fun CanvasOverviewComponent(
+    state: NotebookUiState,
+    view: PageRect,
+    onJump: (PagePoint) -> Unit,
+    onSeeAll: () -> Unit,
+    onHome: () -> Unit,
+    onClose: () -> Unit,
+) {
     val c = Nisaba.colors
     val area = remember(state.strokes, view) {
         val all = state.strokes.map { it.bounds } + view
@@ -61,6 +69,7 @@ fun CanvasOverviewComponent(state: NotebookUiState, view: PageRect, onJump: (Pag
     Column(Modifier.fillMaxSize().background(c.paper).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("The whole canvas", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
+            NisabaButton("See everything", onSeeAll)
             NisabaButton("Home", onHome)
             NisabaButton("Close", onClose, filled = true)
         }

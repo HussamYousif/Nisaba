@@ -118,8 +118,14 @@ class NotebookViewModel(
         }
     }
 
-    /** Page-space top-left of the view on an endless canvas (null on paged notebooks). */
+    /** Page-space top-left of the view on an endless canvas (null on paged notebooks), and how far it is zoomed. */
     internal var viewOrigin: PagePoint? = null
+    internal var viewZoom = 1f
+
+    /** Screen px per page unit for what the pen does: on a zoomed canvas a stroke is as thick on screen as at 100 %. */
+    internal val penScale: Float get() = if (viewOrigin != null) viewZoom else 1f
+
+    internal fun canvasAffine(o: PagePoint) = Affine(viewZoom, -o.x * viewZoom, -o.y * viewZoom)
 
     internal var viewW = 0f
     internal var viewH = 0f
@@ -127,14 +133,16 @@ class NotebookViewModel(
     fun onViewSize(w: Int, h: Int) {
         viewW = w.toFloat(); viewH = h.toFloat()
         val page = currentPage() ?: return
-        affine = viewOrigin?.let { Affine(1f, -it.x, -it.y) } ?: fitTransform(page.size, w.toFloat(), h.toFloat())
+        affine = viewOrigin?.let(::canvasAffine) ?: fitTransform(page.size, w.toFloat(), h.toFloat())
     }
 
-    /** The endless canvas was panned: pen points now map through the new offset, and the spot is remembered. */
-    fun onPan(x: Float, y: Float) {
+    /** The endless canvas was panned or zoomed: pen points now map through the new view, and the spot is remembered. */
+    fun onPan(x: Float, y: Float, zoom: Float) {
         viewOrigin = PagePoint(x, y)
-        affine = Affine(1f, -x, -y)
-        currentPage()?.let { deps.memory.saveView(it.id, PagePoint(x, y)) }
+        viewZoom = zoom
+        affine = canvasAffine(PagePoint(x, y))
+        currentPage()?.let { deps.memory.saveView(it.id, PagePoint(x, y), zoom) }
+        if (mutableState.value.zoom != zoom) mutableState.update { it.copy(zoom = zoom) }
     }
 
     // ---- the endless canvas, from afar ---------------------------------------------------------------------------
@@ -196,8 +204,9 @@ class NotebookViewModel(
         deps.memory.saveLastPage(deps.notebookId, page.id)
         val start = PagePoint(PageSize.ENDLESS_ORIGIN, PageSize.ENDLESS_ORIGIN)
         viewOrigin = if (page.size.isEndless) deps.memory.loadView(page.id) ?: start else null
+        viewZoom = if (page.size.isEndless) deps.memory.loadZoom(page.id) else 1f
         // every page fits the view its own way (a PDF page, a blank one): the pen must map through this page's fit
-        affine = viewOrigin?.let { Affine(1f, -it.x, -it.y) } ?: if (viewW > 0f) fitTransform(page.size, viewW, viewH) else affine
+        affine = viewOrigin?.let(::canvasAffine) ?: if (viewW > 0f) fitTransform(page.size, viewW, viewH) else affine
         val setAside = edit?.ink?.setAside == true
         mutableState.update {
             it.copy(
@@ -237,7 +246,7 @@ class NotebookViewModel(
             it.copy(
                 title = nb.notebook.name, pageIndex = pageIndex, pageCount = nb.pages.size, pageSize = page.size, pageId = page.id,
                 background = page.background, strokes = e.ink.strokes, canUndo = e.canUndo, canRedo = e.canRedo,
-                listening = nb.notebook.listening, loading = false, endless = page.size.isEndless, viewOrigin = viewOrigin,
+                listening = nb.notebook.listening, loading = false, endless = page.size.isEndless, viewOrigin = viewOrigin, zoom = viewZoom,
                 lesson = nb.notebook.teachGoal != null, personaId = nb.notebook.personaId, style = nb.notebook.style,
                 isPrivate = nb.notebook.isPrivate, pages = nb.pages, pageLabel = com.nisaba.domain.notebook.pageLabel(nb.pages, pageIndex),
                 hasDocument = nb.notebook.documentId != null, paper = nb.notebook.paper,

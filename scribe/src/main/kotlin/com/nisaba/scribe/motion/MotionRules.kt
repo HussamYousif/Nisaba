@@ -9,14 +9,24 @@ import kotlin.math.min
 
 const val SAMPLE_MS = 8
 private const val MAX_GAP_PX = 2.5f
-private const val MIN_STROKE_MS = 35
-private const val PEN_LIFT_MS = 25
-private const val MIN_GAP_MS = 15
-private const val WORD_PAUSE_MS = 60
-private const val BLOCK_PAUSE_MS = 350
-private const val DELAYED_STROKE_MS = 90
-private const val DRAW_SHARE = 0.8f
+
+/*
+ * A letter's time budget (1000 / cps) is shared out: drawing its strokes, lifting the pen between them, and the gap
+ * before the next letter. The floors are small on purpose: fixed floors of 35 ms a stroke, 25 ms a lift and 90 ms a dot
+ * once capped every speed at ~7 letters/s (a 200-word page took two minutes), whatever Slow / Natural / Swift said.
+ */
+private const val DRAW_SHARE = 0.65f
+private const val LIFT_SHARE = 0.15f
+private const val GAP_SHARE = 0.2f
+private const val MIN_STROKE_MS = 12 // about a frame: shorter would draw nothing in between
+private const val MAX_LIFT_MS = 25
+private const val MIN_GAP_MS = 4
+private const val DELAYED_SHARE = 0.6f // an i-dot or t-bar, added after the word
+private const val WORD_PAUSE_LETTERS = 1.5f // the pause between words, in letters' budgets
+private const val MIN_WORD_PAUSE_MS = 20
+private const val BLOCK_PAUSE_MS = 250
 private const val RULE_SPEED = 1.4f // page units per millisecond
+private const val RULE_PAUSE_MS = 60
 
 fun speedProfile(speed: HandSpeed) = when (speed) {
     HandSpeed.Slow -> SpeedProfile(12f, 28f, 40, 120)
@@ -81,14 +91,18 @@ fun timeWord(strokes: List<LaidStroke>, start: MotionState, profile: SpeedProfil
         val budget = 1000f / cps(profile, chars)
         val lens = group.map { length(it.xs, it.ys) }
         val total = max(lens.sum(), 1e-3f)
+        val lift = min(MAX_LIFT_MS, (budget * LIFT_SHARE / max(group.size - 1, 1)).toInt())
         group.forEachIndexed { i, s ->
             emit(s, max(MIN_STROKE_MS, (budget * DRAW_SHARE * lens[i] / total).toInt()))
-            if (i < group.lastIndex) t += PEN_LIFT_MS
+            if (i < group.lastIndex) t += lift
         }
-        t += max(MIN_GAP_MS, (budget * (1f - DRAW_SHARE)).toInt()); chars++
+        t += max(MIN_GAP_MS, (budget * GAP_SHARE).toInt()); chars++
     }
-    for (s in strokes.filter { it.delayed }) { t += PEN_LIFT_MS; emit(s, DELAYED_STROKE_MS) }
-    t += WORD_PAUSE_MS
+    val budget = 1000f / cps(profile, chars)
+    for (s in strokes.filter { it.delayed }) {
+        t += min(MAX_LIFT_MS, (budget * LIFT_SHARE).toInt()); emit(s, max(MIN_STROKE_MS, (budget * DELAYED_SHARE).toInt()))
+    }
+    t += max(MIN_WORD_PAUSE_MS, (budget * WORD_PAUSE_LETTERS).toInt())
     return out to MotionState(t, chars)
 }
 
@@ -97,7 +111,7 @@ fun timeRule(xs: FloatArray, ys: FloatArray, start: MotionState, page: Int, word
     val ps = FloatArray(xs.size) { 0.6f }
     val dur = max(120, (length(xs, ys) / RULE_SPEED).toInt())
     val stroke = TimedStroke(page, sampleStroke(xs, ys, ps, start.timeMs, dur), false, wordIndex)
-    return stroke to start.copy(timeMs = start.timeMs + dur + WORD_PAUSE_MS)
+    return stroke to start.copy(timeMs = start.timeMs + dur + RULE_PAUSE_MS)
 }
 
 fun blockPause(state: MotionState) = state.copy(timeMs = state.timeMs + BLOCK_PAUSE_MS)

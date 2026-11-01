@@ -1,5 +1,6 @@
 package com.nisaba.app
 
+import android.view.MotionEvent
 import android.os.Bundle
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
@@ -79,6 +80,27 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         incomingPdf(intent)?.let { graph.debug.incomingPdf = it; graph.debug.incoming.tryEmit(it) }
         if (BuildConfig.DEBUG) intent.getStringExtra("write")?.let { graph.debug.debugWrites.tryEmit(it) }
+        if (BuildConfig.DEBUG) intent.getStringExtra("pinch")?.toFloatOrNull()?.let(::debugPinch)
+    }
+
+    /** Debug: `--es pinch 0.5` spreads (or closes) two synthetic fingers on the page by that factor (adb can't pinch). */
+    private fun debugPinch(factor: Float) {
+        fun find(v: android.view.View): com.nisaba.canvas.PageView? = v as? com.nisaba.canvas.PageView
+            ?: (v as? android.view.ViewGroup)?.let { g -> (0 until g.childCount).firstNotNullOfOrNull { find(g.getChildAt(it)) } }
+        val page = find(window.decorView) ?: return
+        val cx = page.width / 2f; val cy = page.height / 2f; val start = 400f; val steps = 12
+        val t0 = android.os.SystemClock.uptimeMillis()
+        val props = Array(2) { i -> MotionEvent.PointerProperties().apply { id = i; toolType = MotionEvent.TOOL_TYPE_FINGER } }
+        fun event(step: Int, action: Int, count: Int): MotionEvent {
+            val half = (start + (start * factor - start) * step / steps) / 2f
+            val coords = Array(count) { i -> MotionEvent.PointerCoords().apply { x = cx + if (i == 0) -half else half; y = cy } }
+            return MotionEvent.obtain(t0, t0 + step * 60L, action, count, props, coords, 0, 0, 1f, 1f, 0, 0, 0, 0)
+        }
+        val second = 1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT
+        val events = listOf(event(0, MotionEvent.ACTION_DOWN, 1), event(0, MotionEvent.ACTION_POINTER_DOWN or second, 2)) +
+            (1..steps).map { event(it, MotionEvent.ACTION_MOVE, 2) } +
+            listOf(event(steps, MotionEvent.ACTION_POINTER_UP or second, 2), event(steps, MotionEvent.ACTION_UP, 1))
+        events.forEachIndexed { i, e -> page.postDelayed({ page.dispatchTouchEvent(e); e.recycle() }, i * 60L) }
     }
 
     override fun onResume() {

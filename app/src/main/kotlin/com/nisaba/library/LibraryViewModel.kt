@@ -8,6 +8,7 @@ import com.nisaba.domain.notebook.CreateNotebookUseCase
 import com.nisaba.domain.notebook.DeleteNotebookUseCase
 import com.nisaba.domain.notebook.ListNotebooksUseCase
 import com.nisaba.domain.notebook.RenameNotebookUseCase
+import com.nisaba.domain.notebook.AnswerMode
 import com.nisaba.domain.notebook.AnswerStyle
 import com.nisaba.domain.persona.PersonaRegistry
 import com.nisaba.domain.settings.SettingsStore
@@ -29,7 +30,16 @@ class LibraryChanges(
     val emptyTrash: com.nisaba.domain.notebook.EmptyTrashUseCase? = null,
     val listTrash: com.nisaba.domain.notebook.ListTrashUseCase? = null,
     val now: () -> Long = System::currentTimeMillis,
+    /** A book walk's map, for how far it has got ("3 of 9"). */
+    val bookMap: suspend (NotebookId) -> com.nisaba.domain.book.BookMap? = { null },
 )
+
+/** How far a book walk has got, for under its cover. */
+internal fun walkProgress(map: com.nisaba.domain.book.BookMap?): String = when {
+    map == null || !map.ready -> "being read"
+    map.synthesisPageId != null -> "walked through"
+    else -> "${map.walked} of ${map.concepts.size}"
+}
 
 /** [settings] remembers the last voice picked, so "New" starts there (null in tests that don't care). */
 class LibraryViewModel(
@@ -55,7 +65,8 @@ class LibraryViewModel(
         scope.launch {
             list().collect { items ->
                 val now = changes.now()
-                val covers = items.map { it.toCover("edited " + ago(it.updatedAtMillis, now)) }
+                val walks = items.filter { it.book }.associate { it.id to walkProgress(changes.bookMap(it.id)) }
+                val covers = items.map { it.toCover("edited " + ago(it.updatedAtMillis, now)).copy(progress = walks[it.id].orEmpty()) }
                 _state.update { s ->
                     s.copy(
                         loading = false, notebooks = covers,
@@ -112,7 +123,14 @@ class LibraryViewModel(
 
     // ---- "New": what kind → who answers → a name (or a PDF) ------------------------------------------------------
 
-    fun chooseKind(kind: NotebookKind) = _state.update { it.copy(dialog = LibraryDialog.ChooseVoice(kind, lastPersona, lastStyle)) }
+    fun chooseKind(kind: NotebookKind) = _state.update { it.copy(dialog = LibraryDialog.ChooseVoice(kind, lastPersona, startingStyle())) }
+
+    /**
+     * The habits a new notebook's picker starts at: the last ones picked, but never muted. "When I ask" carried over
+     * from one notebook made every later one (a lesson too) sit silent with nothing to say why.
+     */
+    private fun startingStyle(): AnswerStyle =
+        if (lastStyle.mode == AnswerMode.WhenAsked) lastStyle.copy(mode = AnswerMode.Everything) else lastStyle
 
     fun selectStyle(style: AnswerStyle) = _state.update { s ->
         (s.dialog as? LibraryDialog.ChooseVoice)?.let { s.copy(dialog = it.copy(style = style)) } ?: s
@@ -136,7 +154,7 @@ class LibraryViewModel(
 
     fun offerIncomingPdf(uri: String) {
         incoming = uri
-        _state.update { it.copy(dialog = LibraryDialog.ChooseVoice(NotebookKind.Pdf, lastPersona, lastStyle, handed = true)) }
+        _state.update { it.copy(dialog = LibraryDialog.ChooseVoice(NotebookKind.Pdf, lastPersona, startingStyle(), handed = true)) }
     }
 
     /**
@@ -209,7 +227,7 @@ class LibraryViewModel(
         uri: String,
         teachGoal: String? = null,
         personaId: String = lastPersona,
-        style: AnswerStyle = lastStyle,
+        style: AnswerStyle = startingStyle(),
         book: Boolean = false,
         onCreated: (NotebookId) -> Unit,
     ) {

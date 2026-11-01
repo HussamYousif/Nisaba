@@ -162,7 +162,7 @@ private fun CoverComponent(item: CoverItem, actions: LibraryActions, modifier: M
             when {
                 item.endless -> "Endless canvas"
                 item.lesson -> "Lesson · PDF"
-                item.book -> "Book walk · PDF"
+                item.book -> "Book walk · " + item.progress.ifEmpty { "PDF" }
                 else -> "${item.pageCount} page${if (item.pageCount == 1) "" else "s"}" + if (item.hasDocument) " · PDF" else ""
             } + " · " + voices.of(item.personaId).name + if (item.isPrivate) " · Private" else "",
             style = MaterialTheme.typography.labelSmall, color = c.faint, maxLines = 1, overflow = TextOverflow.Ellipsis,

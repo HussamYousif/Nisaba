@@ -31,6 +31,9 @@ class FakeOracle(
     var started = 0
     var cancelled = 0
     var completed = 0
+    var warmed = 0
+
+    override fun warmUp() { warmed++ }
 
     override fun ask(request: OracleRequest): Flow<OracleEvent> = flow {
         requests += request; started++
@@ -99,6 +102,7 @@ class FakeContextPorts(
     override var currentDocumentPage: Int? = null,
     override val teachGoal: String? = null,
     override var persona: com.nisaba.domain.persona.Persona = com.nisaba.domain.persona.PersonaRegistry.default,
+    override var book: com.nisaba.domain.book.BookMap? = null,
 ) : ConversationContextPorts {
     override suspend fun documentPages() = pages
 }

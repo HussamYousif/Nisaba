@@ -68,6 +68,17 @@ class MotionRulesTest {
         assertTrue(state.timeMs in 4_000..12_000, "took ${state.timeMs} ms")
     }
 
+    @Test fun theSpeedSettingReallyChangesThePace() { // fixed floors once held every setting to ~7 letters/s
+        fun hundred(speed: HandSpeed): Int {
+            var state = MotionState()
+            repeat(20) { state = timeWord(strokes("hello"), state, speedProfile(speed)).second }
+            return state.timeMs
+        }
+        val (slow, natural, swift) = listOf(HandSpeed.Slow, HandSpeed.Natural, HandSpeed.Swift).map(::hundred)
+        assertTrue(slow > natural * 1.3 && natural > swift * 1.2, "slow $slow, natural $natural, swift $swift ms")
+        assertTrue(natural < 8_000, "a hundred letters at the natural pace took $natural ms")
+    }
+
     @Test fun laterWordsAreWrittenFasterThanEarlyOnes() {
         val (_, a) = timeWord(strokes("hello"), MotionState(), natural)
         val (_, b) = timeWord(strokes("hello"), MotionState(0, 400), natural)
