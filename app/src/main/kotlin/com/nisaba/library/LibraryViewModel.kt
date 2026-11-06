@@ -173,16 +173,12 @@ class LibraryViewModel(
         }
     }
 
-    /** The system picker answered "New" with [uri] (null = cancelled): a PDF opens; a PDF to learn asks for the goal first. */
+    /** The system picker answered "New" with [uri] (null = cancelled): a PDF opens, or a PDF to learn becomes a book walk. */
     fun onPdfPicked(uri: String?, onCreated: (NotebookId) -> Unit) {
         val p = picking ?: return
         picking = null
         if (uri == null) return
-        if (p.kind == NotebookKind.Lesson) {
-            _state.update { it.copy(dialog = LibraryDialog.LearnGoal(uri, p.personaId, p.style)) }
-        } else {
-            importPdf(uri, null, p.personaId, p.style, book = p.kind == NotebookKind.Book, onCreated = onCreated)
-        }
+        importPdf(uri, null, p.personaId, p.style, book = p.kind == NotebookKind.Book, onCreated = onCreated)
     }
 
     /** Creates the notebook or canvas being named; [onCreated] receives its id (to open it). */
@@ -205,12 +201,6 @@ class LibraryViewModel(
     /** Debug harness: removes the test notebooks whose names start with [prefix] (once the list has loaded). */
     fun debugDeleteNamed(prefix: String) {
         scope.launch { state.first { !it.loading }.notebooks.filter { it.name.startsWith(prefix) }.forEach { delete(it.id) } }
-    }
-
-    /** The goal for the PDF being learned is in ("" = all of it): import it as a lesson notebook. */
-    fun confirmLearn(goal: String, onCreated: (NotebookId) -> Unit) {
-        val d = _state.value.dialog as? LibraryDialog.LearnGoal ?: return
-        importPdf(d.uri, teachGoal = goal, personaId = d.personaId, style = d.style, onCreated = onCreated)
     }
 
     private fun rememberVoice(personaId: String, style: AnswerStyle) {

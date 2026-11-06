@@ -54,11 +54,15 @@ internal fun ConversationSession.maybeFinalize(p: PendingExchange) {
             deps.logger?.e("Session", "saving exchange ${exchange.id.value} failed", e)
             return@launch
         }
-        if (p.replyComplete && (status == ExchangeStatus.Complete || status == ExchangeStatus.Interrupted)) {
+        val taught = p.replyComplete && (status == ExchangeStatus.Complete || status == ExchangeStatus.Interrupted)
+        if (taught) {
             remember(exchange); recordTopics(exchange); recordBookStep(p)
             parseReminders(exchange.answerMarkup).forEach(deps.surface::offerReminder)
         }
-        if (asksNextPage(p, exchange)) deps.surface.bookNext()
+        if (asksNextPage(p, exchange)) {
+            if (!taught) recordTopics(exchange) // a bare <next/> leaving a concept unfinished marks it shaky
+            deps.surface.bookNext()
+        }
     }
 }
 
@@ -69,6 +73,15 @@ internal suspend fun ConversationSession.lessonProgress(): String? {
     val store = deps.lessons ?: return null
     if (!tutors) return null
     return formatLessonProgress(store.topics(deps.notebookId))
+}
+
+/** Where the open page stands in a book walk; its concept is done once its topic is recorded (the tutor judged it). */
+internal suspend fun ConversationSession.bookPlace(): com.nisaba.domain.book.BookPlace? {
+    val map = deps.context.book ?: return null
+    val concept = deps.context.bookConcept
+    val title = concept?.let { map.concepts.getOrNull(it) }?.title ?: return com.nisaba.domain.book.BookPlace(map, concept)
+    val done = deps.lessons?.topics(deps.notebookId).orEmpty().any { it.topic.equals(title, ignoreCase = true) }
+    return com.nisaba.domain.book.BookPlace(map, concept, done)
 }
 
 /** Records the reply's `<topic>` tags in a lesson notebook or book walk; like memory, a hiccup never disturbs the page. */

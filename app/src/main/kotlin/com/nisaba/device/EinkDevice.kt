@@ -3,7 +3,7 @@ package com.nisaba.device
 import android.graphics.Rect
 import android.view.View
 
-/** Panel refresh control (an e-ink waveform on the Boox build; vanilla only has [NoopEinkDevice]). Must never throw. */
+/** Panel refresh control. Every call is best-effort and must never throw. */
 interface EinkDevice {
     /** Fast waveform for writing/animation (some ghosting). */
     fun fast()

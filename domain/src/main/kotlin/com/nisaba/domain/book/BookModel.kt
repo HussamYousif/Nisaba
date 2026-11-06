@@ -54,8 +54,11 @@ data class BookMap(
     }
 }
 
-/** Where a request stands in a book walk: its map, and the concept the open page belongs to (null: the map's page). */
-data class BookPlace(val map: BookMap, val concept: Int?)
+/**
+ * Where a request stands in a book walk: its map, the concept the open page belongs to (null: the map's page), and
+ * whether that concept is [done] (judged: its topic is recorded), so "next" moves on at once.
+ */
+data class BookPlace(val map: BookMap, val concept: Int?, val done: Boolean = false)
 
 /** A page of the walk: the map of the book, one concept, or the whole picture at the end. */
 sealed interface BookStep {

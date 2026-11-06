@@ -25,7 +25,7 @@ import com.nisaba.ui.theme.NisabaButtonRow
 import com.nisaba.ui.theme.NisabaDialog
 import com.nisaba.ui.theme.NisabaTextField
 
-/** The steps of "New": what kind → who answers → a name, or the PDF (system picker) and, to learn it, a goal. */
+/** The steps of "New": what kind → who answers → a name, or the PDF (system picker). */
 @Composable
 fun NewNotebookComponent(dialog: LibraryDialog, actions: LibraryActions) {
     val onDismiss = actions.onDismiss
@@ -39,7 +39,7 @@ fun NewNotebookComponent(dialog: LibraryDialog, actions: LibraryActions) {
         is LibraryDialog.ChooseVoice -> NisabaDialog("Who answers?", onDismiss) {
             PersonaPickerComponent(d.personaId, actions.onSelectVoice)
             AnswerStyleComponent(d.style, actions.onSelectStyle)
-            val pdf = d.kind == NotebookKind.Pdf || d.kind == NotebookKind.Lesson || d.kind == NotebookKind.Book
+            val pdf = d.kind == NotebookKind.Pdf || d.kind == NotebookKind.Book
             NisabaButtonRow {
                 NisabaButton("‹ Back", actions.onBack)
                 NisabaButton(if (d.handed) "Import" else if (pdf) "Choose the PDF" else "Next", actions.onConfirmVoice, filled = true)
@@ -53,21 +53,6 @@ fun NewNotebookComponent(dialog: LibraryDialog, actions: LibraryActions) {
                 NisabaButtonRow {
                     NisabaButton("‹ Back", actions.onBack)
                     NisabaButton("Create", { actions.onCreate(name) }, filled = true)
-                }
-            }
-        }
-        is LibraryDialog.LearnGoal -> {
-            var goal by remember { mutableStateOf("") }
-            NisabaDialog("What would you like to learn?", onDismiss, keepOnOutsideTap = true) {
-                Text(
-                    "Optional, e.g. \"the exam on chapter 3\". Leave it empty to learn all of it.",
-                    style = MaterialTheme.typography.bodyLarge,
-                )
-                NisabaTextField(goal, { goal = it }, onDone = { actions.onLearn(goal) })
-                VoiceLine(d.personaId)
-                NisabaButtonRow {
-                    NisabaButton("Cancel", onDismiss)
-                    NisabaButton("Begin", { actions.onLearn(goal) }, filled = true)
                 }
             }
         }

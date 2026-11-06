@@ -33,10 +33,10 @@ class BookRulesTest {
         ),
     )
 
-    @Test fun aLongBookGetsAMapAboutOneConceptPerFifteenPagesOfText() {
-        assertEquals(5..12, conceptRange(List(80) { "x".repeat(3_800) }))   // The Prince: the few that carry it
-        assertEquals(20..40, conceptRange(List(600) { "x".repeat(2_600) })) // DDIA: at most 40
-        assertEquals(10..20, conceptRange(List(300) { "x".repeat(2_500) }))
+    @Test fun aLongBookGetsAMapAboutOneConceptPerSevenPagesOfText() {
+        assertEquals(5..12, conceptRange(List(80) { "x".repeat(3_800) }))   // The Prince: its core ideas
+        assertEquals(53..80, conceptRange(List(600) { "x".repeat(2_600) })) // DDIA: at most 80
+        assertEquals(28..42, conceptRange(List(300) { "x".repeat(2_500) }))
         assertEquals(5..12, conceptRange(List(300) { "x".repeat(200) }))    // 300 slides are no long book
         val long = mapInstructionWhole("DDIA", 600, 20..40)
         assertTrue("Between 20 and 40 concepts" in long && "<part>" in long, long)
@@ -58,10 +58,27 @@ class BookRulesTest {
         assertTrue("one line per part" in stepInstruction(ddia, BookStep.Overview))
         assertTrue("one line per part" !in stepInstruction(map, BookStep.Overview)) // a short map: a numbered list
         val first = stepInstruction(ddia, BookStep.Concept(0))
-        assertTrue("It opens the part \"Replication\"" in first && "checks they understood it" in first, first)
+        assertTrue("It opens the part \"Replication\"" in first && "guess before you explain" in first, first)
+        assertTrue("In 3 steps: A · B · C" in first && "Nothing more" in first, first)
         assertTrue("opens the part" !in stepInstruction(ddia, BookStep.Concept(1)))
         assertTrue("It opens the part \"Sharding\"" in stepInstruction(ddia, BookStep.Concept(2)))
         assertEquals(150..159, conceptSpan(ddia.concepts[0]))
+    }
+
+    @Test fun eachConceptIsTaughtInStepsWithAQuestionARetryAndANudge() {
+        val p = bookPrompt(map)
+        assertTrue("guess before you explain" in p && "one step per reply" in p && "**2/3 Name**" in p, p)
+        assertTrue("ask one new, easier question on it" in p && "do not give the answer yet" in p, p)
+        assertTrue("second miss on the same point" in p, p)
+        assertTrue("never reply <next/>" in p && "Nudge them once" in p && "never asked again" in p, p)
+        assertTrue("one to three handwritten lines" in p, p)
+    }
+
+    @Test fun aVeryLongMapListsOnlyItsPartsOnTheFirstPage() {
+        val long = BookMap("DDIA", "", List(60) { Concept("C$it", "", it + 1, it + 1, part = "Part ${it / 10}") })
+        val overview = stepInstruction(long, BookStep.Overview)
+        assertTrue("no concept names" in overview && "all 60" in overview, overview)
+        assertTrue("no concept names" !in stepInstruction(ddia, BookStep.Overview))
     }
 
     @Test fun theWalkGoesMapThenEachConceptThenTheWholePicture() {
@@ -89,11 +106,14 @@ class BookRulesTest {
     @Test fun theInstructionsNameTheStepAndTheSystemPromptCarriesTheMap() {
         val c = stepInstruction(map, BookStep.Concept(1))
         assertTrue("\"2. Neuronal power\"" in c && "pp. 13–20" in c && "\"Achievement society\"" in c, c)
-        assertTrue("\"Profound boredom\"" in c, "names what comes next: $c")
-        assertTrue("the whole picture" in stepInstruction(map, BookStep.Concept(2)))
+        assertTrue("\"Achievement society\") where it connects" in c, c)
+        assertFalse("where it connects" in stepInstruction(map, BookStep.Concept(0))) // nothing came before
         val p = bookPrompt(map)
         assertTrue("3. Profound boredom (pp. 21–30)" in p && "<next/>" in p && "we exploit ourselves" in p, p)
-        assertTrue("concept 2 of 3" in walkPlace(map, 1))
+        assertTrue("concept 2 of 3" in walkPlace(map, 1) && "\"next\" leads to \"Profound boredom\"" in walkPlace(map, 1))
+        assertTrue("leads to the whole picture" in walkPlace(map, 2))
+        assertTrue("first \"next\" gets a nudge" in walkPlace(map, 1)) // still being taught
+        assertTrue("gets <next/> at once" in walkPlace(map, 1, done = true) && "nudge" !in walkPlace(map, 1, done = true))
         assertFalse("concept" in walkPlace(map, null))
         assertEquals(15, centrePage(map.concepts[1])) // p. 16, the middle of pp. 13–20, 0-based
     }

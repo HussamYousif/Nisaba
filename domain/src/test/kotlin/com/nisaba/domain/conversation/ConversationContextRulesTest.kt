@@ -103,6 +103,9 @@ class ConversationContextRulesTest {
         assertTrue(r.system.contains("at most 30 words") && r.instruction.contains("at most 30 words")) // the book's 50 × 0.6
         val everything = buildRequest(input(emptyList()))
         assertTrue(everything.system.contains("Respond to whatever") && everything.system.contains("at most 50 words"))
+        // a tutor judges every answer: "Questions only" never silences one in a lesson or a book walk
+        val lesson = buildRequest(ContextInput(listOf("doc"), null, emptyList(), snap, Settings(), teachGoal = "", style = style))
+        assertTrue(lesson.system.contains("Respond to whatever") && !lesson.system.contains("Answer only writing"))
     }
 
     @Test fun replyCeilingsFollowThePurpose() {

@@ -1,11 +1,13 @@
 package com.nisaba.app
 
 import android.app.Application
+import android.os.Build
 import com.nisaba.BuildConfig
 import com.nisaba.infra.document.PdfBoxClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.lsposed.hiddenapibypass.HiddenApiBypass
 import java.io.File
 
 private const val BACKUP_DELAY_MILLIS = 60_000L
@@ -28,6 +30,8 @@ class NisabaApp : Application() {
         super.onCreate()
         // the last crash stays on the device, for Settings → About (nothing is reported anywhere)
         crashLog(this).install("${BuildConfig.VERSION_NAME} ${BuildConfig.BUILD_TYPE}", Thread.getDefaultUncaughtExceptionHandler())
+        // Onyx pen SDK reaches into hidden framework APIs on Android 11+ (verified in spike S1).
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) runCatching { HiddenApiBypass.addHiddenApiExemptions("") }
         PdfBoxClient.init(this)
         graph = AppGraph(this)
         // the hand's letters are parsed now, not when the library first draws its title and covers

@@ -29,6 +29,7 @@ class ConversationBookTest {
     private val store = FakeExchangeStore()
     private val surface = RecordingSurface()
     private val books = FakeBookStore()
+    private val lessons = FakeLessonStore()
     private val map = BookMap(
         "DDIA", "Trade-offs all the way down.",
         listOf(Concept("Reliability", "", 1, 40), Concept("Replication", "", 150, 170), Concept("Partitioning", "", 200, 260)),
@@ -45,6 +46,7 @@ class ConversationBookTest {
         books.save(nb, map)
         val deps = ConversationDeps(
             nb, oracle, FakeSnapshotter(), store, surface, ports, VirtualClock(testScheduler), FakeIdGen("ex"), books = books,
+            lessons = lessons,
         )
         return ConversationSession(deps, backgroundScope, Settings(), listening = true)
     }
@@ -60,13 +62,13 @@ class ConversationBookTest {
         s.writeFresh(page, Purpose.Book(BookStep.Concept(1))); runCurrent()
         s.finishWriting(); runCurrent()
         val sent = oracle.requests.single()
-        assertTrue("# Walking through a book" in sent.system && "2. Replication (pp. 150–170)" in sent.system)
-        assertTrue(sent.instruction.startsWith("Walk them through concept 2 of 3"), sent.instruction)
+        assertTrue("# Teaching a book" in sent.system && "2. Replication (pp. 150–170)" in sent.system)
+        assertTrue(sent.instruction.startsWith("Open concept 2 of 3"), sent.instruction)
         val doc = sent.documentContext!!
         assertTrue("[p.160]" in doc && "[p.1] " !in doc, "the window sits on the concept's pages")
         assertTrue(sent.images.isEmpty())
         assertEquals(page, books.get(nb)!!.concepts[1].pageId)
-        assertEquals("(asks to be walked through: Replication)", store.saved.single().heard)
+        assertEquals("(asks to be taught: Replication)", store.saved.single().heard)
     }
 
     @Test fun theMapOfTheBookIsWrittenFromTheMapAlone() = runTest {
@@ -88,5 +90,31 @@ class ConversationBookTest {
         val asked = oracle.requests.single()
         assertTrue("concept 1 of 3" in asked.instruction && "[p.20]" in asked.documentContext!!)
         assertFalse(store.saved.single().status == ExchangeStatus.Complete)
+        assertTrue(lessons.rows.value.isEmpty()) // a finished concept was judged already: nothing to record
+    }
+
+    @Test fun nextMovesOnAtOnceOnceTheConceptIsJudged() = runTest {
+        oracle.chunks = listOf("<next/>", "<heard>next</heard>")
+        val s = session(BookPorts(map, bookConcept = 0))
+        s.onPenDown(); runCurrent()
+        s.onPenUp(StrokeId("a"), PageRect(100f, 200f, 300f, 260f), page); runCurrent()
+        advanceTimeBy(4000); runCurrent()
+        assertTrue("still being taught" in oracle.requests.single().instruction) // not judged yet: a nudge first
+        lessons.upsert(nb, listOf(com.nisaba.domain.lesson.LessonTopic("reliability", com.nisaba.domain.lesson.TopicStatus.Learned, 0)))
+        s.onPenDown(); runCurrent()
+        s.onPenUp(StrokeId("b"), PageRect(100f, 300f, 300f, 360f), page); runCurrent()
+        advanceTimeBy(4000); runCurrent()
+        assertTrue("This concept is done and judged" in oracle.requests.last().instruction, oracle.requests.last().instruction)
+    }
+
+    @Test fun movingOnFromAnUnfinishedConceptMarksItShakyAndWritesNothing() = runTest {
+        oracle.chunks = listOf("<next/><topic status=\"shaky\">Reliability</topic>", "<heard>next</heard>")
+        val s = session(BookPorts(map, bookConcept = 0))
+        s.onPenDown(); runCurrent()
+        s.onPenUp(StrokeId("a"), PageRect(100f, 200f, 300f, 260f), page); runCurrent()
+        advanceTimeBy(4000); runCurrent()
+        assertTrue("next" in surface.log, surface.log.toString())
+        assertTrue(surface.blocks.isEmpty())
+        assertEquals(listOf("Reliability"), lessons.rows.value.map { it.topic })
     }
 }

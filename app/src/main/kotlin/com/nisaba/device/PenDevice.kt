@@ -24,7 +24,7 @@ sealed interface PenEvent {
     data class EraseDone(val path: List<PagePoint>) : PenEvent
 }
 
-/** Source of stylus strokes. Vanilla has one: plain MotionEvents ([MotionEventPenDevice]); the Boox build adds Onyx raw drawing. */
+/** Source of stylus strokes. Implementations: Onyx raw drawing (Boox) and plain MotionEvents (fallback). */
 interface PenDevice {
     val events: SharedFlow<PenEvent>
 

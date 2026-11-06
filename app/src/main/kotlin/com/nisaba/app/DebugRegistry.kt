@@ -4,6 +4,9 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 
 /** The debug harness: switches set from adb extras in debug builds (`MainActivity`), read once where they apply. */
 class DebugRegistry {
+    /** Debug only: drive the page from plain stylus MotionEvents (adb input) instead of the Onyx raw layer. */
+    var forceMotionPen: Boolean = false
+
     /** Debug only: text for the app's own hand to write as the user's question when a notebook opens. */
     var debugWriteText: String? = null
 

@@ -69,7 +69,8 @@ fun NisabaNavHost(graph: AppGraph) {
                 ?.takeIf { it.size == 4 }?.let { PageRect(it[0], it[1], it[2], it[3]) }
             val factory = graph.notebookFactory(NotebookId(id), startPage, mark)
             val vm: NotebookViewModel = viewModel(key = id + startPage?.value.orEmpty(), factory = factory)
-            val pen = remember { graph.createPen() }
+            val standardPen by produceState<Boolean?>(null) { value = graph.settings.observe().first().standardPen }
+            val pen = remember(standardPen) { standardPen?.let { graph.createPen(it) } } ?: return@composable
             LaunchedEffect(id) {
                 graph.debug.debugWriteText?.let { text ->
                     graph.debug.debugWriteText = null
@@ -150,7 +151,6 @@ private fun LibraryRoute(graph: AppGraph, nav: NavHostController) {
             onChooseKind = vm::chooseKind, onSelectVoice = vm::selectVoice, onSelectStyle = vm::selectStyle, onBack = vm::back,
             onConfirmVoice = { vm.confirmVoice(open) { pickPdf.launch(arrayOf("application/pdf")) } },
             onCreate = { name -> vm.confirmCreate(name, open) },
-            onLearn = { goal -> vm.confirmLearn(goal, open) },
             animateWordmark = !graph.wordmarkPlayed, onWordmarkDone = { graph.wordmarkPlayed = true },
             onOpen = open,
             onNew = vm::onNew, onMenu = vm::onMenu,

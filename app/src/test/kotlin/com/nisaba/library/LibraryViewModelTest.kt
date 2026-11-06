@@ -90,14 +90,12 @@ class LibraryViewModelTest {
         assertEquals("teacher", nb.personaId); assertEquals(null, nb.teachGoal); assertEquals(DocumentId("d-x.pdf"), nb.documentId)
     }
 
-    @Test fun aPdfToLearnAsksForTheGoalAfterThePicker() = runTest {
+    @Test fun aPdfToLearnBecomesABookWalkStraightAfterThePicker() = runTest {
         val vm = vm()
-        vm.onNew(); vm.chooseKind(NotebookKind.Lesson); vm.selectVoice("teacher"); vm.confirmVoice {}
-        vm.onPdfPicked("book.pdf", opened::add)
-        assertEquals(LibraryDialog.LearnGoal("book.pdf", "teacher"), vm.state.value.dialog)
-        vm.confirmLearn("exam on ch. 3", opened::add); runCurrent()
+        vm.onNew(); vm.chooseKind(NotebookKind.Book); vm.selectVoice("teacher"); vm.confirmVoice {}
+        vm.onPdfPicked("book.pdf", opened::add); runCurrent()
         val nb = store.get(opened.single())!!.notebook
-        assertEquals("teacher", nb.personaId); assertEquals("exam on ch. 3", nb.teachGoal)
+        assertEquals("teacher", nb.personaId); assertTrue(nb.book); assertEquals(null, nb.teachGoal)
     }
 
     @Test fun aCancelledPickerMakesNothing() = runTest {

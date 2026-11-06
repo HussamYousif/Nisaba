@@ -66,9 +66,10 @@ private fun preview(o: Map<String, String>, perfect: Boolean, noJoin: Boolean) {
 }
 
 /**
- * `book --pdf book.pdf [--walk 2] [--answer "their answer to the last page's question"] [--persona teacher] [--model m]`:
+ * `book --pdf book.pdf [--walk 2] [--answer "their guess|an answer|next"] [--student 8] [--persona teacher] [--model m]`:
  * reads the book into its map as the app does (text from `pdftotext`, one page per form feed), then walks the first
- * pages of it; see BookRunUseCase.
+ * pages of it, writes the answers ("|" between them) one after another on the last concept, then lets a simulated
+ * learner answer for up to `--student` turns; see BookRunUseCase.
  */
 private fun book(o: Map<String, String>) {
     val pdf = File(o["pdf"] ?: error("--pdf required"))
@@ -78,7 +79,9 @@ private fun book(o: Map<String, String>) {
     val settings = com.nisaba.domain.settings.Settings(model = o["model"] ?: "deepseek-flash")
     val run = BookRunUseCase(EvalOracleClient(deepSeekKey()), EvalPageRenderer(loadHand("casual")), settings)
     run(pdf.nameWithoutExtension, pages, com.nisaba.domain.persona.PersonaRegistry.of(o["persona"] ?: "teacher"),
-        (o["walk"] ?: "0").toInt(), o["answer"])
+        (o["walk"] ?: "0").toInt(), o["answer"]?.split('|')?.map { it.trim() }?.filter { it.isNotEmpty() }.orEmpty(),
+        (o["student"] ?: "0").toInt(),
+    )
 }
 
 private fun deepSeekKey(): String =

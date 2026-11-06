@@ -57,7 +57,6 @@ data class LibraryActions(
     val onConfirmVoice: () -> Unit = {},
     val onBack: () -> Unit = {},
     val onCreate: (name: String) -> Unit = {},
-    val onLearn: (goal: String) -> Unit = {},
     val animateWordmark: Boolean = false,
     val onWordmarkDone: () -> Unit = {},
     // library v2: screens of covers, pins, the trash

@@ -27,8 +27,7 @@ enum class NotebookKind(val label: String, val hint: String) {
     Pages("Notebook", "Pages to write on, one after another"),
     Canvas("Blank canvas", "One endless page that pans in every direction"),
     Pdf("PDF", "Write on the pages of a PDF"),
-    Lesson("Learn a PDF", "Nisaba teaches you a PDF, one idea at a time"),
-    Book("Understand a book", "Nisaba maps a book's core ideas, then walks you through them, one per page"),
+    Book("Learn a PDF", "Nisaba maps a book's concepts, then teaches them one by one while you write back"),
 }
 
 sealed interface LibraryDialog {
@@ -55,9 +54,6 @@ sealed interface LibraryDialog {
     data class Rename(val id: NotebookId, val name: String) : LibraryDialog
     data class ConfirmDelete(val id: NotebookId, val name: String) : LibraryDialog
     data class Message(val text: String) : LibraryDialog
-
-    /** A PDF was picked to learn from: ask what for (optional) before importing it. */
-    data class LearnGoal(val uri: String, val personaId: String, val style: AnswerStyle = AnswerStyle()) : LibraryDialog
 }
 
 data class LibraryUiState(

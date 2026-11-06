@@ -10,7 +10,7 @@ private val THESIS_RE = Regex("""<thesis>(.*?)</thesis>""", setOf(RegexOption.DO
 private val NEXT_RE = Regex("""<\s*next\s*/?\s*>(\s*<\s*/\s*next\s*>)?""", RegexOption.IGNORE_CASE)
 private const val MAX_TITLE = 80
 private const val MAX_SUMMARY = 300
-private const val MAX_CONCEPTS = 48
+private const val MAX_CONCEPTS = 90
 const val MIN_CONCEPTS = 3
 
 /** A tag's body "Name :: one sentence" (or just a name), its pages clamped to the book's [pageCount]. */

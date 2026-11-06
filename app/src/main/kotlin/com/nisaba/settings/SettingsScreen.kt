@@ -42,7 +42,7 @@ import com.nisaba.ui.theme.NisabaTextField
 private const val PAUSE_STEP = 500
 
 private enum class Pane(val title: String) {
-    Key("Key & model"), Waiting("Waiting"), Hand("The hand"), Ink("Ink & colours"), Memory("Memory"), Backup("Backup"),
+    Key("Key & model"), Waiting("Waiting"), Hand("The hand"), Ink("Ink & colours"), Pen("Your pen"), Memory("Memory"), Backup("Backup"),
     Usage("Usage"), About("About"),
 }
 
@@ -70,6 +70,7 @@ fun SettingsScreen(state: SettingsUiState, vm: SettingsViewModel, onBack: () -> 
                     Pane.Waiting -> WaitingPane(state.settings, vm)
                     Pane.Hand -> HandPane(state.settings, vm)
                     Pane.Ink -> InkPane(state.settings, vm)
+                    Pane.Pen -> PenPane(state.settings, vm)
                     Pane.Memory -> MemoryPane(state.factCount, onOpenMemory)
                     Pane.Backup -> BackupPane(state, vm)
                     Pane.Usage -> state.usage?.let { UsagePane(it) }
@@ -123,6 +124,15 @@ private fun WaitingPane(s: Settings, vm: SettingsViewModel) {
 }
 
 @Composable
+private fun PenPane(s: Settings, vm: SettingsViewModel) {
+    Choice(listOf(false to "Boox pen (fastest)", true to "Standard pen"), s.standardPen, vm::setStandardPen)
+    Text(
+        "Use the standard pen if writing ever stops working after a Boox update. It applies the next time a notebook opens.",
+        style = MaterialTheme.typography.bodyLarge, color = Nisaba.colors.faint,
+    )
+}
+
+@Composable
 private fun HandPane(s: Settings, vm: SettingsViewModel) {
     Text("Speed", style = MaterialTheme.typography.labelLarge)
     Choice(HandSpeed.entries.map { it to it.name }, s.handSpeed, vm::setSpeed)
@@ -169,6 +179,10 @@ private fun InkPane(s: Settings, vm: SettingsViewModel) {
             )
         }
     }
+    Text(
+        "Colours look softer on the Kaleido screen than here; pick what reads well on yours.",
+        style = MaterialTheme.typography.labelSmall, color = c.faint,
+    )
 }
 
 private const val PREVIEW_LINE = 30

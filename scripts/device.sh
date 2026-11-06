@@ -3,10 +3,10 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 source "$ROOT/scripts/env.sh"
-PKG=com.nisaba.vanilla
+PKG=com.nisaba
 case "${1:-}" in
   install) (cd "$ROOT" && ./gradlew :app:installDebug) ;;
-  start)   adb shell am start -n "$PKG/com.nisaba.app.MainActivity" ;;
+  start)   adb shell am start -n "$PKG/.app.MainActivity" ;;
   log)     adb logcat -v time -s 'Nisaba*:V' 'AndroidRuntime:E' ;;
   shot)    mkdir -p "$ROOT/captures"; adb exec-out screencap -p > "$ROOT/captures/$(date +%H%M%S).png"; echo saved ;;
   crash)   adb exec-out run-as "$PKG" cat files/crash/last.txt 2>/dev/null || echo "no crash recorded" ;;

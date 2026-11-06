@@ -195,7 +195,7 @@ class ConversationSession(
                 deps.exchanges.listByNotebook(deps.notebookId), snapshot, appSettings,
                 if (private) emptyList() else deps.memory?.all().orEmpty(), deps.context.teachGoal, purpose, lessonProgress(),
                 persona, deps.context.style, now = nowInWords(deps.clock.nowMillis(), java.time.ZoneId.systemDefault()),
-                isPrivate = private, book = deps.context.book?.let { com.nisaba.domain.book.BookPlace(it, deps.context.bookConcept) },
+                isPrivate = private, book = bookPlace(),
             )
             // a whole PDF's text is windowed, estimated and trimmed here: never on the thread that draws the page
             val request = compute?.let { withContext(it) { buildRequest(input) } } ?: buildRequest(input)

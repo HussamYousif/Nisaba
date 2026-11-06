@@ -10,8 +10,11 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.nisaba.BuildConfig
 import com.nisaba.device.EinkDevice
+import com.nisaba.device.FallbackPenDevice
 import com.nisaba.device.MotionEventPenDevice
 import com.nisaba.device.NoopEinkDevice
+import com.nisaba.device.OnyxEinkDevice
+import com.nisaba.device.OnyxPenDevice
 import com.nisaba.device.PenDevice
 import com.nisaba.domain.conversation.ConversationDeps
 import com.nisaba.domain.conversation.ConversationSession
@@ -125,7 +128,7 @@ class AppGraph(private val app: Application) {
 
     val inkRenderer = InkRenderer()
     val backgroundRenderer = BackgroundRenderer(rasters = rasters)
-    val eink: EinkDevice = NoopEinkDevice() // an LCD redraws on its own: no waveforms to pick
+    val eink: EinkDevice by lazy { if (OnyxPenDevice.isAvailable()) OnyxEinkDevice() else NoopEinkDevice() }
 
     /** Hand-written text for the wordmark, covers and hints. */
     val handText by lazy { com.nisaba.ui.brand.HandTextCache { hand(HandStyle.Casual) } }
@@ -138,8 +141,11 @@ class AppGraph(private val app: Application) {
     /** The bundled stroke fonts, parsed once per style. */
     fun hand(style: HandStyle): GlyphSet = hands.hand(style)
 
-    /** The tablet's stylus, from plain MotionEvents (the app draws the live ink); fingers stay for gestures. */
-    fun createPen(): PenDevice = MotionEventPenDevice(acceptFinger = false)
+    /** The standard pen when asked for (Settings → Pen) or off a Boox; else the Onyx pen, falling back if it can't start. */
+    fun createPen(standard: Boolean = false): PenDevice = when {
+        debug.forceMotionPen || standard || !OnyxPenDevice.isAvailable() -> MotionEventPenDevice(acceptFinger = false)
+        else -> FallbackPenDevice.onyx { logger.w("Pen", "the Onyx pen could not start: using the standard pen") }
+    }
 
     /** Every voice, their own included, kept current for lookups anywhere (pickers, covers, the hand, the session). */
     val voices: kotlinx.coroutines.flow.StateFlow<Voices> by lazy {

@@ -217,7 +217,7 @@ private fun instructionFor(input: ContextInput, trailingNotes: List<String>) = b
     input.currentDocumentPage?.let { append(" They are on p. ${it + 1} of the document.") }
     if (trailingNotes.isNotEmpty()) append(" Notes they wrote earlier without asking: ${trailingNotes.joinToString("; ")}.")
     input.lessonProgress?.let { append(" ").append(it) }
-    input.book?.takeIf { p !is Purpose.Book }?.let { append(com.nisaba.domain.book.walkPlace(it.map, it.concept)) }
+    input.book?.takeIf { p !is Purpose.Book }?.let { append(com.nisaba.domain.book.walkPlace(it.map, it.concept, it.done)) }
     val glosses = onDocument && (p == Purpose.Writing || p == Purpose.About)
     if (glosses) append(" ").append(INSTRUCTION_GLOSS)
     when {
@@ -254,7 +254,10 @@ fun buildRequest(input: ContextInput): OracleRequest {
     val memory = formatMemoryContext(input.facts, (TOKEN_BUDGET * MEMORY_SHARE).toInt())
     val (history, trailingNotes) = historyTurns(input.exchanges)
     val imageTokens = if (input.purpose.textOnly) 0 else IMAGE_TOKENS * (if (input.snapshot.focus != null) 2 else 1)
-    val voiced = systemPrompt(input.persona, input.style.mode == com.nisaba.domain.notebook.AnswerMode.QuestionsOnly, input.words)
+    // a tutor judges every answer they write, so "Questions only" would leave their answers unjudged
+    val tutors = input.book != null || input.teachGoal != null
+    val questionsOnly = !tutors && input.style.mode == com.nisaba.domain.notebook.AnswerMode.QuestionsOnly
+    val voiced = systemPrompt(input.persona, questionsOnly, input.words)
     val system = when {
         input.book != null -> voiced + "\n\n" + com.nisaba.domain.book.bookPrompt(input.book.map)
         input.teachGoal != null -> voiced + "\n\n" + teachingPrompt(input.teachGoal)

@@ -45,7 +45,7 @@ data class BlockRef(
 )
 
 /**
- * Plays timed pen strokes onto a [ScribeCanvas] at ~60 fps, one letter at a time. Blocks can be [enqueue]d while playing
+ * Plays timed pen strokes onto a [ScribeCanvas] at ~20 fps, one letter at a time. Blocks can be [enqueue]d while playing
  * (the model is still talking). [stop] freezes the hand and returns what has been written so far; [resume] carries on.
  * Everything drawn here is committed by the caller through [onDrained] / [onPageBreak] / [stop].
  *
@@ -259,7 +259,7 @@ class ScribeAnimator(private val view: ScribeCanvas, private val frames: ScribeF
     }
 
     private companion object {
-        const val FRAME_MS = 16L // ~60 fps on an LCD (the Boox build: 50, discrete e-ink frames)
+        const val FRAME_MS = 50L
         const val LEAD_MS = 120
     }
 }
