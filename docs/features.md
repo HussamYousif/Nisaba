@@ -41,7 +41,7 @@ Nisaba is a handwriting notebook for the Boox Note Air 5C. You write with the pe
 - **A finger tap** on an answer being written finishes it at once.
 
 ### Voices
-- **Built in**: The sassy book (default), Gandalf (teaches, or just talks), The writer's companion, The idea explorer, Yukino (banter, flirting, general talk, understanding yourself), Zagreus, Adam Jensen (talking about how the world turned dystopian), Plain.
+- **Built in**: The sassy book (default), Gandalf (teaches, or just talks), The writer's companion, The idea explorer, Adam Jensen (talking about how the world turned dystopian), Plain.
 - **Each voice its own hand**: ink, slant, tidiness and pace (Settings → The hand → Voices); a sigil on covers and in the picker; its own first-page hint and failure line.
 - **Voices of your own** (up to 6): describe someone, Nisaba drafts the voice (name, tagline, manner, first line), you keep it or not.
 - **Change the voice** of a notebook any time (⋯ → Voice); old answers keep their ink.

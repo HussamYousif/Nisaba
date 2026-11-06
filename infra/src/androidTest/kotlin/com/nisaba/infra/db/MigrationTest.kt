@@ -118,12 +118,12 @@ class MigrationTest {
         helper.createDatabase("mig9", 8).apply {
             execSQL(
                 "INSERT INTO notebooks (id,name,createdAt,updatedAt,documentId,listening,coverSeed,teachGoal,persona,questionsOnly,answerLength) " +
-                    "VALUES ('n1','Old',1,2,NULL,1,7,NULL,'yukino',0,'Normal')",
+                    "VALUES ('n1','Old',1,2,NULL,1,7,NULL,'teacher',0,'Normal')",
             )
             close()
         }
         val db = helper.runMigrationsAndValidate("mig9", 9, true, MIGRATION_8_9)
-        db.query("SELECT persona FROM notebooks").use { c -> c.moveToFirst(); assertEquals("yukino", c.getString(0)) }
+        db.query("SELECT persona FROM notebooks").use { c -> c.moveToFirst(); assertEquals("teacher", c.getString(0)) }
         db.execSQL(
             "INSERT INTO own_voices (id,name,tagline,sample,voice,words,temperature,ink,hint,oops,createdAt) " +
                 "VALUES ('own-1','Pirate','Arr','Arr.','You are Nisaba, a pirate.',50,0.75,NULL,'Write, then pause.','Blast.',3)",

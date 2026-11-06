@@ -39,12 +39,12 @@ class AnswerScribeSessionTest {
 
     @Test fun eachVoiceWritesInItsOwnInkAndHand() {
         session.showInkwell(Utterance(PageId("question-page"), emptySet(), PageRect(200f, 300f, 600f, 360f)))
-        session.planBlock(1, hello, ExchangeId("e1"), personaId = "zagreus")
+        session.planBlock(1, hello, ExchangeId("e1"), personaId = "explorer")
         session.planBlock(2, hello, ExchangeId("e2"), personaId = "book") // Grimoire Noir: the answer ink in Settings
         settings = Settings(voiceHands = false)
-        session.planBlock(3, hello, ExchangeId("e3"), personaId = "zagreus")
-        assertEquals(listOf(PersonaRegistry.of("zagreus").hand.ink, null, null), played.map { it.ref.ink })
-        // Zagreus leans further and writes faster than the plain hand
+        session.planBlock(3, hello, ExchangeId("e3"), personaId = "explorer")
+        assertEquals(listOf(PersonaRegistry.of("explorer").hand.ink, null, null), played.map { it.ref.ink })
+        // The idea explorer leans further and writes faster than the plain hand
         assertTrue(played[0].strokes.last().points.ts.last() < played[2].strokes.last().points.ts.last())
     }
 

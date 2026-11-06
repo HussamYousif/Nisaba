@@ -8,7 +8,7 @@ plugins {
     id("nisaba.roles")
 }
 
-/** Debug-only secrets from .env (never embedded in release, DESIGN D14). */
+/** The DeepSeek key from .env. Vanilla embeds it in release too, so friends' copies answer at once (DESIGN D19). */
 fun devKey(): String {
     val f = rootProject.file(".env")
     val fromFile = if (f.exists()) Properties().apply { f.reader().use(::load) }.getProperty("DEEPSEEK_API_KEY") else null
@@ -19,11 +19,12 @@ android {
     namespace = "com.nisaba"
     compileSdk = 36
     defaultConfig {
-        applicationId = "com.nisaba"
+        applicationId = "com.nisaba.vanilla" // beside the Boox build (com.nisaba), never over it
         minSdk = 30
         targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
+        versionNameSuffix = "-vanilla"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildFeatures {
@@ -33,11 +34,11 @@ android {
     buildTypes {
         debug { buildConfigField("String", "DEV_DEEPSEEK_API_KEY", "\"${devKey()}\"") }
         release {
-            buildConfigField("String", "DEV_DEEPSEEK_API_KEY", "\"\"")
+            buildConfigField("String", "DEV_DEEPSEEK_API_KEY", "\"${devKey()}\"")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // personal use (DESIGN D18): the debug key, so it installs over the debug build and keeps the notebooks
+            // the debug key (.tools/android-user-home/debug.keystore): updates for friends must be signed with it too
             signingConfig = signingConfigs.getByName("debug")
         }
     }
@@ -69,8 +70,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.navigation.compose)
     implementation(libs.kotlinx.coroutines.android)
-    implementation(libs.onyxsdk.pen)
-    implementation(libs.hiddenapibypass)
+    implementation(libs.okhttp) // AppGraph builds the model client (the Onyx SDK used to bring it along)
 
     testImplementation(testFixtures(project(":domain")))
     testImplementation(libs.kotlin.test)

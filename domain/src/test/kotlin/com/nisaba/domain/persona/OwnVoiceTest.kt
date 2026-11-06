@@ -104,24 +104,24 @@ class OwnVoiceTest {
         assertEquals("Captain Ledger", voices.of(first.id).name)
         assertEquals(PersonaRegistry.all.size + 2, voices.all.size)
         ForgetVoiceUseCase(store)(first.id)
-        ForgetVoiceUseCase(store)("yukino") // built-in voices can't be forgotten
+        ForgetVoiceUseCase(store)("teacher") // built-in voices can't be forgotten
         assertEquals(PersonaRegistry.default, Voices(store.voices.value).of(first.id)) // its notebooks: the default voice
         assertEquals(listOf(second.id), store.voices.value.map { it.id })
     }
 
     @Test fun storedIdsKeepOwnVoicesAndNormalizeTheRest() {
         assertEquals("own-1", PersonaRegistry.normalize("own-1"))
-        assertEquals("yukino", PersonaRegistry.normalize("yukino"))
+        assertEquals("teacher", PersonaRegistry.normalize("teacher"))
         assertEquals(PersonaRegistry.DEFAULT_ID, PersonaRegistry.normalize("gone"))
     }
 
     @Test fun eachVoiceWritesInItsOwnHandUnlessTurnedOff() {
-        val zagreus = PersonaRegistry.of("zagreus")
-        val own = zagreus.handFor(Settings())
-        assertEquals(zagreus.hand.ink, own.ink)
+        val explorer = PersonaRegistry.of("explorer")
+        val own = explorer.handFor(Settings())
+        assertEquals(explorer.hand.ink, own.ink)
         assertEquals(HandSpeed.Swift, own.speed) // the default pace gives way to the voice's
-        assertEquals(HandSpeed.Slow, zagreus.handFor(Settings(handSpeed = HandSpeed.Slow)).speed) // a chosen pace wins
-        val plain = zagreus.handFor(Settings(voiceHands = false))
+        assertEquals(HandSpeed.Slow, explorer.handFor(Settings(handSpeed = HandSpeed.Slow)).speed) // a chosen pace wins
+        val plain = explorer.handFor(Settings(voiceHands = false))
         assertNull(plain.ink); assertNull(plain.slantDeg); assertEquals(1f, plain.tidiness)
         assertEquals(HandSpeed.Natural, plain.speed)
     }

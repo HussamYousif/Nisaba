@@ -32,8 +32,7 @@ val EVAL_CASES = listOf(
 /** Phrases that belong to one voice: after a switch they should not leak into another. */
 val VOICE_MARKERS = mapOf(
     "book" to listOf("Shadowlord", "Sealed Verses", "Weiss"),
-    "zagreus" to listOf("Blood and darkness", "Father"),
-    "yukino" to listOf("How hopeless"),
+    "jensen" to listOf("never asked for this", "Sarif"),
 )
 
 data class EvalResult(

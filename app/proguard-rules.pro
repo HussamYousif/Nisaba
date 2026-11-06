@@ -15,16 +15,6 @@
 -dontwarn com.gemalto.jp2.**
 -dontwarn org.bouncycastle.**
 
-# Onyx pen and e-ink SDK: reaches the framework (android.onyx.*) and itself by reflection
--keep class com.onyx.** { *; }
--keep class android.onyx.** { *; }
--dontwarn com.onyx.**
--dontwarn android.onyx.**
--dontwarn com.android.internal.**
-
-# HiddenApiBypass (opens just the hidden APIs the Onyx SDK needs; NisabaApp)
--keep class org.lsposed.hiddenapibypass.** { *; }
-
 # OkHttp's optional TLS providers
 -dontwarn org.conscrypt.**
 -dontwarn org.openjsse.**

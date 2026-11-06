@@ -75,23 +75,23 @@ class ConversationContextRulesTest {
     }
 
     @Test fun theNotebooksVoiceLeadsTheSystemPromptAndSetsLengthAndTemperature() {
-        val zagreus = PersonaRegistry.of("zagreus")
-        val r = buildRequest(ContextInput(emptyList(), null, emptyList(), snap, Settings(), persona = zagreus))
-        assertTrue(r.system.startsWith(zagreus.voice))
-        assertTrue(r.system.contains("at most ${zagreus.words} words"))
+        val jensen = PersonaRegistry.of("jensen")
+        val r = buildRequest(ContextInput(emptyList(), null, emptyList(), snap, Settings(), persona = jensen))
+        assertTrue(r.system.startsWith(jensen.voice))
+        assertTrue(r.system.contains("at most ${jensen.words} words"))
         assertTrue(!r.system.contains("{words}") && !r.system.contains("Grimoire Noir"))
-        assertEquals(zagreus.temperature, r.options.temperature)
-        assertTrue(r.instruction.endsWith(voiceReminder(zagreus, lesson = false)))
+        assertEquals(jensen.temperature, r.options.temperature)
+        assertTrue(r.instruction.endsWith(voiceReminder(jensen, lesson = false)))
         // a tidy copy is the person's notes, not a performance: no voice line, a cool temperature
         val tidyInput =
-            ContextInput(emptyList(), null, emptyList(), snap, Settings(), purpose = Purpose.Tidy(PageId("p")), persona = zagreus)
+            ContextInput(emptyList(), null, emptyList(), snap, Settings(), purpose = Purpose.Tidy(PageId("p")), persona = jensen)
         val tidy = buildRequest(tidyInput)
         assertEquals(INSTRUCTION_TIDY, tidy.instruction)
         assertEquals(TIDY_TEMPERATURE, tidy.options.temperature)
         // a lesson keeps the voice and adds the teaching prompt after it
-        val lesson = buildRequest(ContextInput(listOf("doc"), null, emptyList(), snap, Settings(), teachGoal = "", persona = zagreus))
-        assertTrue(lesson.system.startsWith(systemPrompt(zagreus) + "\n\n# Teaching"))
-        assertTrue(lesson.instruction.endsWith(voiceReminder(zagreus, lesson = true)))
+        val lesson = buildRequest(ContextInput(listOf("doc"), null, emptyList(), snap, Settings(), teachGoal = "", persona = jensen))
+        assertTrue(lesson.system.startsWith(systemPrompt(jensen) + "\n\n# Teaching"))
+        assertTrue(lesson.instruction.endsWith(voiceReminder(jensen, lesson = true)))
     }
 
     @Test fun questionsOnlyKeepsNotesSilentAndBriefShortensTheAnswers() {

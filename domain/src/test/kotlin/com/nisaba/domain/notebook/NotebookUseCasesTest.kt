@@ -41,8 +41,8 @@ class NotebookUseCasesTest {
 
     @Test fun aNotebookKeepsItsVoiceAndTheVoiceCanChange() = runTest {
         assertEquals(PersonaRegistry.DEFAULT_ID, CreateNotebookUseCase(store, clock, ids)("Plain old").personaId)
-        val nb = CreateNotebookUseCase(store, clock, ids)("Underworld", personaId = "zagreus")
-        assertEquals("zagreus", store.get(nb.id)!!.notebook.personaId)
+        val nb = CreateNotebookUseCase(store, clock, ids)("Prague", personaId = "jensen")
+        assertEquals("jensen", store.get(nb.id)!!.notebook.personaId)
         SetPersonaUseCase(store)(nb.id, "teacher")
         assertEquals("teacher", store.get(nb.id)!!.notebook.personaId)
         SetPersonaUseCase(store)(nb.id, "no-such-voice")

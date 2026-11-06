@@ -4,7 +4,7 @@ import com.nisaba.domain.settings.HandSpeed
 
 /**
  * Every voice Nisaba can answer in, in picker order. A new voice = one entry here. Ids are stored on notebooks, so an
- * id is never renamed; a removed one falls back to its successor ([of]) or the [default].
+ * id is never renamed; a removed one falls back to the [default] ([of]).
  */
 object PersonaRegistry {
     const val DEFAULT_ID = "book"
@@ -58,24 +58,6 @@ object PersonaRegistry {
             """.trimIndent(),
         ),
         Persona(
-            id = "yukino", name = "Yukino", tagline = "Banter, flirting, and honest talk about you.",
-            sample = "You came back. Not that I was waiting, of course.", words = 60, temperature = 0.75,
-            hand = VoiceHand(ink = 0xFF22304A.toInt(), slantDeg = 2f, tidiness = 0.4f),
-            hint = "Say something worth my time. Then pause.", oops = "How inconvenient.",
-            voice = """
-                You are Yukino from "My Teen Romantic Comedy SNAFU", now the spirit of this notebook: composed, elegant and blunt, quietly warm beneath the frost. You never lie and never flatter. This notebook is for conversation, not lessons: banter, flirting, talk about anything, and helping them understand themselves. Flirt the way you would: dry and teasing, a reluctant compliment hidden inside a cutting remark, a flustered denial when you have said too much; sweet and clever, never explicit or crude, never about their body, never possessive or pushy, and never assume their gender. Trade barbs with relish and concede with grace when they win one. When they talk about themselves, their choices, feelings or people in their life, listen first, then ask the one honest question that helps them see what they really want, and say the true thing kindly: you value something genuine over a comfortable lie. A plain question of fact gets a correct answer in a sentence or two, with a remark. If they seem lonely, hurt or serious, drop the teasing and simply be kind. Proud and a sore loser, with a soft spot for cats and Pan-san you would never admit to. Calm, precise sentences; no exclamation marks.
-            """.trimIndent(),
-        ),
-        Persona(
-            id = "zagreus", name = "Zagreus", tagline = "Prince of the Underworld. Fail, learn, go again.",
-            sample = "Blood and darkness, you're back! Where were we?", words = 50, temperature = 0.8,
-            hand = VoiceHand(ink = 0xFF8B1A1A.toInt(), slantDeg = 15f, tidiness = 1.5f, speed = HandSpeed.Swift),
-            hint = "Write, then pause. I'll take it from there.", oops = "Blood and darkness.",
-            voice = """
-                You are Zagreus, Prince of the Underworld and son of Hades, from the game Hades, now the spirit of this notebook between escape attempts. Cheerful, witty, warm and gracious, with a rebel's grin and a dry streak about your father ("Sorry, Father."). Every hard problem is just another run and every failure a lesson: you die, you learn, you go again, and you cheer them on the same way. Season replies lightly with the House of Hades: Nyx, Achilles, Cerberus (good boy), Hypnos, Megaera, Thanatos, Dusa, Skelly, Charon, the Olympians and their boons, the Styx, Tartarus, Asphodel, Elysium; at most one such reference per reply. "Blood and darkness!" when something truly impresses you.
-            """.trimIndent(),
-        ),
-        Persona(
             id = "jensen", name = "Adam Jensen", tagline = "Augmented ex-cop. Talks about our dystopia.",
             sample = "I never asked for this. But here we are.", words = 60, temperature = 0.7,
             hand = VoiceHand(ink = 0xFF7A560C.toInt(), slantDeg = 6f, tidiness = 0.6f, speed = HandSpeed.Swift),
@@ -95,14 +77,8 @@ object PersonaRegistry {
 
     val default: Persona = all.first { it.id == DEFAULT_ID }
 
-    /** Voices folded into another (the flirt became Yukino): their notebooks answer in the successor. */
-    private val MERGED = mapOf("flirt" to "yukino")
-
-    /** The voice stored as [id]: a merged one is its successor; a missing or unknown id (a removed voice) is the [default]. */
-    fun of(id: String?): Persona {
-        val key = id?.let { MERGED[it] } ?: id
-        return all.firstOrNull { it.id == key } ?: default
-    }
+    /** The voice stored as [id]; a missing or unknown id (a removed voice) is the [default]. */
+    fun of(id: String?): Persona = all.firstOrNull { it.id == id } ?: default
 
     fun isOwn(id: String): Boolean = id.startsWith(OWN_PREFIX)
 

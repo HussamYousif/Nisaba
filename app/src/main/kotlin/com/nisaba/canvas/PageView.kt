@@ -279,7 +279,7 @@ class PageView(
         const val MARK_REACH = 60f
         const val SELECTION_PAD = 14f
         const val MARK_HIT = 90f
-        const val PAN_STEP_MILLIS = 120L
+        const val PAN_STEP_MILLIS = 16L // the canvas follows the finger every frame (e-ink: 120, in steps)
         const val FOLLOW_EDGE = 0.88f
         const val FOLLOW_TARGET = 0.3f
         const val MIN_VISIBLE_WIDTH = 500f

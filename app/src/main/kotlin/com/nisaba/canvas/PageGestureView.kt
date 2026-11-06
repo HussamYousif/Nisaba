@@ -134,7 +134,7 @@ private fun PageView.startPinch(e: MotionEvent) {
     pendingDx = 0f; pendingDy = 0f
 }
 
-/** Two fingers moved: the canvas follows their middle and zooms with their spread, a step at a time (e-ink). */
+/** Two fingers moved: the canvas follows their middle and zooms with their spread (to the nearest zoom level). */
 private fun PageView.pinchMove(e: MotionEvent, throttle: Boolean) {
     if (pinch.midX.isNaN()) return
     val span = spanOf(e)
@@ -171,7 +171,7 @@ internal fun PageView.fingerUp(e: MotionEvent) {
     }
 }
 
-/** One finger drags the endless canvas; the picture follows in discrete steps (e-ink), not every move event. */
+/** One finger drags the endless canvas; the picture follows at most once a frame. */
 internal fun PageView.dragCanvas(e: MotionEvent) {
     pendingDx += e.x - lastX; pendingDy += e.y - lastY
     lastX = e.x; lastY = e.y

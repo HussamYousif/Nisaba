@@ -23,7 +23,7 @@ import kotlinx.coroutines.delay
 
 val LocalHandText = compositionLocalOf<HandTextCache?> { null }
 
-private const val FRAME_MS = 50
+private const val FRAME_MS = 16
 
 private fun pathOf(poly: FloatArray) = Path().apply {
     if (poly.size < 4) return@apply
@@ -70,7 +70,7 @@ fun HandInkComponent(text: HandText, penFor: (InkTone) -> Pair<Color, Float>, mo
 
 /**
  * Text written by the app's own hand. Static by default; with [animate] the letters are written stroke by stroke
- * at ~20 fps (discrete steps, e-ink friendly) and [onDone] fires at the end. [lineWidth] (page units) = where the hand
+ * at ~60 fps and [onDone] fires at the end. [lineWidth] (page units) = where the hand
  * wraps; null = the cache's default, for short names.
  */
 @Composable

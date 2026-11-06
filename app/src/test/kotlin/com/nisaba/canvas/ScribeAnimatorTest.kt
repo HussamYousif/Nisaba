@@ -26,7 +26,7 @@ class ScribeAnimatorTest {
         override fun cancel() { pending = null }
         fun run(ms: Long) {
             val end = time + ms
-            while (time < end) { time += 50; pending?.also { pending = null }?.invoke() }
+            while (time < end) { time += 16; pending?.also { pending = null }?.invoke() } // one LCD frame
         }
     }
 

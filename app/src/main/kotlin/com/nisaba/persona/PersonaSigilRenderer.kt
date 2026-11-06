@@ -25,8 +25,6 @@ fun DrawScope.drawSigil(voice: Persona, color: Color, c: Offset, r: Float) {
         "teacher" -> wizardHat(color, c, r, pen)
         "writer" -> nib(color, c, r, pen)
         "explorer" -> compass(color, c, r)
-        "yukino" -> snowflake(color, c, r, pen)
-        "zagreus" -> flame(color, c, r, pen)
         "jensen" -> shades(color, c, r, pen)
         "plain" -> { drawCircle(color, r * 0.75f, c, style = pen); drawCircle(color, r * 0.18f, c) }
         else -> star(color, c, r, pen, OWN_MIN_RAYS + (voice.id.hashCode() and Int.MAX_VALUE) % OWN_RAY_KINDS)
@@ -85,34 +83,6 @@ private fun DrawScope.compass(color: Color, c: Offset, r: Float) {
         Offset(c.x + cos(a) * len, c.y + sin(a) * len)
     }
     drawPath(path(pts), color)
-}
-
-private fun DrawScope.snowflake(color: Color, c: Offset, r: Float, pen: Stroke) {
-    for (i in 0 until 6) {
-        val a = (PI / 3 * i - PI / 2).toFloat()
-        val end = Offset(c.x + cos(a) * r, c.y + sin(a) * r)
-        drawLine(color, c, end, pen.width, StrokeCap.Round)
-        val mid = Offset(c.x + cos(a) * r * 0.55f, c.y + sin(a) * r * 0.55f)
-        for (turn in listOf(-0.6f, 0.6f)) {
-            val b = a + turn
-            drawLine(color, mid, Offset(mid.x + cos(b) * r * 0.32f, mid.y + sin(b) * r * 0.32f), pen.width * 0.8f, StrokeCap.Round)
-        }
-    }
-}
-
-private fun DrawScope.flame(color: Color, c: Offset, r: Float, pen: Stroke) {
-    fun tongue(scale: Float) = Path().apply {
-        moveTo(c.x, c.y - r * scale)
-        cubicTo(
-            c.x + r * 0.2f * scale, c.y - r * 0.3f * scale, c.x + r * 0.85f * scale, c.y,
-            c.x + r * 0.55f * scale, c.y + r * 0.6f * scale,
-        )
-        quadraticTo(c.x, c.y + r * 1.05f * scale, c.x - r * 0.55f * scale, c.y + r * 0.6f * scale)
-        cubicTo(c.x - r * 0.85f * scale, c.y + r * 0.1f * scale, c.x - r * 0.3f * scale, c.y - r * 0.2f * scale, c.x, c.y - r * scale)
-        close()
-    }
-    drawPath(tongue(1f), color, style = pen)
-    drawPath(Path().apply { addPath(tongue(0.45f), Offset(0f, r * 0.35f)) }, color)
 }
 
 /** Adam Jensen: his angular shades. */

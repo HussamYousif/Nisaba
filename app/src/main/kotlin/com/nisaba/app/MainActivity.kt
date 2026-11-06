@@ -32,7 +32,6 @@ class MainActivity : ComponentActivity() {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         if (BuildConfig.DEBUG) {
-            graph.debug.forceMotionPen = intent.getBooleanExtra("pen_motion", false)
             graph.debug.debugWriteText = intent.getStringExtra("write")
             graph.debug.debugOpenFirst = intent.getBooleanExtra("open_first", false)
             graph.debug.debugImportPdf = intent.getStringExtra("import_pdf")

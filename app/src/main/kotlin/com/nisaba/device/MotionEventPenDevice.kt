@@ -8,7 +8,7 @@ import com.nisaba.domain.shared.PagePoint
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 
-/** Fallback for emulators/non-Boox and for `adb input stylus` testing: draws from plain MotionEvents. */
+/** The stylus (and `adb input stylus` for testing), from plain MotionEvents: the view draws the live ink. */
 class MotionEventPenDevice(
     private val acceptFinger: Boolean = false,
     private val flow: MutableSharedFlow<PenEvent> = MutableSharedFlow(extraBufferCapacity = 64),

@@ -15,6 +15,9 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:usesCleartextTraffic="false"
         android:theme="@style/Theme.Nisaba">
+        <!-- a portrait page, like paper: Android 16 would ignore the lock on a tablet (target 36); a landscape tablet
+             shows it upright between bars, or full screen once turned (DESIGN D19) -->
+        <property android:name="android.window.PROPERTY_COMPAT_ALLOW_RESTRICTED_RESIZABILITY" android:value="true" />
         <activity
             android:name=".app.MainActivity"
             android:exported="true"
