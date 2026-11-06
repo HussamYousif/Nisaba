@@ -9,7 +9,7 @@ private val REPLACEMENTS: Map<Char, String> = table(
     "“”„″«»" to "\"",
     "…" to "...",
     "•▪●◦⁃" to "-",
-    "·‧⋅" to ".",
+    "‧⋅" to "·", // a raised dot the hand composes from its period
     "       " to " ",
     "​‌‍﻿" to "",
     "→" to "->", "←" to "<-", "×" to "x", "÷" to "/",

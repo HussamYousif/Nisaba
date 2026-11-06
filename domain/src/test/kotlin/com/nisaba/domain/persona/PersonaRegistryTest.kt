@@ -16,7 +16,7 @@ class PersonaRegistryTest {
     @Test fun anUnknownOrMissingIdFallsBackToTheDefault() {
         assertEquals(PersonaRegistry.default, PersonaRegistry.of(null))
         assertEquals(PersonaRegistry.default, PersonaRegistry.of("removed-voice"))
-        assertEquals("jensen", PersonaRegistry.of("jensen").id)
+        assertEquals("teacher", PersonaRegistry.of("teacher").id)
     }
 
     @Test fun everyVoiceIsComplete() {
@@ -30,12 +30,11 @@ class PersonaRegistryTest {
     }
 
     @Test fun theCharactersAreThemselves() {
-        assertTrue(systemPrompt(PersonaRegistry.of("jensen")).startsWith("You are Adam Jensen"))
         assertTrue(systemPrompt(PersonaRegistry.of("teacher")).startsWith("You are Gandalf"))
     }
 
     @Test fun removedVoicesAnswerInTheDefault() {
-        for (gone in listOf("flirt", "yukino", "zagreus")) {
+        for (gone in listOf("flirt", "yukino", "zagreus", "jensen")) {
             assertTrue(PersonaRegistry.all.none { it.id == gone })
             assertEquals(PersonaRegistry.default, PersonaRegistry.of(gone)) // their notebooks keep talking
             assertEquals(PersonaRegistry.DEFAULT_ID, PersonaRegistry.normalize(gone))

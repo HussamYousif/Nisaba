@@ -65,18 +65,18 @@ class LibraryViewModelTest {
         vm.onNew(); assertEquals(LibraryDialog.ChooseKind, vm.state.value.dialog)
         vm.chooseKind(NotebookKind.Canvas)
         assertEquals(LibraryDialog.ChooseVoice(NotebookKind.Canvas, "teacher"), vm.state.value.dialog) // starts at the last one
-        vm.selectVoice("jensen")
+        vm.selectVoice("writer")
         vm.confirmVoice { error("a canvas needs no PDF") }
-        assertEquals(LibraryDialog.NameIt(NotebookKind.Canvas, "jensen"), vm.state.value.dialog)
-        vm.back(); assertEquals(LibraryDialog.ChooseVoice(NotebookKind.Canvas, "jensen"), vm.state.value.dialog)
+        assertEquals(LibraryDialog.NameIt(NotebookKind.Canvas, "writer"), vm.state.value.dialog)
+        vm.back(); assertEquals(LibraryDialog.ChooseVoice(NotebookKind.Canvas, "writer"), vm.state.value.dialog)
         vm.confirmVoice {}
         vm.confirmCreate("Prague", opened::add); runCurrent()
         val nb = store.get(opened.single())!!
-        assertEquals("jensen", nb.notebook.personaId)
+        assertEquals("writer", nb.notebook.personaId)
         assertTrue(nb.pages.single().size.isEndless)
-        assertEquals("jensen", settings.flow.value.lastPersona)
+        assertEquals("writer", settings.flow.value.lastPersona)
         assertEquals(LibraryDialog.None, vm.state.value.dialog)
-        assertEquals("jensen", vm.state.value.notebooks.single().personaId)
+        assertEquals("writer", vm.state.value.notebooks.single().personaId)
     }
 
     @Test fun aPdfGoesThroughThePickerInTheVoicePicked() = runTest {

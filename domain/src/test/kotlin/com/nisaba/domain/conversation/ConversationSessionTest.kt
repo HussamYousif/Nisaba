@@ -87,10 +87,10 @@ class ConversationSessionTest {
         rig.write("a"); wait(3600); rig.handDone(); runCurrent()
         assertTrue(oracle.requests.last().system.startsWith(PersonaRegistry.of("teacher").voice))
         assertEquals("teacher", store.saved.last().personaId)
-        context.persona = PersonaRegistry.of("jensen") // the voice changed from the ⋯ menu while the page was open
+        context.persona = PersonaRegistry.of("explorer") // the voice changed from the ⋯ menu while the page was open
         rig.write("b"); wait(3600); rig.handDone(); runCurrent()
-        assertTrue(oracle.requests.last().system.startsWith("You are Adam Jensen"))
-        assertEquals("jensen", store.saved.last().personaId)
+        assertTrue(oracle.requests.last().system.startsWith(PersonaRegistry.of("explorer").voice))
+        assertEquals("explorer", store.saved.last().personaId)
     }
 
     @Test fun stoppingTheHandStillGetsTheTranscriptionAndWhatItTeaches() = runTest {
@@ -144,13 +144,13 @@ class ConversationSessionTest {
             ExchangeId("e0"), NotebookId("n"), page, "q", "<answer>\nOld.\n</answer>", ExchangeStatus.Complete, 1, "m", 1, 0, 0, 0,
             focus = PageRect(100f, 200f, 300f, 260f),
         )
-        rig.session.askAgain(first, page, AgainHow.OtherVoice("jensen"), answerBounds = PageRect(100f, 280f, 900f, 400f)); runCurrent()
+        rig.session.askAgain(first, page, AgainHow.OtherVoice("explorer"), answerBounds = PageRect(100f, 280f, 900f, 400f)); runCurrent()
         val req = oracle.requests.single()
-        assertTrue(req.system.startsWith("You are Adam Jensen") && req.instruction.contains("second opinion"))
+        assertTrue(req.system.startsWith(PersonaRegistry.of("explorer").voice) && req.instruction.contains("second opinion"))
         val focus = snapshotter.focuses.single()!!
         assertTrue(focus.top <= 200f && focus.bottom >= 400f && focus.right >= 900f, "the focus holds the question and the old answer")
         rig.handDone(); runCurrent(); wait(100); rig.handDone(); runCurrent()
-        assertEquals("jensen", store.saved.last().personaId)
+        assertEquals("explorer", store.saved.last().personaId)
     }
 
     @Test fun aReplyCutShortKeepsItsInkLearnsNothingAndSaysSo() = runTest {

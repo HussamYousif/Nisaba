@@ -68,7 +68,7 @@ class BookRulesTest {
     @Test fun eachConceptIsTaughtInStepsWithAQuestionARetryAndANudge() {
         val p = bookPrompt(map)
         assertTrue("guess before you explain" in p && "one step per reply" in p && "**2/3 Name**" in p, p)
-        assertTrue("ask one new, easier question on it" in p && "do not give the answer yet" in p, p)
+        assertTrue("ask one new, easier question on it" in p && "teaches no new step and does not give the answer yet" in p, p)
         assertTrue("second miss on the same point" in p, p)
         assertTrue("never reply <next/>" in p && "Nudge them once" in p && "never asked again" in p, p)
         assertTrue("one to three handwritten lines" in p, p)

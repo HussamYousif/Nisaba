@@ -50,6 +50,13 @@ class GlyphSetTest {
         for (c in "✓✔✗✘") assertTrue(HandFixtures.hand().resolve(c)!!.strokes.isNotEmpty(), "no glyph for '$c'")
     }
 
+    @Test fun aMiddleDotIsAPeriodHalfwayUpTheLetters() { // "In 3 steps: A · B · C" read as full stops
+        val hand = HandFixtures.hand()
+        val dot = hand.resolve('·')!!.strokes.flatMap { s -> s.pts.filterIndexed { i, _ -> i % 2 == 1 } }
+        val period = hand.glyphs['.']!!.strokes.flatMap { s -> s.pts.filterIndexed { i, _ -> i % 2 == 1 } }
+        assertTrue(dot.min() > period.max(), "dot $dot vs period $period")
+    }
+
     @Test fun unknownCharactersCannotBeComposed() {
         assertEquals(null, HandFixtures.hand().resolve('€'))
     }

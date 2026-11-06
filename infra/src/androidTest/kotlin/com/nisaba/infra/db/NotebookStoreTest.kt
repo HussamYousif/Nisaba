@@ -63,9 +63,9 @@ class NotebookStoreTest {
     @Test fun aNotebooksVoiceIsKeptChangedAndSummarised() = runBlocking {
         store.create(nb.copy(personaId = "teacher"), listOf(page("p1", 1.0)))
         assertEquals("teacher", store.get(nb.id)!!.notebook.personaId)
-        store.setPersona(nb.id, "jensen")
-        assertEquals("jensen", store.get(nb.id)!!.notebook.personaId)
-        assertEquals("jensen", store.observeAll().first().single().personaId)
+        store.setPersona(nb.id, "writer")
+        assertEquals("writer", store.get(nb.id)!!.notebook.personaId)
+        assertEquals("writer", store.observeAll().first().single().personaId)
     }
 
     @Test fun insertPageAndObserveEmitsUpdates() = runBlocking {

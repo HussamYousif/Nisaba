@@ -37,6 +37,13 @@ private fun shift(g: Glyph, dx: Float, sx: Float = 1f): List<GlyphStroke> = g.st
 
 private fun isUpper(base: Char) = base.isUpperCase()
 
+/** How far a middle dot sits above the baseline, in x-heights. */
+private const val MIDDLE_DOT_RISE = 0.4f
+
+private fun raise(g: Glyph, dy: Float): List<GlyphStroke> = g.strokes.map { st ->
+    GlyphStroke(FloatArray(st.pts.size) { i -> if (i % 2 == 1) st.pts[i] + dy else st.pts[i] }, st.delayed)
+}
+
 /** A tick and a cross, as a hand makes them (x-height units); models like to mark checked steps with them. */
 private val TICK = Glyph(0.95f, listOf(GlyphStroke(floatArrayOf(0.08f, 0.48f, 0.34f, 0.02f, 0.88f, 1.10f), delayed = false)))
 private val CROSS = Glyph(
@@ -56,6 +63,7 @@ fun composeGlyph(c: Char, set: GlyphSet): Glyph? {
         'Æ' -> return ligature(set, 'A', 'E')
         'ø' -> return slashed(set, 'o')
         'Ø' -> return slashed(set, 'O')
+        '·' -> return set.glyphs['.']?.let { d -> Glyph(d.adv, raise(d, MIDDLE_DOT_RISE)) } // "A · B · C"
         'ß' -> return set.glyphs['s']?.let { s -> Glyph(s.adv * 1.1f, shift(s, 0f)) } // approximation: long-s look
     }
     val nfd = Normalizer.normalize(c.toString(), Normalizer.Form.NFD)

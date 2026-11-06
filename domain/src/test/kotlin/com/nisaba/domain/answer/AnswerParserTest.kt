@@ -110,6 +110,16 @@ class AnswerParserTest {
         )
     }
 
+    @Test fun aLineAllInBoldIsALineOfItsOwn() {
+        assertEquals(
+            listOf(
+                Block.Paragraph(listOf(t("Right."))), Block.Paragraph(listOf(t("2/3 Name", bold = true))),
+                Block.Paragraph(listOf(t("Text "), t("in", bold = true), t(" it."))),
+            ),
+            blocks("<answer>\nRight.\n**2/3 Name**\nText **in** it.\n</answer><heard>h</heard>"),
+        )
+    }
+
     @Test fun headingsListsAndContinuations() {
         val b = blocks(fixtures[3])
         assertEquals(Block.Heading(2, listOf(t("Steps"))), b[0])

@@ -3,7 +3,7 @@ package com.nisaba.domain.conversation
 import com.nisaba.domain.persona.Persona
 
 /** Bump when [systemPrompt] or a voice changes; stored on every exchange so answers can be compared across versions. */
-const val PROMPT_VERSION = 20
+const val PROMPT_VERSION = 21
 
 private const val WORDS = "{words}"
 

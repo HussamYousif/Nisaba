@@ -25,7 +25,6 @@ fun DrawScope.drawSigil(voice: Persona, color: Color, c: Offset, r: Float) {
         "teacher" -> wizardHat(color, c, r, pen)
         "writer" -> nib(color, c, r, pen)
         "explorer" -> compass(color, c, r)
-        "jensen" -> shades(color, c, r, pen)
         "plain" -> { drawCircle(color, r * 0.75f, c, style = pen); drawCircle(color, r * 0.18f, c) }
         else -> star(color, c, r, pen, OWN_MIN_RAYS + (voice.id.hashCode() and Int.MAX_VALUE) % OWN_RAY_KINDS)
     }
@@ -83,18 +82,6 @@ private fun DrawScope.compass(color: Color, c: Offset, r: Float) {
         Offset(c.x + cos(a) * len, c.y + sin(a) * len)
     }
     drawPath(path(pts), color)
-}
-
-/** Adam Jensen: his angular shades. */
-private fun DrawScope.shades(color: Color, c: Offset, r: Float, pen: Stroke) {
-    for (side in listOf(-1f, 1f)) {
-        val lens = listOf(
-            Offset(c.x + side * r * 0.12f, c.y - r * 0.28f), Offset(c.x + side * r, c.y - r * 0.36f),
-            Offset(c.x + side * r * 0.86f, c.y + r * 0.1f), Offset(c.x + side * r * 0.32f, c.y + r * 0.32f),
-        )
-        drawPath(path(lens), color)
-    }
-    drawLine(color, Offset(c.x - r * 0.2f, c.y - r * 0.22f), Offset(c.x + r * 0.2f, c.y - r * 0.22f), pen.width, StrokeCap.Round)
 }
 
 private fun DrawScope.star(color: Color, c: Offset, r: Float, pen: Stroke, rays: Int) {

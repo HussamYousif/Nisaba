@@ -26,7 +26,7 @@ class EvalRunUseCase(
         onResult: (EvalResult) -> Unit = {},
     ): List<EvalResult> = personas.flatMap { persona ->
         cases.map { case ->
-            val old = if (case.oldVoiceHistory) (if (persona.id == "book") "jensen" else "book") else null
+            val old = if (case.oldVoiceHistory) (if (persona.id == "book") "teacher" else "book") else null
             val history = old?.let { oldVoiceExchanges(it) }.orEmpty()
             val page = pages.snapshot(case.writing, case.id.hashCode().toLong())
             val input = ContextInput(emptyList(), null, history, page, settings, persona = persona)
@@ -48,7 +48,7 @@ class EvalRunUseCase(
     /** Twenty earlier answers in another voice, as a notebook that changed its voice would have. */
     private fun oldVoiceExchanges(voice: String): List<Exchange> {
         val line = when (voice) {
-            "jensen" -> "%s. I never asked for this, but that's the truth. Sarif would say the same."
+            "teacher" -> "%s. Even a hobbit of the Shire knows that much, and Rivendell's books agree."
             else -> "So. %s, as the Sealed Verses foretold. Even Weiss knew that much. Ask me something harder."
         }
         return (1..HISTORY).map { i ->

@@ -122,14 +122,14 @@ fun bookPrompt(map: BookMap): String = buildString {
         """
 How a concept is taught:
 - It opens on a fresh page when the instruction says so: its heading, one line naming the 2 to 4 steps you will teach it in, and a question that asks them to guess before you explain (what they think happens, why, or how they would do it).
-- Then one step per reply, in the order of that line: a few words on their last answer (see Judging), then the step in your own words, about 70 words, starting with its number and name in bold (**2/3 Name**), then one question on that step. Together the steps cover everything the concept's pages teach (definitions, mechanisms, arguments, trade-offs, the book's examples), not a summary of them. Explain for real understanding: why it is so, an example or analogy (in a technical book a concrete scenario), a small table, formula, diagram or code block only when it truly helps. Cite pages (p. 14).
-- Questions ask for understanding, never a fact to look up: why, what would happen if, which would you choose and when, put it in your own words, apply it to a small case. Each can be answered in one to three handwritten lines.
+- Then one step per reply, in the order of that line: a few words on their last answer (see Judging), then the step in your own words, about 70 words, starting with its number and name in bold on a line of its own (**2/3 Name**), then one question on that step. Together the steps cover everything the concept's pages teach (definitions, mechanisms, arguments, trade-offs, the book's examples), not a summary of them. Explain for real understanding: why it is so, an example or analogy (in a technical book a concrete scenario), a small table, formula, diagram or code block only when it truly helps. Cite pages (p. 14).
+- A step's question checks that they understood the step, so it has a right answer the step taught: why, what would happen if, which would you choose and when, put it in your own words, apply it to a small case. Never a fact to look up, never their opinion or their own experience. Each can be answered in one to three handwritten lines.
 - After the last step's answer is judged: one line that sums the concept up, then one line inviting them to write "next" for the next concept (by name).
 
 Judging their answers:
 - Whatever they write after the opening question is their guess, even off the point or "I don't know": it is never right or wrong and never asked again. One line on it, then step 1, built on it where it can be.
 - Right: say so in a few words, adding what was missing if anything, then the next step.
-- A first miss on a step's question (wrong, partly wrong, "I don't know", "no idea"): do not give the answer yet. Say plainly what is wrong or missing, explain that point again another way (another example or analogy, at most 50 words), and ask one new, easier question on it.
+- A first miss on a step's question (wrong, partly wrong, against the book, "I don't know", "no idea"): this reply teaches no new step and does not give the answer yet. Say plainly what is wrong or missing, explain that point again another way (another example or analogy, at most 50 words), and ask one new, easier question on it.
 - A second miss on the same point: now give the right answer plainly in a line or two, then the next step.
 - After </answer> (never inside it), once a concept's last step is judged, record how they did, naming the concept exactly as the map does: <topic status="learned">Name</topic> when they got every step right (on the first or the second try), <topic status="shaky">Name</topic> when they missed one twice. The instruction lists what is recorded so far: when a concept builds on one marked shaky, recap that one in a line first.
 
@@ -195,7 +195,8 @@ fun walkPlace(map: BookMap, concept: Int?, done: Boolean = false): String = when
         " They are on concept ${concept + 1} of ${map.concepts.size} of the walk: \"${c.title}\" (${c.pages}); \"next\" leads to $then. " +
             if (done) "This concept is done and judged: \"next\" gets <next/> at once, and no question about it is open."
             else "This concept is still being taught: while a question of yours is open, the first \"next\" gets a nudge, " +
-                "not <next/>. A first miss gets a new question, never the answer."
+                "not <next/>. A first miss (wrong, partly wrong, against the book) gets no new step and not the answer: what is off, " +
+                "that point again another way, and a new, easier question."
     }
 }
 

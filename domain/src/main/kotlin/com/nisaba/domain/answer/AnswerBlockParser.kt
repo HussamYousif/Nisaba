@@ -7,6 +7,8 @@ private val LIST_RE = Regex("""^(\s*)([-*•]|\d+[.)])\s+(.*)$""")
 private val HEADING_RE = Regex("""^\s*(#{1,3})\s+(.*)$""")
 private val SEPARATOR_RE = Regex("""^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$""")
 private val LABEL_RE = Regex("""^(.+?)\s*@\s*(\d+)\s*,\s*(\d+)\s*$""")
+/** A line all in bold ("**2/3 Name**") is a label: a line of its own, not run into the text below it. */
+private val BOLD_LINE_RE = Regex("""^\*\*[^*]+\*\*\s*[:.]?$""")
 
 /** Line-oriented block builder: reports a block only once it can no longer grow. */
 internal class BlockSplitter {
@@ -76,6 +78,7 @@ internal class BlockSplitter {
             }
             t.startsWith("|") -> { emit(out, closePara()); table += t }
             t == "---" || t == "***" -> { emit(out, closePara()); emit(out, Block.Rule) }
+            BOLD_LINE_RE.matches(t) -> { emit(out, closePara()); emit(out, Block.Paragraph(parseInlines(t))) }
             item != null -> {
                 emit(out, closePara())
                 val marker = item.groupValues[2]
